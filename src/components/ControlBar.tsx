@@ -220,6 +220,20 @@ export function ControlBar() {
       ? "h-2.5 group-hover:h-3.5"
       : "h-1.5 group-hover:h-2.5";
 
+  const hoverPercent =
+    duration > 0 && hoverTime !== null
+      ? Math.min(100, Math.max(0, (hoverTime / duration) * 100))
+      : 0;
+
+  const deltaSeconds =
+    hoverTime !== null ? Math.round(hoverTime - currentTime) : 0;
+
+  const containerWidth = scrubberRef.current?.clientWidth || 300;
+  const cardWidth = 176;
+  const halfCard = cardWidth / 2;
+  const cardLeft = Math.max(halfCard, Math.min(hoverPosition, containerWidth - halfCard));
+  const pointerOffset = Math.max(-halfCard + 16, Math.min(halfCard - 16, hoverPosition - cardLeft));
+
   return (
     <div className="relative px-2 sm:px-4 pb-3 sm:pb-4 pt-1.5 bg-gradient-to-t from-black/95 via-black/75 to-transparent backdrop-blur-md select-none transition-all duration-300 z-30">
       <div className="w-full px-1 sm:px-4 md:px-6 flex flex-col gap-2">
@@ -235,42 +249,97 @@ export function ControlBar() {
           {hoverTime !== null && (
             <div
               style={{
-                left: `${Math.max(68, Math.min(hoverPosition, (scrubberRef.current?.clientWidth || 300) - 68))}px`,
+                left: `${cardLeft}px`,
               }}
-              className="absolute -top-20 -translate-x-1/2 pointer-events-none flex flex-col items-center z-50 animate-in fade-in zoom-in-95 duration-100"
+              className="absolute -top-[102px] -translate-x-1/2 pointer-events-none flex flex-col items-center z-50 animate-in fade-in zoom-in-95 duration-100 drop-shadow-[0_12px_24px_rgba(0,0,0,0.85)]"
             >
-              {/* Preview Tooltip Box */}
-              <div className="bg-neutral-900/95 backdrop-blur-xl rounded-xl border border-white/20 shadow-2xl px-3.5 py-2 flex flex-col items-center gap-1 min-w-[120px] text-center">
-                <div className="flex items-center justify-between w-full text-[10px] text-neutral-400 font-mono gap-2">
-                  <span style={{ color: accentColor }} className="font-bold">
-                    {duration > 0 ? `${Math.round((hoverTime / duration) * 100)}%` : "0%"}
+              {/* Premium Preview Glass Box */}
+              <div className="bg-neutral-950/95 backdrop-blur-2xl rounded-2xl border border-white/15 shadow-2xl px-4 py-2.5 flex flex-col items-center gap-1.5 w-44 text-center">
+                {/* Header: Progress % and Jump Delta */}
+                <div className="flex items-center justify-between w-full text-[11px] font-mono leading-none">
+                  <span
+                    style={{ color: accentColor }}
+                    className="font-bold tracking-tight"
+                  >
+                    {duration > 0 ? `${hoverPercent.toFixed(1)}%` : "0%"}
                   </span>
-                  <span>PREVIEW</span>
+
+                  {Math.abs(deltaSeconds) >= 1 ? (
+                    <span
+                      className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                        deltaSeconds > 0
+                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                          : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                      }`}
+                    >
+                      {deltaSeconds > 0
+                        ? `+${formatSeconds(deltaSeconds)}`
+                        : `-${formatSeconds(Math.abs(deltaSeconds))}`}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-neutral-400 bg-white/10 px-1.5 py-0.5 rounded-full">
+                      Current
+                    </span>
+                  )}
                 </div>
 
-                <div className="text-sm font-extrabold font-mono text-white tracking-wider">
+                {/* Primary Hover Time */}
+                <div className="text-lg font-black font-mono text-white tracking-wider leading-none py-0.5">
                   {formatSeconds(hoverTime)}
                 </div>
 
-                {/* Mini track indicator inside card */}
-                <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden mt-0.5">
+                {/* Subtitle: Remaining time from hover */}
+                {duration > 0 && (
+                  <div className="text-[10px] text-neutral-400 font-mono flex items-center justify-between w-full">
+                    <span>Remaining</span>
+                    <span className="text-neutral-300 font-medium">
+                      -{formatSeconds(Math.max(0, duration - hoverTime))}
+                    </span>
+                  </div>
+                )}
+
+                {/* Mini track visualizer with current position & hover position */}
+                <div className="relative w-full h-1.5 bg-white/10 rounded-full overflow-hidden mt-0.5">
+                  {/* Current playback segment */}
                   <div
                     style={{
-                      width: `${duration > 0 ? (hoverTime / duration) * 100 : 0}%`,
+                      width: `${progressPercent}%`,
+                    }}
+                    className="absolute inset-y-0 left-0 bg-white/30 rounded-full"
+                  />
+                  {/* Hover seek target indicator */}
+                  <div
+                    style={{
+                      left: `${hoverPercent}%`,
                       backgroundColor: accentColor,
                     }}
-                    className="h-full rounded-full"
+                    className="absolute top-0 bottom-0 w-1 -translate-x-1/2 rounded-full shadow-sm"
                   />
                 </div>
               </div>
 
-              {/* Triangle pointer */}
-              <div className="w-2.5 h-2.5 bg-neutral-900 border-r border-b border-white/20 rotate-45 -mt-1 shadow-md" />
+              {/* Triangle pointer accurately aligned with cursor */}
+              <div
+                style={{
+                  transform: `translateX(${pointerOffset}px) rotate(45deg)`,
+                }}
+                className="w-2.5 h-2.5 bg-neutral-950 border-r border-b border-white/20 -mt-1 shadow-md transition-transform duration-75"
+              />
             </div>
           )}
 
           {/* Background Track */}
-          <div className={`relative w-full ${trackHeightClass} bg-white/20 rounded-full overflow-hidden transition-all duration-150`}>
+          <div className={`relative w-full ${trackHeightClass} bg-white/15 rounded-full overflow-hidden transition-all duration-150`}>
+            {/* Hover Ghost Fill (shows seek range preview on track) */}
+            {hoverTime !== null && (
+              <div
+                style={{
+                  width: `${hoverPercent}%`,
+                }}
+                className="absolute inset-y-0 left-0 bg-white/20 rounded-full pointer-events-none transition-all duration-75"
+              />
+            )}
+
             {/* Active Progress Gradient */}
             <div
               style={{
@@ -278,9 +347,20 @@ export function ControlBar() {
                 backgroundColor: accentColor,
                 boxShadow: scrubberGlow ? `0 0 14px ${accentGlow}` : "none",
               }}
-              className="h-full rounded-full transition-all duration-75"
+              className="relative h-full rounded-full transition-all duration-75"
             />
           </div>
+
+          {/* Hover Vertical Marker Tick on track */}
+          {hoverTime !== null && (
+            <div
+              style={{
+                left: `${hoverPosition}px`,
+                backgroundColor: accentColor,
+              }}
+              className="absolute -top-1 bottom-1 w-0.5 rounded-full pointer-events-none shadow-md z-10 opacity-90 transition-opacity"
+            />
+          )}
 
           {/* Thumb Indicator */}
           <div

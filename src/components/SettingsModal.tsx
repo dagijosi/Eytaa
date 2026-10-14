@@ -33,7 +33,6 @@ import { usePlayerStore } from "../stores/playerStore";
 import { useThemeStore, ACCENT_PRESETS } from "../stores/themeStore";
 import { playerService } from "../services/player/mpvPlayerService";
 import { storageService } from "../services/storage/storageService";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { PlaybackProfile } from "../services/player/profileTypes";
@@ -86,6 +85,10 @@ export function SettingsModal() {
     toggleAutoPlayNext,
     isGlobalShortcutsEnabled,
     toggleGlobalShortcuts,
+    isAlwaysOnTop,
+    toggleAlwaysOnTop,
+    deleteHistoryItem,
+    clearPlaybackHistory,
   } = usePlayerStore();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("playback");
@@ -116,7 +119,6 @@ export function SettingsModal() {
   }, [accentColor]);
 
   // Playback settings
-  const [alwaysOnTop, setAlwaysOnTop] = useState(false);
   const [autoResume, setAutoResume] = useState(true);
   const [hwdec, setHwdec] = useState("auto-safe");
 
@@ -181,9 +183,6 @@ export function SettingsModal() {
   // Load initial preferences
   useEffect(() => {
     const loadPrefs = async () => {
-      const top = await storageService.getPreference<boolean>("alwaysOnTop");
-      if (typeof top === "boolean") setAlwaysOnTop(top);
-
       const resume = await storageService.getPreference<boolean>("autoResume");
       if (typeof resume === "boolean") setAutoResume(resume);
 
@@ -198,19 +197,6 @@ export function SettingsModal() {
   }, []);
 
   if (!isSettingsOpen) return null;
-
-  // Handler for Always On Top
-  const handleToggleAlwaysOnTop = async () => {
-    const next = !alwaysOnTop;
-    setAlwaysOnTop(next);
-    try {
-      await getCurrentWindow().setAlwaysOnTop(next);
-      await storageService.setPreference("alwaysOnTop", next);
-      showOSD(next ? "Always On Top: Enabled" : "Always On Top: Disabled");
-    } catch (e) {
-      console.warn("Always on top error:", e);
-    }
-  };
 
   // Handler for Auto Resume
   const handleToggleAutoResume = async () => {
@@ -576,8 +562,8 @@ export function SettingsModal() {
                 </div>
                 <input
                   type="checkbox"
-                  checked={alwaysOnTop}
-                  onChange={handleToggleAlwaysOnTop}
+                  checked={isAlwaysOnTop}
+                  onChange={toggleAlwaysOnTop}
                   style={{ accentColor }}
                   className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
                 />
@@ -1745,9 +1731,26 @@ export function SettingsModal() {
           {/* HISTORY TAB */}
           {activeTab === "history" && (
             <div>
-              <p className="text-xs text-neutral-400 mb-3">
-                Playback history stored in local SQLite database:
-              </p>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs text-neutral-400">
+                  Playback history stored in local SQLite database:
+                </p>
+                {recentFiles.length > 0 && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm("Clear all playback history?")) {
+                        clearPlaybackHistory();
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 border border-rose-500/20 active:scale-95 transition-all font-medium"
+                    title="Clear All History"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Clear All</span>
+                  </button>
+                )}
+              </div>
+
               {recentFiles.length === 0 ? (
                 <p className="text-xs text-neutral-500 italic text-center py-6">
                   No playback history recorded yet.
@@ -1793,6 +1796,18 @@ export function SettingsModal() {
                           </span>
                         ) : null}
                         <Clock className="w-3 h-3 text-neutral-500" />
+
+                        {/* Delete single history item button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteHistoryItem(item.filePath);
+                          }}
+                          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-neutral-400 hover:text-rose-400 hover:bg-rose-500/15 transition-all ml-1"
+                          title="Remove from history"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
                   ))}

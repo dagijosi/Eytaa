@@ -51,6 +51,10 @@ interface PlayerStoreState extends PlayerState {
   detectedSiblings: string[] | null;
   showSiblingPrompt: boolean;
 
+  // Window & TopNav Quick Controls
+  isAlwaysOnTop: boolean;
+  toggleAlwaysOnTop: () => Promise<void>;
+
   // Picture-in-Picture
   isPiP: boolean;
   pipPreviousGeometry: WindowGeometry | null;
@@ -122,6 +126,8 @@ interface PlayerStoreState extends PlayerState {
   showOSD: (text: string) => void;
   setControlsVisible: (visible: boolean) => void;
   refreshRecentFiles: () => Promise<void>;
+  deleteHistoryItem: (filePath: string) => Promise<void>;
+  clearPlaybackHistory: () => Promise<void>;
   dispose: () => Promise<void>;
 }
 
@@ -164,6 +170,9 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
     videoFitMode: "fit",
     detectedSiblings: null,
     showSiblingPrompt: false,
+
+    // Window & TopNav Quick Controls
+    isAlwaysOnTop: false,
 
     // Picture-in-Picture State
     isPiP: false,
@@ -288,6 +297,31 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
 
       if (shortcutsActive) {
         await globalShortcutsService.applyShortcuts();
+      }
+
+      // Load saved always-on-top setting
+      const savedAlwaysOnTop =
+        (await storageService.getPreference<boolean>("alwaysOnTop")) || false;
+      if (savedAlwaysOnTop) {
+        try {
+          await getCurrentWindow().setAlwaysOnTop(true);
+        } catch (e) {
+          console.warn("Failed to apply initial always-on-top:", e);
+        }
+      }
+      set({ isAlwaysOnTop: savedAlwaysOnTop });
+    },
+
+    // Quick Window Controls
+    toggleAlwaysOnTop: async () => {
+      const next = !get().isAlwaysOnTop;
+      try {
+        await getCurrentWindow().setAlwaysOnTop(next);
+        await storageService.setPreference("alwaysOnTop", next);
+        set({ isAlwaysOnTop: next });
+        get().showOSD(next ? "Always on Top: Enabled" : "Always on Top: Disabled");
+      } catch (e) {
+        console.error("Failed to toggle always-on-top:", e);
       }
     },
 
@@ -968,6 +1002,19 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
     refreshRecentFiles: async () => {
       const recent = await storageService.getRecentFiles(15);
       set({ recentFiles: recent });
+    },
+
+    deleteHistoryItem: async (filePath: string) => {
+      await storageService.deleteHistoryItem(filePath);
+      const updated = get().recentFiles.filter((item) => item.filePath !== filePath);
+      set({ recentFiles: updated });
+      get().showOSD("Removed from history");
+    },
+
+    clearPlaybackHistory: async () => {
+      await storageService.clearAllHistory();
+      set({ recentFiles: [] });
+      get().showOSD("Playback history cleared");
     },
 
     dispose: async () => {

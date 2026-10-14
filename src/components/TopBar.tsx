@@ -8,6 +8,7 @@ import {
   ListVideo,
   Sliders,
   ChevronDown,
+  Pin,
 } from "lucide-react";
 import { usePlayerStore } from "../stores/playerStore";
 import { useThemeStore } from "../stores/themeStore";
@@ -18,7 +19,7 @@ import { formatMediaTitle } from "../utils/mediaTitle";
 import { EytaaLogo } from "./EytaaLogo";
 
 export function TopBar() {
-  const { accentColor } = useThemeStore();
+  const { accentColor, accentGlow } = useThemeStore();
   const {
     mediaMetadata,
     playlist,
@@ -28,6 +29,8 @@ export function TopBar() {
     status,
     togglePlaylistDrawer,
     toggleSettingsModal,
+    isAlwaysOnTop,
+    toggleAlwaysOnTop,
   } = usePlayerStore();
 
   const [isMaximized, setIsMaximized] = useState(false);
@@ -286,6 +289,40 @@ export function TopBar() {
 
       {/* Right: Window Controls */}
       <div className="flex items-center gap-0.5 shrink-0 -mr-1">
+        {/* Quick Always On Top Button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleAlwaysOnTop();
+          }}
+          style={
+            isAlwaysOnTop
+              ? {
+                  backgroundColor: accentGlow,
+                  color: accentColor,
+                }
+              : undefined
+          }
+          className={`w-8 h-7 flex items-center justify-center rounded transition-all duration-200 ${
+            isAlwaysOnTop
+              ? "font-semibold shadow-sm"
+              : "text-neutral-400 hover:text-white hover:bg-white/10"
+          }`}
+          title={
+            isAlwaysOnTop
+              ? "Always on Top: Active (Click to unpin)"
+              : "Always on Top: Inactive (Click to pin)"
+          }
+        >
+          <Pin
+            className={`w-3.5 h-3.5 transition-transform duration-200 ${
+              isAlwaysOnTop ? "rotate-45 fill-current" : ""
+            }`}
+          />
+        </button>
+
+        <div className="w-px h-3.5 bg-white/10 mx-0.5" />
+
         <button
           onClick={handleMinimize}
           className="w-8 h-7 flex items-center justify-center rounded text-neutral-400 hover:text-white hover:bg-white/10 transition-colors"

@@ -1,11 +1,11 @@
-import { FolderOpen, History, Play, Sparkles, Shield, Cpu } from "lucide-react";
+import { FolderOpen, History, Play, Sparkles, Shield, Cpu, X } from "lucide-react";
 import { usePlayerStore } from "../stores/playerStore";
 import { useThemeStore } from "../stores/themeStore";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { EytaaLogo } from "./EytaaLogo";
 
 export function WelcomeScreen() {
-  const { openFile, recentFiles } = usePlayerStore();
+  const { openFile, recentFiles, deleteHistoryItem } = usePlayerStore();
   const { accentColor, accentGlow, accentText } = useThemeStore();
 
   const handleOpenFile = async () => {
@@ -110,7 +110,7 @@ export function WelcomeScreen() {
                   onClick={() => openFile(file.filePath)}
                   className="group flex items-center justify-between p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 cursor-pointer transition"
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <div
                       style={{
                         backgroundColor: `${accentGlow}`,
@@ -124,6 +124,17 @@ export function WelcomeScreen() {
                       {file.title || file.filePath.split(/[/\\]/).pop()}
                     </span>
                   </div>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteHistoryItem(file.filePath);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-neutral-400 hover:text-rose-400 hover:bg-rose-500/15 transition-all shrink-0 ml-1.5"
+                    title="Remove from history"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               ))}
             </div>

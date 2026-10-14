@@ -105,6 +105,8 @@ pub fn run() {
             db::db_set_resume_position,
             db::db_add_history,
             db::db_get_recent_files,
+            db::db_delete_history,
+            db::db_clear_history,
             media::find_sibling_episodes,
             pip::enter_pip,
             pip::exit_pip,

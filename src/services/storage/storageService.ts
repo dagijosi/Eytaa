@@ -110,6 +110,22 @@ export class StorageService {
       return [];
     }
   }
+
+  public async deleteHistoryItem(filePath: string): Promise<void> {
+    try {
+      await invoke("db_delete_history", { filePath });
+    } catch (err) {
+      console.warn(`[StorageService] Failed to delete history for '${filePath}':`, err);
+    }
+  }
+
+  public async clearAllHistory(): Promise<void> {
+    try {
+      await invoke("db_clear_history");
+    } catch (err) {
+      console.warn("[StorageService] Failed to clear history:", err);
+    }
+  }
 }
 
 export const storageService = new StorageService();

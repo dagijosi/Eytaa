@@ -211,3 +211,29 @@ pub fn db_get_recent_files(
 
     Ok(history)
 }
+
+#[tauri::command]
+pub fn db_delete_history(
+    state: tauri::State<'_, DbState>,
+    file_path: String,
+) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+    let _ = conn.execute(
+        "DELETE FROM playback_history WHERE file_path = ?1",
+        params![file_path],
+    );
+    let _ = conn.execute(
+        "DELETE FROM resume_positions WHERE file_path = ?1",
+        params![file_path],
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub fn db_clear_history(state: tauri::State<'_, DbState>) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+    let _ = conn.execute("DELETE FROM playback_history", []);
+    let _ = conn.execute("DELETE FROM resume_positions", []);
+    Ok(())
+}
+
