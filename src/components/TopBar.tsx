@@ -9,15 +9,30 @@ import {
   Sliders,
   ChevronDown,
   Pin,
+  LayoutGrid,
 } from "lucide-react";
 import { usePlayerStore } from "../stores/playerStore";
 import { useThemeStore } from "../stores/themeStore";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, currentMonitor } from "@tauri-apps/api/window";
+import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
 import { formatMediaTitle } from "../utils/mediaTitle";
 import { updaterService } from "../services/updater/updaterService";
 
 import { EytaaLogo } from "./EytaaLogo";
+
+type SnapZone =
+  | "left-half"
+  | "right-half"
+  | "left-two-thirds"
+  | "right-one-third"
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right"
+  | "center"
+  | "pip-corner"
+  | "maximize";
 
 export function TopBar() {
   const { accentColor, accentGlow } = useThemeStore();
@@ -32,12 +47,19 @@ export function TopBar() {
     toggleSettingsModal,
     isAlwaysOnTop,
     toggleAlwaysOnTop,
+    showOSD,
   } = usePlayerStore();
 
   const [isMaximized, setIsMaximized] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isSnapMenuOpen, setIsSnapMenuOpen] = useState(false);
+  const [hoveredZone, setHoveredZone] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState("0.1.1");
+
   const menuRef = useRef<HTMLDivElement>(null);
+  const snapMenuRef = useRef<HTMLDivElement>(null);
+  const snapHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const snapCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     updaterService.getAppVersion().then(setAppVersion);
@@ -69,18 +91,54 @@ export function TopBar() {
     };
   }, []);
 
-  // Close menu on click outside
+  // Close menus on click outside
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setIsMenuOpen(false);
       }
+      if (snapMenuRef.current && !snapMenuRef.current.contains(e.target as Node)) {
+        setIsSnapMenuOpen(false);
+      }
     };
-    if (isMenuOpen) {
+    if (isMenuOpen || isSnapMenuOpen) {
       window.addEventListener("mousedown", handleOutsideClick);
     }
     return () => window.removeEventListener("mousedown", handleOutsideClick);
-  }, [isMenuOpen]);
+  }, [isMenuOpen, isSnapMenuOpen]);
+
+  const clearSnapTimers = () => {
+    if (snapHoverTimer.current) {
+      clearTimeout(snapHoverTimer.current);
+      snapHoverTimer.current = null;
+    }
+    if (snapCloseTimer.current) {
+      clearTimeout(snapCloseTimer.current);
+      snapCloseTimer.current = null;
+    }
+  };
+
+  const handleMouseEnterMaximize = () => {
+    if (snapCloseTimer.current) {
+      clearTimeout(snapCloseTimer.current);
+      snapCloseTimer.current = null;
+    }
+    if (!isSnapMenuOpen) {
+      snapHoverTimer.current = setTimeout(() => {
+        setIsSnapMenuOpen(true);
+      }, 250);
+    }
+  };
+
+  const handleMouseLeaveMaximize = () => {
+    if (snapHoverTimer.current) {
+      clearTimeout(snapHoverTimer.current);
+      snapHoverTimer.current = null;
+    }
+    snapCloseTimer.current = setTimeout(() => {
+      setIsSnapMenuOpen(false);
+    }, 300);
+  };
 
   const handleMinimize = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -94,12 +152,141 @@ export function TopBar() {
 
   const handleToggleMaximize = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    clearSnapTimers();
+    setIsSnapMenuOpen(false);
     try {
       const appWindow = getCurrentWindow();
       await appWindow.toggleMaximize();
       setIsMaximized(await appWindow.isMaximized());
     } catch (e) {
       console.warn("Toggle maximize error:", e);
+    }
+  };
+
+  const handleSnap = async (zone: SnapZone) => {
+    clearSnapTimers();
+    setIsSnapMenuOpen(false);
+    try {
+      const appWindow = getCurrentWindow();
+      if (zone === "maximize") {
+        await appWindow.maximize();
+        setIsMaximized(true);
+        showOSD("Maximized Window");
+        return;
+      }
+
+      const monitor = await currentMonitor();
+      if (!monitor) {
+        await appWindow.maximize();
+        return;
+      }
+
+      const workArea = monitor.workArea || {
+        position: monitor.position,
+        size: monitor.size,
+      };
+
+      const mx = workArea.position.x;
+      const my = workArea.position.y;
+      const mw = workArea.size.width;
+      const mh = workArea.size.height;
+
+      let targetX = mx;
+      let targetY = my;
+      let targetW = mw;
+      let targetH = mh;
+      let osdLabel = "Window Snapped";
+
+      const halfW = Math.floor(mw / 2);
+      const halfH = Math.floor(mh / 2);
+
+      switch (zone) {
+        case "left-half":
+          targetX = mx;
+          targetY = my;
+          targetW = halfW;
+          targetH = mh;
+          osdLabel = "Snapped: Left Half (50%)";
+          break;
+        case "right-half":
+          targetX = mx + halfW;
+          targetY = my;
+          targetW = mw - halfW;
+          targetH = mh;
+          osdLabel = "Snapped: Right Half (50%)";
+          break;
+        case "left-two-thirds":
+          targetX = mx;
+          targetY = my;
+          targetW = Math.floor(mw * 0.65);
+          targetH = mh;
+          osdLabel = "Snapped: Left Focus (65%)";
+          break;
+        case "right-one-third":
+          targetX = mx + Math.floor(mw * 0.65);
+          targetY = my;
+          targetW = mw - Math.floor(mw * 0.65);
+          targetH = mh;
+          osdLabel = "Snapped: Right Side (35%)";
+          break;
+        case "top-left":
+          targetX = mx;
+          targetY = my;
+          targetW = halfW;
+          targetH = halfH;
+          osdLabel = "Snapped: Top-Left Quadrant";
+          break;
+        case "top-right":
+          targetX = mx + halfW;
+          targetY = my;
+          targetW = mw - halfW;
+          targetH = halfH;
+          osdLabel = "Snapped: Top-Right Quadrant";
+          break;
+        case "bottom-left":
+          targetX = mx;
+          targetY = my + halfH;
+          targetW = halfW;
+          targetH = mh - halfH;
+          osdLabel = "Snapped: Bottom-Left Quadrant";
+          break;
+        case "bottom-right":
+          targetX = mx + halfW;
+          targetY = my + halfH;
+          targetW = mw - halfW;
+          targetH = mh - halfH;
+          osdLabel = "Snapped: Bottom-Right Quadrant";
+          break;
+        case "center":
+          targetW = Math.floor(mw * 0.72);
+          targetH = Math.floor(mh * 0.75);
+          targetX = mx + Math.floor((mw - targetW) / 2);
+          targetY = my + Math.floor((mh - targetH) / 2);
+          osdLabel = "Snapped: Centered Focus";
+          break;
+        case "pip-corner": {
+          const scale = monitor.scaleFactor || 1;
+          targetW = Math.round(440 * scale);
+          targetH = Math.round(250 * scale);
+          targetX = mx + mw - targetW - Math.round(20 * scale);
+          targetY = my + mh - targetH - Math.round(20 * scale);
+          await appWindow.setAlwaysOnTop(true);
+          osdLabel = "Mini PiP Mode (Pinned On Top)";
+          break;
+        }
+      }
+
+      if (await appWindow.isMaximized()) {
+        await appWindow.unmaximize();
+        await new Promise((r) => setTimeout(r, 70));
+      }
+
+      await appWindow.setPosition(new PhysicalPosition(targetX, targetY));
+      await appWindow.setSize(new PhysicalSize(targetW, targetH));
+      setIsMaximized(false);
+      showOSD(osdLabel);
+    } catch (err) {
+      console.error("Window snap error:", err);
     }
   };
 
@@ -342,17 +529,252 @@ export function TopBar() {
           <Minus className="w-3.5 h-3.5" />
         </button>
 
-        <button
-          onClick={handleToggleMaximize}
-          className="w-8 h-7 flex items-center justify-center rounded text-neutral-400 hover:text-white hover:bg-white/10 transition-colors"
-          title={isMaximized ? "Restore" : "Maximize"}
+        {/* Maximize & Snap Layouts Area */}
+        <div
+          className="relative"
+          onMouseEnter={handleMouseEnterMaximize}
+          onMouseLeave={handleMouseLeaveMaximize}
         >
-          {isMaximized ? (
-            <Copy className="w-3 h-3 rotate-180" />
-          ) : (
-            <Square className="w-3 h-3" />
+          <button
+            onClick={handleToggleMaximize}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setIsSnapMenuOpen(!isSnapMenuOpen);
+            }}
+            className="w-8 h-7 flex items-center justify-center rounded text-neutral-400 hover:text-white hover:bg-white/10 transition-colors"
+            title={
+              isMaximized
+                ? "Restore (Hover for Snap Layouts)"
+                : "Maximize (Hover for Snap Layouts)"
+            }
+          >
+            {isMaximized ? (
+              <Copy className="w-3 h-3 rotate-180" />
+            ) : (
+              <Square className="w-3 h-3" />
+            )}
+          </button>
+
+          {/* Snap Layouts Flyout Menu */}
+          {isSnapMenuOpen && (
+            <div
+              ref={snapMenuRef}
+              onMouseEnter={() => {
+                if (snapCloseTimer.current) {
+                  clearTimeout(snapCloseTimer.current);
+                  snapCloseTimer.current = null;
+                }
+              }}
+              onMouseLeave={handleMouseLeaveMaximize}
+              className="absolute top-full right-0 mt-1 w-72 bg-neutral-900/98 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl p-3 z-50 text-xs animate-in fade-in zoom-in-95 duration-150 select-none"
+            >
+              {/* Flyout Header */}
+              <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-white/10">
+                <div className="flex items-center gap-1.5 text-neutral-200 font-semibold text-xs">
+                  <LayoutGrid style={{ color: accentColor }} className="w-3.5 h-3.5" />
+                  <span>Snap Layouts</span>
+                </div>
+                <span className="text-[10px] text-neutral-400 font-mono capitalize">
+                  {hoveredZone ? hoveredZone.replace(/-/g, " ") : "Hover a zone"}
+                </span>
+              </div>
+
+              {/* Grid of Snap Templates */}
+              <div className="grid grid-cols-2 gap-2.5">
+                {/* 1. Side-by-Side 50/50 (Essential for 2 videos!) */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] text-neutral-400 font-medium text-center">
+                    Split 50 / 50
+                  </span>
+                  <div className="h-14 p-1 rounded-lg bg-white/5 border border-white/10 flex gap-1">
+                    <button
+                      onClick={() => handleSnap("left-half")}
+                      onMouseEnter={() => setHoveredZone("left-half")}
+                      onMouseLeave={() => setHoveredZone(null)}
+                      title="Snap to Left Half (50%)"
+                      style={{
+                        backgroundColor:
+                          hoveredZone === "left-half" ? accentGlow : "rgba(255,255,255,0.06)",
+                        borderColor:
+                          hoveredZone === "left-half" ? accentColor : "rgba(255,255,255,0.15)",
+                      }}
+                      className="flex-1 h-full rounded border transition-all duration-150 flex items-center justify-center group"
+                    >
+                      <span className="text-[9px] font-bold text-neutral-400 group-hover:text-white">L</span>
+                    </button>
+                    <button
+                      onClick={() => handleSnap("right-half")}
+                      onMouseEnter={() => setHoveredZone("right-half")}
+                      onMouseLeave={() => setHoveredZone(null)}
+                      title="Snap to Right Half (50%)"
+                      style={{
+                        backgroundColor:
+                          hoveredZone === "right-half" ? accentGlow : "rgba(255,255,255,0.06)",
+                        borderColor:
+                          hoveredZone === "right-half" ? accentColor : "rgba(255,255,255,0.15)",
+                      }}
+                      className="flex-1 h-full rounded border transition-all duration-150 flex items-center justify-center group"
+                    >
+                      <span className="text-[9px] font-bold text-neutral-400 group-hover:text-white">R</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Priority Split (65 / 35) */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] text-neutral-400 font-medium text-center">
+                    Focus 65 / 35
+                  </span>
+                  <div className="h-14 p-1 rounded-lg bg-white/5 border border-white/10 flex gap-1">
+                    <button
+                      onClick={() => handleSnap("left-two-thirds")}
+                      onMouseEnter={() => setHoveredZone("left-two-thirds")}
+                      onMouseLeave={() => setHoveredZone(null)}
+                      title="Snap Left Focus (65%)"
+                      style={{
+                        backgroundColor:
+                          hoveredZone === "left-two-thirds" ? accentGlow : "rgba(255,255,255,0.06)",
+                        borderColor:
+                          hoveredZone === "left-two-thirds" ? accentColor : "rgba(255,255,255,0.15)",
+                      }}
+                      className="w-[65%] h-full rounded border transition-all duration-150 flex items-center justify-center group"
+                    >
+                      <span className="text-[9px] font-bold text-neutral-400 group-hover:text-white">65%</span>
+                    </button>
+                    <button
+                      onClick={() => handleSnap("right-one-third")}
+                      onMouseEnter={() => setHoveredZone("right-one-third")}
+                      onMouseLeave={() => setHoveredZone(null)}
+                      title="Snap Right Side (35%)"
+                      style={{
+                        backgroundColor:
+                          hoveredZone === "right-one-third" ? accentGlow : "rgba(255,255,255,0.06)",
+                        borderColor:
+                          hoveredZone === "right-one-third" ? accentColor : "rgba(255,255,255,0.15)",
+                      }}
+                      className="w-[35%] h-full rounded border transition-all duration-150 flex items-center justify-center group"
+                    >
+                      <span className="text-[9px] font-bold text-neutral-400 group-hover:text-white">35%</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. Four Quadrants (2x2) */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] text-neutral-400 font-medium text-center">
+                    Four Corners
+                  </span>
+                  <div className="h-14 p-1 rounded-lg bg-white/5 border border-white/10 grid grid-cols-2 grid-rows-2 gap-1">
+                    <button
+                      onClick={() => handleSnap("top-left")}
+                      onMouseEnter={() => setHoveredZone("top-left")}
+                      onMouseLeave={() => setHoveredZone(null)}
+                      title="Top-Left Corner"
+                      style={{
+                        backgroundColor:
+                          hoveredZone === "top-left" ? accentGlow : "rgba(255,255,255,0.06)",
+                        borderColor:
+                          hoveredZone === "top-left" ? accentColor : "rgba(255,255,255,0.15)",
+                      }}
+                      className="rounded border transition-all duration-150"
+                    />
+                    <button
+                      onClick={() => handleSnap("top-right")}
+                      onMouseEnter={() => setHoveredZone("top-right")}
+                      onMouseLeave={() => setHoveredZone(null)}
+                      title="Top-Right Corner"
+                      style={{
+                        backgroundColor:
+                          hoveredZone === "top-right" ? accentGlow : "rgba(255,255,255,0.06)",
+                        borderColor:
+                          hoveredZone === "top-right" ? accentColor : "rgba(255,255,255,0.15)",
+                      }}
+                      className="rounded border transition-all duration-150"
+                    />
+                    <button
+                      onClick={() => handleSnap("bottom-left")}
+                      onMouseEnter={() => setHoveredZone("bottom-left")}
+                      onMouseLeave={() => setHoveredZone(null)}
+                      title="Bottom-Left Corner"
+                      style={{
+                        backgroundColor:
+                          hoveredZone === "bottom-left" ? accentGlow : "rgba(255,255,255,0.06)",
+                        borderColor:
+                          hoveredZone === "bottom-left" ? accentColor : "rgba(255,255,255,0.15)",
+                      }}
+                      className="rounded border transition-all duration-150"
+                    />
+                    <button
+                      onClick={() => handleSnap("bottom-right")}
+                      onMouseEnter={() => setHoveredZone("bottom-right")}
+                      onMouseLeave={() => setHoveredZone(null)}
+                      title="Bottom-Right Corner"
+                      style={{
+                        backgroundColor:
+                          hoveredZone === "bottom-right" ? accentGlow : "rgba(255,255,255,0.06)",
+                        borderColor:
+                          hoveredZone === "bottom-right" ? accentColor : "rgba(255,255,255,0.15)",
+                      }}
+                      className="rounded border transition-all duration-150"
+                    />
+                  </div>
+                </div>
+
+                {/* 4. Center & PiP Mode */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] text-neutral-400 font-medium text-center">
+                    Center / Mini PiP
+                  </span>
+                  <div className="h-14 p-1 rounded-lg bg-white/5 border border-white/10 flex gap-1">
+                    <button
+                      onClick={() => handleSnap("center")}
+                      onMouseEnter={() => setHoveredZone("center")}
+                      onMouseLeave={() => setHoveredZone(null)}
+                      title="Center Focus (72%)"
+                      style={{
+                        backgroundColor:
+                          hoveredZone === "center" ? accentGlow : "rgba(255,255,255,0.06)",
+                        borderColor:
+                          hoveredZone === "center" ? accentColor : "rgba(255,255,255,0.15)",
+                      }}
+                      className="flex-1 h-full rounded border transition-all duration-150 flex items-center justify-center group"
+                    >
+                      <span className="text-[9px] font-bold text-neutral-400 group-hover:text-white">Center</span>
+                    </button>
+                    <button
+                      onClick={() => handleSnap("pip-corner")}
+                      onMouseEnter={() => setHoveredZone("pip-corner")}
+                      onMouseLeave={() => setHoveredZone(null)}
+                      title="Mini PiP Corner (Pins Always On Top)"
+                      style={{
+                        backgroundColor:
+                          hoveredZone === "pip-corner" ? accentGlow : "rgba(255,255,255,0.06)",
+                        borderColor:
+                          hoveredZone === "pip-corner" ? accentColor : "rgba(255,255,255,0.15)",
+                      }}
+                      className="flex-1 h-full rounded border transition-all duration-150 flex items-center justify-center group"
+                    >
+                      <span className="text-[9px] font-bold text-neutral-400 group-hover:text-white">PiP</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Actions Footer */}
+              <div className="mt-2.5 pt-2 border-t border-white/10 flex items-center justify-between text-[11px]">
+                <button
+                  onClick={() => handleSnap("maximize")}
+                  className="px-2 py-1 rounded-md text-neutral-300 hover:text-white hover:bg-white/10 transition"
+                >
+                  Full Maximize
+                </button>
+                <span className="text-[10px] text-neutral-500 font-sans">
+                  Win + ← / → to snap
+                </span>
+              </div>
+            </div>
           )}
-        </button>
+        </div>
 
         <button
           onClick={handleClose}

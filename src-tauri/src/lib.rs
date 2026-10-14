@@ -92,6 +92,24 @@ fn extract_media_arg(args: &[String]) -> Option<String> {
     None
 }
 
+fn should_reuse_single_window() -> bool {
+    if let Ok(app_data) = std::env::var("APPDATA") {
+        let db_path = std::path::PathBuf::from(app_data)
+            .join("com.dagi.eytaa")
+            .join("vistara.db");
+        if db_path.exists() {
+            if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+                if let Ok(mut stmt) = conn.prepare("SELECT value FROM user_preferences WHERE key = 'reuseSingleWindow'") {
+                    if let Ok(val) = stmt.query_row([], |row| row.get::<_, String>(0)) {
+                        return val == "true";
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
 #[tauri::command]
 fn get_launch_file(state: tauri::State<'_, LaunchState>) -> Option<String> {
     let mut file = state.file_path.lock().ok()?;
@@ -105,8 +123,10 @@ pub fn run() {
 
     let initial_file = extract_media_arg(&std::env::args().collect::<Vec<_>>());
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+    let mut builder = tauri::Builder::default();
+
+    if should_reuse_single_window() {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.unminimize();
@@ -115,7 +135,10 @@ pub fn run() {
             if let Some(file) = extract_media_arg(&args) {
                 let _ = app.emit("open-file-requested", file);
             }
-        }))
+        }));
+    }
+
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())

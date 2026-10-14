@@ -120,6 +120,7 @@ export function SettingsModal() {
 
   // Playback settings
   const [autoResume, setAutoResume] = useState(true);
+  const [allowMultipleWindows, setAllowMultipleWindows] = useState(true);
   const [hwdec, setHwdec] = useState("auto-safe");
 
   // Video picture adjustments
@@ -195,6 +196,9 @@ export function SettingsModal() {
       const resume = await storageService.getPreference<boolean>("autoResume");
       if (typeof resume === "boolean") setAutoResume(resume);
 
+      const reuseSingle = await storageService.getPreference<boolean>("reuseSingleWindow");
+      if (typeof reuseSingle === "boolean") setAllowMultipleWindows(!reuseSingle);
+
       const savedHwdec = await storageService.getPreference<string>("hwdec");
       if (savedHwdec) setHwdec(savedHwdec);
 
@@ -206,6 +210,14 @@ export function SettingsModal() {
   }, []);
 
   if (!isSettingsOpen) return null;
+
+  // Handler for Multiple Windows vs Single Instance
+  const handleToggleMultipleWindows = async () => {
+    const next = !allowMultipleWindows;
+    setAllowMultipleWindows(next);
+    await storageService.setPreference("reuseSingleWindow", !next);
+    showOSD(next ? "Multiple Windows: Enabled" : "Single Window Mode: Active");
+  };
 
   // Handler for Auto Resume
   const handleToggleAutoResume = async () => {
@@ -573,6 +585,25 @@ export function SettingsModal() {
                   type="checkbox"
                   checked={isAlwaysOnTop}
                   onChange={toggleAlwaysOnTop}
+                  style={{ accentColor }}
+                  className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                />
+              </div>
+
+              {/* Multiple Windows Mode */}
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
+                <div>
+                  <span className="font-medium text-neutral-200 text-xs">
+                    Allow Multiple Player Windows
+                  </span>
+                  <p className="text-xs text-neutral-500">
+                    Open each video in a new window so you can watch 2 or more videos simultaneously
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={allowMultipleWindows}
+                  onChange={handleToggleMultipleWindows}
                   style={{ accentColor }}
                   className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
                 />
