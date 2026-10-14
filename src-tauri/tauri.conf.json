@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "EYTAA",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "identifier": "com.dagi.eytaa",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -37,6 +37,30 @@
     "createUpdaterArtifacts": true,
     "resources": [
       "lib/**/*"
+    ],
+    "fileAssociations": [
+      {
+        "ext": [
+          "mp4",
+          "mkv",
+          "webm",
+          "avi",
+          "mov",
+          "wmv",
+          "flv",
+          "ts",
+          "m2ts",
+          "mp3",
+          "flac",
+          "wav",
+          "m4a",
+          "aac",
+          "ogg"
+        ],
+        "name": "Media File",
+        "description": "Media file handled by EYTAA",
+        "role": "Viewer"
+      }
     ],
     "icon": [
       "icons/32x32.png",

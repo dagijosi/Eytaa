@@ -1,4 +1,4 @@
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 mod db;
 mod media;
@@ -74,12 +74,48 @@ fn setup_dll_environment() {
 
 mod pip;
 
+use std::sync::Mutex;
+
+pub struct LaunchState {
+    pub file_path: Mutex<Option<String>>,
+}
+
+fn extract_media_arg(args: &[String]) -> Option<String> {
+    for arg in args.iter().skip(1) {
+        if !arg.starts_with('-') && !arg.is_empty() {
+            let cleaned = arg.trim_matches('"').trim_matches('\'').trim().to_string();
+            if !cleaned.is_empty() {
+                return Some(cleaned);
+            }
+        }
+    }
+    None
+}
+
+#[tauri::command]
+fn get_launch_file(state: tauri::State<'_, LaunchState>) -> Option<String> {
+    let mut file = state.file_path.lock().ok()?;
+    file.take()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(windows)]
     setup_dll_environment();
 
+    let initial_file = extract_media_arg(&std::env::args().collect::<Vec<_>>());
+
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+            if let Some(file) = extract_media_arg(&args) {
+                let _ = app.emit("open-file-requested", file);
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -87,7 +123,11 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .setup(|app| {
+        .setup(move |app| {
+            app.manage(LaunchState {
+                file_path: Mutex::new(initial_file),
+            });
+
             if let Some(icon) = app.default_window_icon() {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.set_icon(icon.clone());
@@ -99,6 +139,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            get_launch_file,
             db::db_get_preference,
             db::db_set_preference,
             db::db_get_resume_position,

@@ -148,9 +148,10 @@ export function SettingsModal() {
   const [comboKeysEnabled, setComboKeysEnabled] = useState(true);
 
   // In-App GitHub Releases Updater state
+  const [appVersion, setAppVersion] = useState<string>("0.1.1");
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({
     state: "idle",
-    currentVersion: "0.1.0",
+    currentVersion: "0.1.1",
   });
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
   const [installProgress, setInstallProgress] = useState<{ downloaded: number; total: number | null }>({
@@ -161,6 +162,9 @@ export function SettingsModal() {
   const handleCheckUpdate = async () => {
     await updaterService.checkForUpdates((status) => {
       setUpdateStatus(status);
+      if (status.currentVersion) {
+        setAppVersion(status.currentVersion);
+      }
     });
   };
 
@@ -180,8 +184,13 @@ export function SettingsModal() {
     }
   };
 
-  // Load initial preferences
+  // Load initial preferences & dynamic app version
   useEffect(() => {
+    updaterService.getAppVersion().then((v) => {
+      setAppVersion(v);
+      setUpdateStatus((prev) => ({ ...prev, currentVersion: v }));
+    });
+
     const loadPrefs = async () => {
       const resume = await storageService.getPreference<boolean>("autoResume");
       if (typeof resume === "boolean") setAutoResume(resume);
@@ -1838,7 +1847,7 @@ export function SettingsModal() {
                         }}
                         className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border"
                       >
-                        v0.1.0
+                        v{appVersion}
                       </span>
                     </div>
                     <p className="text-xs text-neutral-400 mt-0.5">
@@ -1878,10 +1887,16 @@ export function SettingsModal() {
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <div className="text-xs font-bold uppercase tracking-wider text-neutral-400">
-                      Software Updates
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+                        Software Updates
+                      </span>
+                      <span className="text-[10px] font-mono text-neutral-400 bg-white/5 px-2 py-0.5 rounded-md border border-white/5">
+                        Current: <strong className="text-neutral-200">v{appVersion}</strong>
+                      </span>
                     </div>
-                    <div className="text-sm font-bold text-white mt-1 flex items-center gap-2">
+
+                    <div className="text-sm font-bold text-white mt-1.5 flex items-center gap-2">
                       {updateStatus.state === "checking" && "Checking GitHub Releases..."}
                       {updateStatus.state === "up-to-date" && (
                         <>
@@ -1905,9 +1920,9 @@ export function SettingsModal() {
                     </div>
                     <p className="text-xs text-neutral-400 mt-1">
                       {updateStatus.state === "up-to-date" &&
-                        "EYTAA v0.1.0 is currently the latest version released on GitHub."}
+                        `EYTAA v${updateStatus.currentVersion || appVersion} is currently the latest version released on GitHub.`}
                       {updateStatus.state === "available" &&
-                        "A newer version of EYTAA is available on GitHub Releases with fixes and improvements."}
+                        `A newer version (v${updateStatus.latestVersion}) of EYTAA is available on GitHub Releases.`}
                       {updateStatus.state === "error" &&
                         (updateStatus.errorMessage ||
                           "Could not reach GitHub Releases. Ensure your network is connected or check the repository.")}
@@ -2003,7 +2018,7 @@ export function SettingsModal() {
                 </div>
                 <p className="text-xs text-neutral-400 leading-relaxed">
                   EYTAA uses GitHub Actions to automatically compile Windows installers and publish releases.
-                  When you push a git tag like <code className="text-amber-400 px-1 py-0.5 rounded bg-black/40 font-mono">v0.1.0</code> to <span className="text-white font-medium">dagijosi/Eytaa</span>, the CI pipeline builds the signed executable and <code className="text-neutral-300 font-mono">latest.json</code> manifest so all running apps can update in place with one click.
+                  When you push a git tag like <code className="text-amber-400 px-1 py-0.5 rounded bg-black/40 font-mono">v{appVersion}</code> to <span className="text-white font-medium">dagijosi/Eytaa</span>, the CI pipeline builds the signed executable and <code className="text-neutral-300 font-mono">latest.json</code> manifest so all running apps can update in place with one click.
                 </p>
                 <div className="pt-2 flex items-center gap-3 text-xs">
                   <button

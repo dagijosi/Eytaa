@@ -1,12 +1,19 @@
+import { useState, useEffect } from "react";
 import { FolderOpen, History, Play, Sparkles, Shield, Cpu, X } from "lucide-react";
 import { usePlayerStore } from "../stores/playerStore";
 import { useThemeStore } from "../stores/themeStore";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { updaterService } from "../services/updater/updaterService";
 import { EytaaLogo } from "./EytaaLogo";
 
 export function WelcomeScreen() {
   const { openFile, recentFiles, deleteHistoryItem } = usePlayerStore();
   const { accentColor, accentGlow, accentText } = useThemeStore();
+  const [appVersion, setAppVersion] = useState("0.1.1");
+
+  useEffect(() => {
+    updaterService.getAppVersion().then(setAppVersion);
+  }, []);
 
   const handleOpenFile = async () => {
     try {
@@ -92,6 +99,9 @@ export function WelcomeScreen() {
           <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] text-neutral-300">
             <Shield style={{ color: accentColor }} className="w-3 h-3" />
             SQLite Local State
+          </span>
+          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] text-neutral-300 font-mono">
+            <span style={{ color: accentColor }} className="font-bold">v{appVersion}</span>
           </span>
         </div>
 

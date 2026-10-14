@@ -1,6 +1,6 @@
 [package]
 name = "vistara-player"
-version = "0.1.1"
+version = "0.1.2"
 description = "EYTAA - Every story, in view. Modern Windows Desktop Media Player powered by Tauri 2 and libmpv"
 authors = ["Dagi"]
 edition = "2021"
@@ -21,6 +21,7 @@ tauri-plugin-libmpv = "0.3.2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }

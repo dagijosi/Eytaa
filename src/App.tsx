@@ -13,6 +13,8 @@ import { DragDropOverlay } from "./components/DragDropOverlay";
 import { PiPOverlay } from "./components/PiPOverlay";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { playerService } from "./services/player/mpvPlayerService";
 
 export default function App() {
@@ -60,15 +62,42 @@ export default function App() {
 
   const { initializeTheme } = useThemeStore();
 
-  // Initialize theme and MPV on mount
+  // Initialize theme, MPV, and check for launch media file
   useEffect(() => {
     initializeTheme();
     if (!isInitialized) {
-      initialize().catch((err) => {
-        console.error("MPV Initialization failed:", err);
-      });
+      initialize()
+        .then(async () => {
+          try {
+            const launchFile = await invoke<string | null>("get_launch_file");
+            if (launchFile) {
+              await openFile(launchFile);
+            }
+          } catch (e) {
+            console.warn("Launch file check failed:", e);
+          }
+        })
+        .catch((err) => {
+          console.error("MPV Initialization failed:", err);
+        });
     }
-  }, [isInitialized, initialize, initializeTheme]);
+  }, [isInitialized, initialize, initializeTheme, openFile]);
+
+  // Listen for file open requests forwarded from subsequent single instances
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    listen<string>("open-file-requested", async (event) => {
+      if (event.payload) {
+        await openFile(event.payload);
+      }
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [openFile]);
 
   // Sync fullscreen state
   useEffect(() => {

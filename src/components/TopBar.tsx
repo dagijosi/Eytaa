@@ -15,6 +15,7 @@ import { useThemeStore } from "../stores/themeStore";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { formatMediaTitle } from "../utils/mediaTitle";
+import { updaterService } from "../services/updater/updaterService";
 
 import { EytaaLogo } from "./EytaaLogo";
 
@@ -35,7 +36,12 @@ export function TopBar() {
 
   const [isMaximized, setIsMaximized] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [appVersion, setAppVersion] = useState("0.1.1");
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    updaterService.getAppVersion().then(setAppVersion);
+  }, []);
 
   useEffect(() => {
     const checkMaximized = async () => {
@@ -265,6 +271,11 @@ export function TopBar() {
                 <X className="w-3.5 h-3.5" />
                 <span>Exit Player</span>
               </button>
+
+              <div className="flex items-center justify-between px-3 py-1.5 text-[10px] text-neutral-500 font-mono border-t border-white/5 mt-0.5 select-none">
+                <span>EYTAA Player</span>
+                <span style={{ color: accentColor }} className="font-bold">v{appVersion}</span>
+              </div>
             </div>
           )}
         </div>

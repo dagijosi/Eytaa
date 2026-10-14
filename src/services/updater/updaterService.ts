@@ -1,5 +1,6 @@
 import { check, Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { getVersion } from "@tauri-apps/api/app";
 
 export interface UpdateStatus {
   state: "idle" | "checking" | "available" | "downloading" | "up-to-date" | "error";
@@ -12,14 +13,27 @@ export interface UpdateStatus {
 
 class UpdaterService {
   private activeUpdate: Update | null = null;
+  private cachedVersion: string | null = null;
+
+  async getAppVersion(): Promise<string> {
+    if (this.cachedVersion) return this.cachedVersion;
+    try {
+      this.cachedVersion = await getVersion();
+      return this.cachedVersion;
+    } catch (err) {
+      console.warn("Failed to get app version from Tauri:", err);
+      return "0.1.1";
+    }
+  }
 
   async checkForUpdates(
     onProgress?: (status: UpdateStatus) => void
   ): Promise<UpdateStatus> {
+    const currentVersion = await this.getAppVersion();
     try {
       onProgress?.({
         state: "checking",
-        currentVersion: "0.1.0",
+        currentVersion,
       });
 
       const update = await check();
@@ -28,7 +42,7 @@ class UpdaterService {
         this.activeUpdate = update;
         const status: UpdateStatus = {
           state: "available",
-          currentVersion: update.currentVersion,
+          currentVersion: update.currentVersion || currentVersion,
           latestVersion: update.version,
           releaseNotes: update.body,
         };
@@ -38,7 +52,7 @@ class UpdaterService {
         this.activeUpdate = null;
         const status: UpdateStatus = {
           state: "up-to-date",
-          currentVersion: update?.currentVersion || "0.1.0",
+          currentVersion: update?.currentVersion || currentVersion,
         };
         onProgress?.(status);
         return status;
@@ -47,7 +61,7 @@ class UpdaterService {
       console.warn("Update check failed:", err);
       const status: UpdateStatus = {
         state: "error",
-        currentVersion: "0.1.0",
+        currentVersion,
         errorMessage: err?.message || String(err),
       };
       onProgress?.(status);
