@@ -10,6 +10,10 @@ on:
         description: "Release tag (e.g. v0.1.0)"
         required: true
         default: "v0.1.0"
+      keep_releases:
+        description: "Number of latest releases to retain"
+        required: false
+        default: "3"
 
 jobs:
   build-windows:
@@ -54,3 +58,38 @@ jobs:
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
+
+      - name: Clean up old releases to save storage
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const keepCount = parseInt('${{ github.event.inputs.keep_releases || 3 }}', 10) || 3;
+            const { owner, repo } = context.repo;
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner,
+              repo,
+              per_page: 50
+            });
+            console.log(`Found ${releases.length} total release(s). Keeping the latest ${keepCount}.`);
+            if (releases.length > keepCount) {
+              const toDelete = releases.slice(keepCount);
+              for (const rel of toDelete) {
+                console.log(`Deleting old release: ${rel.tag_name} (ID: ${rel.id}) and all its assets`);
+                await github.rest.repos.deleteRelease({
+                  owner,
+                  repo,
+                  release_id: rel.id
+                });
+                try {
+                  console.log(`Deleting tag: ${rel.tag_name}`);
+                  await github.rest.git.deleteRef({
+                    owner,
+                    repo,
+                    ref: `tags/${rel.tag_name}`
+                  });
+                } catch (err) {
+                  console.log(`Notice: Tag ${rel.tag_name} could not be deleted or already removed: ${err.message}`);
+                }
+              }
+            }
