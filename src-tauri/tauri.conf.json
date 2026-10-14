@@ -1,0 +1,57 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "EYTAA",
+  "version": "0.1.0",
+  "identifier": "com.dagi.eytaa",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "EYTAA",
+        "label": "main",
+        "width": 1100,
+        "height": 700,
+        "minWidth": 640,
+        "minHeight": 480,
+        "resizable": true,
+        "decorations": false,
+        "transparent": true,
+        "visible": true
+      }
+    ],
+    "security": {
+      "csp": null,
+      "capabilities": [
+        "default"
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "resources": [
+      "lib/**/*"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVCREUwOTMxMTczQTQxMUMKUldRY1FUb1hNUW5lNjh2ZmQzcTdhdnJRQnFoTGVINy9EQ2ZQb09VRHN0cGIvUUNKK0s4b2dSMEYK",
+      "endpoints": [
+        "https://github.com/dagijosi/Eytaa/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}
