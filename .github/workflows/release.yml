@@ -15,6 +15,9 @@ on:
         required: false
         default: "3"
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     permissions:
