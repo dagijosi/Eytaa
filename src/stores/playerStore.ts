@@ -12,6 +12,7 @@ import { globalShortcutsService } from "../services/shortcuts/globalShortcutsSer
 import { formatMediaTitle } from "../utils/mediaTitle";
 import { useThemeStore } from "./themeStore";
 import { updaterService } from "../services/updater/updaterService";
+import { libraryService } from "../services/library/libraryService";
 
 export interface PlaylistItem {
   id: string;
@@ -277,6 +278,18 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
       // Listen for natural end of playback or playback errors
       playerService.onEndFile(async (reason) => {
         if (reason === "eof") {
+          const currentMedia = get();
+          const filePath = currentMedia.mediaMetadata?.filePath;
+          if (filePath) {
+            try {
+              await libraryService.setWatchedStatus(filePath, true);
+              const recent = await storageService.getRecentFiles(15);
+              set({ recentFiles: recent });
+            } catch (err) {
+              console.warn("Failed to update watched status on EOF:", err);
+            }
+          }
+
           const { autoPlayNext, playlist, currentPlaylistIndex } = get();
           if (autoPlayNext && playlist.length > 1) {
             const nextIdx = currentPlaylistIndex >= 0 ? currentPlaylistIndex + 1 : 1;

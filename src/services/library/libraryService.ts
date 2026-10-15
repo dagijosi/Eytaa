@@ -27,6 +27,15 @@ export interface LibraryItem {
   is_available: boolean;
   is_duplicate: boolean;
   quick_hash?: string;
+  category?: "movie" | "series" | "music" | "other" | string;
+  series_name?: string;
+  season_number?: number;
+  episode_number?: number;
+  episode_title?: string;
+  year?: string;
+  is_watched: boolean;
+  manual_override: boolean;
+  custom_poster?: string;
 }
 
 export interface FavoriteItem {
@@ -55,6 +64,12 @@ export interface ScannedMediaItem {
   file_size: number;
   last_modified: number;
   quick_hash?: string;
+  category?: string;
+  series_name?: string;
+  season_number?: number;
+  episode_number?: number;
+  episode_title?: string;
+  year?: string;
 }
 
 export interface ScanProgressPayload {
@@ -73,8 +88,57 @@ export interface ThumbnailCacheStats {
 }
 
 class LibraryService {
+  private changeListeners = new Set<() => void>();
   private thumbnailCache = new Map<string, string>();
   private pendingThumbnails = new Map<string, Promise<string | null>>();
+  private failedThumbnails = new Set<string>();
+  private thumbnailQueue: Array<() => Promise<void>> = [];
+  private activeThumbnailWorkers = 0;
+  private readonly maxThumbnailWorkers = 3;
+
+  public onLibraryChange(listener: () => void): () => void {
+    this.changeListeners.add(listener);
+    return () => {
+      this.changeListeners.delete(listener);
+    };
+  }
+
+  public notifyLibraryChanged() {
+    for (const listener of this.changeListeners) {
+      try {
+        listener();
+      } catch (err) {
+        console.error("Error in library change listener:", err);
+      }
+    }
+  }
+
+  private processThumbnailQueue() {
+    while (
+      this.activeThumbnailWorkers < this.maxThumbnailWorkers &&
+      this.thumbnailQueue.length > 0
+    ) {
+      const task = this.thumbnailQueue.shift();
+      if (task) {
+        this.activeThumbnailWorkers++;
+        task().finally(() => {
+          this.activeThumbnailWorkers--;
+          this.processThumbnailQueue();
+        });
+      }
+    }
+  }
+
+  public async reclassifyAllMedia(): Promise<number> {
+    try {
+      const res = await invoke<number>("db_reclassify_all_media");
+      this.notifyLibraryChanged();
+      return res;
+    } catch (e) {
+      console.error("Failed to reclassify media:", e);
+      return 0;
+    }
+  }
 
   public async getLibraryFolders(): Promise<LibraryFolder[]> {
     try {
@@ -102,21 +166,27 @@ class LibraryService {
   }
 
   public async saveLibraryItems(items: ScannedMediaItem[]): Promise<number> {
-    return await invoke<number>("db_save_library_items", { items });
+    const res = await invoke<number>("db_save_library_items", { items });
+    this.notifyLibraryChanged();
+    return res;
   }
 
   public async reconcileMissingItems(
     folderPath: string,
     scannedPaths: string[],
   ): Promise<number> {
-    return await invoke<number>("db_reconcile_missing_items", {
+    const res = await invoke<number>("db_reconcile_missing_items", {
       folderPath,
       scannedPaths,
     });
+    this.notifyLibraryChanged();
+    return res;
   }
 
   public async cleanMissingItems(): Promise<number> {
-    return await invoke<number>("db_clean_missing_items");
+    const res = await invoke<number>("db_clean_missing_items");
+    this.notifyLibraryChanged();
+    return res;
   }
 
   public async getLibraryItems(filter?: {
@@ -125,6 +195,9 @@ class LibraryService {
     search?: string;
     duplicatesOnly?: boolean;
     availableOnly?: boolean;
+    category?: string;
+    seriesName?: string;
+    watchStatus?: "all" | "unwatched" | "partially_watched" | "watched";
   }): Promise<LibraryItem[]> {
     try {
       return await invoke<LibraryItem[]>("db_get_library_items", {
@@ -133,10 +206,77 @@ class LibraryService {
         search: filter?.search || null,
         duplicatesOnly: filter?.duplicatesOnly ?? null,
         availableOnly: filter?.availableOnly ?? null,
+        category: filter?.category || null,
+        seriesName: filter?.seriesName || null,
+        watchStatus: filter?.watchStatus || null,
       });
     } catch (e) {
       console.error("Failed to get library items:", e);
       return [];
+    }
+  }
+
+  public clearThumbnailCacheFor(filePath: string) {
+    this.thumbnailCache.delete(filePath);
+    this.failedThumbnails.delete(filePath);
+    this.pendingThumbnails.delete(filePath);
+  }
+
+  public async updateMediaMetadata(params: {
+    filePath: string;
+    title: string;
+    category?: string;
+    seriesName?: string;
+    seasonNumber?: number;
+    episodeNumber?: number;
+    episodeTitle?: string;
+    year?: string;
+    customPoster?: string;
+    applyToSeries?: boolean;
+  }): Promise<void> {
+    this.clearThumbnailCacheFor(params.filePath);
+    if (params.customPoster) {
+      this.clearThumbnailCacheFor(params.customPoster);
+    }
+    await invoke("db_update_media_metadata", {
+      filePath: params.filePath,
+      title: params.title,
+      category: params.category || null,
+      seriesName: params.seriesName || null,
+      seasonNumber: params.seasonNumber ?? null,
+      episodeNumber: params.episodeNumber ?? null,
+      episodeTitle: params.episodeTitle || null,
+      year: params.year || null,
+      customPoster: params.customPoster || null,
+      applyToSeries: params.applyToSeries ?? null,
+    });
+    this.notifyLibraryChanged();
+  }
+
+  public async setWatchedStatus(filePath: string, isWatched: boolean): Promise<void> {
+    await invoke("db_set_watched_status", { filePath, isWatched });
+    this.notifyLibraryChanged();
+  }
+
+  public async setSeriesWatchedStatus(
+    seriesName: string,
+    isWatched: boolean,
+    seasonNumber?: number,
+  ): Promise<void> {
+    await invoke("db_set_series_watched_status", {
+      seriesName,
+      seasonNumber: seasonNumber ?? null,
+      isWatched,
+    });
+    this.notifyLibraryChanged();
+  }
+
+  public async getNextEpisode(seriesName: string): Promise<LibraryItem | null> {
+    try {
+      return await invoke<LibraryItem | null>("db_get_next_episode", { seriesName });
+    } catch (e) {
+      console.error("Failed to get next episode:", e);
+      return null;
     }
   }
 
@@ -180,31 +320,41 @@ class LibraryService {
 
   /**
    * Fetches thumbnail without freezing or duplicating requests.
-   * Utilizes in-memory and disk cache.
+   * Utilizes in-memory cache, failure cache, and a throttled concurrency queue.
    */
   public async getThumbnail(filePath: string): Promise<string | null> {
     if (this.thumbnailCache.has(filePath)) {
       return this.thumbnailCache.get(filePath)!;
     }
 
+    if (this.failedThumbnails.has(filePath)) {
+      return null;
+    }
+
     if (this.pendingThumbnails.has(filePath)) {
       return this.pendingThumbnails.get(filePath)!;
     }
 
-    const promise = (async () => {
-      try {
-        const thumb = await invoke<string | null>("get_thumbnail", { filePath });
-        if (thumb) {
-          this.thumbnailCache.set(filePath, thumb);
+    const promise = new Promise<string | null>((resolve) => {
+      this.thumbnailQueue.push(async () => {
+        try {
+          const thumb = await invoke<string | null>("get_thumbnail", { filePath });
+          if (thumb) {
+            this.thumbnailCache.set(filePath, thumb);
+            resolve(thumb);
+          } else {
+            this.failedThumbnails.add(filePath);
+            resolve(null);
+          }
+        } catch {
+          this.failedThumbnails.add(filePath);
+          resolve(null);
+        } finally {
+          this.pendingThumbnails.delete(filePath);
         }
-        return thumb;
-      } catch (e) {
-        console.warn("Thumbnail error for:", filePath, e);
-        return null;
-      } finally {
-        this.pendingThumbnails.delete(filePath);
-      }
-    })();
+      });
+      this.processThumbnailQueue();
+    });
 
     this.pendingThumbnails.set(filePath, promise);
     return promise;

@@ -114,15 +114,105 @@ fn run_ffmpeg_with_timeout(mut cmd: std::process::Command, timeout_secs: u64) ->
     }
 }
 
-/// Generates or loads a cached thumbnail for a given video/audio file
+/// Generates or loads a cached thumbnail for a given video/audio file or directly loads an image file
 pub fn generate_or_load_thumbnail(app: &AppHandle, file_path: &str) -> Result<Option<String>, String> {
-    let path = Path::new(file_path);
+    let clean_path = file_path
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim_start_matches("file:///")
+        .trim_start_matches("file://");
+    let path = Path::new(clean_path);
     if !path.exists() {
         return Ok(None);
     }
 
+    let image_exts = ["jpg", "jpeg", "png", "webp", "bmp"];
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_lowercase())
+        .unwrap_or_default();
+
+    // 0. If path itself is an image file (e.g. custom poster), read and return base64 immediately
+    if image_exts.contains(&ext.as_str()) {
+        if let Ok(bytes) = fs::read(path) {
+            if !bytes.is_empty() {
+                let mime = if ext == "png" {
+                    "image/png"
+                } else if ext == "webp" {
+                    "image/webp"
+                } else {
+                    "image/jpeg"
+                };
+                let b64 = general_purpose::STANDARD.encode(&bytes);
+                return Ok(Some(format!("data:{};base64,{}", mime, b64)));
+            }
+        }
+    }
+
+    // Fast path: Check for local sibling artwork or folder poster in directory and parent directory
+    let mut check_dirs = Vec::new();
+    if let Some(parent) = path.parent() {
+        check_dirs.push(parent);
+        if let Some(grandparent) = parent.parent() {
+            check_dirs.push(grandparent);
+        }
+    }
+
+    let file_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let poster_names = ["poster", "cover", "folder", "banner", "thumb", "series", "default"];
+
+    for dir in check_dirs {
+        // 1. Same stem as media file: e.g. "Interstellar.mkv" -> "Interstellar.jpg"
+        for ext in &image_exts {
+            let sibling = dir.join(format!("{}.{}", file_stem, ext));
+            if sibling.exists() && sibling.is_file() {
+                if let Ok(bytes) = fs::read(&sibling) {
+                    if !bytes.is_empty() {
+                        let mime = if *ext == "png" { "image/png" } else if *ext == "webp" { "image/webp" } else { "image/jpeg" };
+                        let b64 = general_purpose::STANDARD.encode(&bytes);
+                        return Ok(Some(format!("data:{};base64,{}", mime, b64)));
+                    }
+                }
+            }
+        }
+
+        // 2. Standard poster names
+        for name in &poster_names {
+            for ext in &image_exts {
+                let poster_file = dir.join(format!("{}.{}", name, ext));
+                if poster_file.exists() && poster_file.is_file() {
+                    if let Ok(bytes) = fs::read(&poster_file) {
+                        if !bytes.is_empty() {
+                            let mime = if *ext == "png" { "image/png" } else if *ext == "webp" { "image/webp" } else { "image/jpeg" };
+                            let b64 = general_purpose::STANDARD.encode(&bytes);
+                            return Ok(Some(format!("data:{};base64,{}", mime, b64)));
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Name matching directory itself: e.g. folder "Criminal Minds" -> "Criminal Minds.jpg"
+        if let Some(dir_name) = dir.file_name().and_then(|n| n.to_str()) {
+            for ext in &image_exts {
+                let dir_poster = dir.join(format!("{}.{}", dir_name, ext));
+                if dir_poster.exists() && dir_poster.is_file() {
+                    if let Ok(bytes) = fs::read(&dir_poster) {
+                        if !bytes.is_empty() {
+                            let mime = if *ext == "png" { "image/png" } else if *ext == "webp" { "image/webp" } else { "image/jpeg" };
+                            let b64 = general_purpose::STANDARD.encode(&bytes);
+                            return Ok(Some(format!("data:{};base64,{}", mime, b64)));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let cache_dir = get_thumbnail_cache_dir(app)?;
-    let file_hash = hash_path(file_path);
+    let file_hash = hash_path(clean_path);
     let output_thumb = cache_dir.join(format!("{}.jpg", file_hash));
     let failed_marker = cache_dir.join(format!("{}.no_thumb", file_hash));
 

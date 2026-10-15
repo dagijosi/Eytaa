@@ -22,7 +22,7 @@ class UpdaterService {
       return this.cachedVersion;
     } catch (err) {
       console.warn("Failed to get app version from Tauri:", err);
-      return "0.1.5";
+      return "0.2.0";
     }
   }
 

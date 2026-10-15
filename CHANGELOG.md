@@ -4,6 +4,27 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ---
 
+## [0.2.0] - 2026-10-15
+
+### 🚀 Smart Media Center (Version 2.0)
+- **Collapsible Navigation Rail**: Upgraded left sidebar with smooth Framer Motion spring physics, icon-rail mode (`w-16`), and internal hamburger toggle button.
+- **Smart TV Series & Episode Architecture**:
+  - Automatic series grouping, season counts, episode grouping, and drill-down detail views (`SeriesDetailView`).
+  - Frosted capsule "View Episodes • {count}" on hover without overlapping play buttons.
+  - Dedicated series cover changer and metadata editor (`EditMetadataModal`).
+- **Cinema-Grade Artwork System**:
+  - Zero-crop presentation: `object-contain` foreground artwork backed by an ambient `object-cover blur-xl opacity-45 scale-125` glow layer.
+  - Default 16:9 Landscape widescreen mode with seamless toggle to 2:3 Portrait posters on subheader toolbar.
+  - Procedural backdrop generator for files without embedded or downloaded posters (`ProceduralPoster`).
+- **Refined Media Cards**:
+  - Smoked-glass jewel play button and clean duration pills.
+  - Non-clipped resume badge & remaining time indicator.
+  - Hover action tray positioned in bottom-left (`bottom-1.5 left-1.5`) for maximum artwork visibility.
+- **Instant Welcome Screen Sync**:
+  - Finished or marked watched media immediately clears from Continue Watching on the Welcome Screen and Media Hub without application restart.
+
+---
+
 ## [0.1.5] - 2026-10-15
 
 ### 🚀 Highlights
