@@ -12,6 +12,7 @@ import { SiblingPromptToast } from "./components/SiblingPromptToast";
 import { DragDropOverlay } from "./components/DragDropOverlay";
 import { PiPOverlay } from "./components/PiPOverlay";
 import { MediaLibraryModal } from "./components/MediaLibraryModal";
+import { UpdateNotificationToast } from "./components/UpdateNotificationToast";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
@@ -578,6 +579,9 @@ export default function App() {
         isOpen={isSleepTimerOpen}
         onClose={() => toggleSleepTimer(false)}
       />
+
+      {/* Discreet Update Alert Toast */}
+      <UpdateNotificationToast />
     </div>
   );
 }

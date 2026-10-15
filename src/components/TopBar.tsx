@@ -50,13 +50,14 @@ export function TopBar() {
     isAlwaysOnTop,
     toggleAlwaysOnTop,
     showOSD,
+    availableUpdate,
   } = usePlayerStore();
 
   const [isMaximized, setIsMaximized] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSnapMenuOpen, setIsSnapMenuOpen] = useState(false);
   const [hoveredZone, setHoveredZone] = useState<string | null>(null);
-  const [appVersion, setAppVersion] = useState("0.1.1");
+  const [appVersion, setAppVersion] = useState("0.1.4");
 
   const menuRef = useRef<HTMLDivElement>(null);
   const snapMenuRef = useRef<HTMLDivElement>(null);
@@ -401,10 +402,18 @@ export function TopBar() {
         <div className="relative shrink-0" ref={menuRef}>
           <button
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="flex items-center gap-1.5 px-2 py-1 rounded-md text-neutral-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all text-xs font-semibold"
-            title="Application Menu"
+            className="flex items-center gap-1.5 px-2 py-1 rounded-md text-neutral-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all text-xs font-semibold relative"
+            title={availableUpdate ? `EYTAA (Update v${availableUpdate.version} Available)` : "Application Menu"}
           >
-            <EytaaLogo className="w-4 h-4" variant="color" />
+            <div className="relative">
+              <EytaaLogo className="w-4 h-4" variant="color" />
+              {availableUpdate && (
+                <span
+                  style={{ backgroundColor: accentColor }}
+                  className="absolute -top-1 -right-1 w-2 h-2 rounded-full animate-pulse shadow-sm"
+                />
+              )}
+            </div>
             <span className="tracking-[0.14em] font-extrabold text-neutral-100 text-[11px] uppercase">
               EYTAA
             </span>
@@ -413,17 +422,17 @@ export function TopBar() {
 
           {/* Quick Menu Dropdown */}
           {isMenuOpen && (
-            <div className="absolute top-full left-0 mt-1 w-52 bg-neutral-900/98 backdrop-blur-2xl border border-white/10 rounded-xl shadow-2xl p-1.5 flex flex-col gap-1 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+            <div className="absolute top-full left-0 mt-1 w-56 bg-neutral-900/98 backdrop-blur-2xl border border-white/10 rounded-xl shadow-2xl p-1.5 flex flex-col gap-1 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
               <button
                 onClick={() => handleOpenFile()}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 text-left transition"
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 text-left transition cursor-pointer"
               >
                 <FolderOpen style={{ color: accentColor }} className="w-3.5 h-3.5" />
                 <span>Open File... (O)</span>
               </button>
               <button
                 onClick={handleOpenMultiple}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 text-left transition"
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 text-left transition cursor-pointer"
               >
                 <FolderOpen style={{ color: accentColor }} className="w-3.5 h-3.5" />
                 <span>Open Multiple Files...</span>
@@ -434,7 +443,7 @@ export function TopBar() {
                   setIsMenuOpen(false);
                   togglePlaylistDrawer();
                 }}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 text-left transition"
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 text-left transition cursor-pointer"
               >
                 <ListVideo className="w-3.5 h-3.5" />
                 <span>Playlist (P)</span>
@@ -444,7 +453,7 @@ export function TopBar() {
                   setIsMenuOpen(false);
                   toggleLibraryModal();
                 }}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 text-left transition"
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 text-left transition cursor-pointer"
               >
                 <Film style={{ color: accentColor }} className="w-3.5 h-3.5" />
                 <span>Media Library (B)</span>
@@ -452,12 +461,22 @@ export function TopBar() {
               <button
                 onClick={() => {
                   setIsMenuOpen(false);
-                  toggleSettingsModal();
+                  toggleSettingsModal(true, availableUpdate ? "updates" : undefined);
                 }}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 text-left transition"
+                className="flex items-center justify-between px-3 py-2 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 text-left transition cursor-pointer"
               >
-                <Sliders className="w-3.5 h-3.5" />
-                <span>Settings & History</span>
+                <div className="flex items-center gap-2.5">
+                  <Sliders className="w-3.5 h-3.5" />
+                  <span>Settings & History</span>
+                </div>
+                {availableUpdate && (
+                  <span
+                    style={{ backgroundColor: `${accentColor}25`, color: accentColor }}
+                    className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold"
+                  >
+                    v{availableUpdate.version}
+                  </span>
+                )}
               </button>
               <div className="h-px bg-white/10 my-0.5" />
               <button
@@ -465,7 +484,7 @@ export function TopBar() {
                   setIsMenuOpen(false);
                   getCurrentWindow().close().catch(() => {});
                 }}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-rose-400 hover:bg-rose-500/10 text-left transition"
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-rose-400 hover:bg-rose-500/10 text-left transition cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
                 <span>Exit Player</span>
@@ -473,7 +492,10 @@ export function TopBar() {
 
               <div className="flex items-center justify-between px-3 py-1.5 text-[10px] text-neutral-500 font-mono border-t border-white/5 mt-0.5 select-none">
                 <span>EYTAA Player</span>
-                <span style={{ color: accentColor }} className="font-bold">v{appVersion}</span>
+                <span style={{ color: accentColor }} className="font-bold">
+                  v{appVersion}
+                  {availableUpdate ? ` • v${availableUpdate.version} ready` : ""}
+                </span>
               </div>
             </div>
           )}

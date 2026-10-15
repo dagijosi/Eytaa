@@ -93,9 +93,18 @@ export function SettingsModal() {
     toggleAlwaysOnTop,
     deleteHistoryItem,
     clearPlaybackHistory,
+    settingsInitialTab,
+    autoCheckUpdates,
+    toggleAutoCheckUpdates,
   } = usePlayerStore();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("playback");
+
+  useEffect(() => {
+    if (isSettingsOpen && settingsInitialTab) {
+      setActiveTab(settingsInitialTab as SettingsTab);
+    }
+  }, [isSettingsOpen, settingsInitialTab]);
 
   const {
     accentId,
@@ -831,6 +840,25 @@ export function SettingsModal() {
                   type="checkbox"
                   checked={autoPlayNext}
                   onChange={() => toggleAutoPlayNext()}
+                  style={{ accentColor }}
+                  className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                />
+              </div>
+
+              {/* Automatic Update Checks */}
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
+                <div>
+                  <span className="font-medium text-neutral-200 text-xs">
+                    Automatic Update Checks
+                  </span>
+                  <p className="text-xs text-neutral-500">
+                    Discreetly check for new versions in the background once every 24 hours without disturbing playback
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={autoCheckUpdates}
+                  onChange={(e) => toggleAutoCheckUpdates(e.target.checked)}
                   style={{ accentColor }}
                   className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
                 />
@@ -2402,6 +2430,25 @@ export function SettingsModal() {
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Automatic Update Background Preference */}
+              <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5">
+                <div>
+                  <div className="font-medium text-neutral-200 text-xs">
+                    Automatic Update Checks
+                  </div>
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    Check quietly once every 24 hours. If an update is detected, displays a subtle, auto-dismissing toast that never interrupts active playback.
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={autoCheckUpdates}
+                  onChange={(e) => toggleAutoCheckUpdates(e.target.checked)}
+                  style={{ accentColor }}
+                  className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer ml-4"
+                />
               </div>
 
               {/* GitHub Releases Info & Instructions */}

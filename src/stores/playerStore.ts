@@ -11,6 +11,7 @@ import {
 import { globalShortcutsService } from "../services/shortcuts/globalShortcutsService";
 import { formatMediaTitle } from "../utils/mediaTitle";
 import { useThemeStore } from "./themeStore";
+import { updaterService } from "../services/updater/updaterService";
 
 export interface PlaylistItem {
   id: string;
@@ -123,8 +124,18 @@ interface PlayerStoreState extends PlayerState {
   playPlaylistItem: (index: number) => Promise<void>;
   playNext: () => Promise<void>;
   playPrevious: () => Promise<void>;
+
+  // Update Notification
+  availableUpdate: { version: string; releaseNotes?: string } | null;
+  showUpdateToast: boolean;
+  autoCheckUpdates: boolean;
+  settingsInitialTab: string | null;
+  dismissUpdateToast: () => Promise<void>;
+  toggleAutoCheckUpdates: (enabled?: boolean) => Promise<void>;
+  checkUpdatesSilently: () => Promise<void>;
+
   togglePlaylistDrawer: () => void;
-  toggleSettingsModal: () => void;
+  toggleSettingsModal: (open?: boolean | unknown, initialTab?: string) => void;
   setVideoFitMode: (mode: "fit" | "fill" | "stretch") => Promise<void>;
   cycleVideoFitMode: () => Promise<void>;
   addSiblingsToPlaylist: () => void;
@@ -222,6 +233,12 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
 
     // Global Media Shortcuts
     isGlobalShortcutsEnabled: true,
+
+    // Update Notification
+    availableUpdate: null,
+    showUpdateToast: false,
+    autoCheckUpdates: true,
+    settingsInitialTab: null,
 
     initialize: async () => {
       await playerService.initialize();
@@ -361,6 +378,18 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
         }
       }
       set({ isAlwaysOnTop: savedAlwaysOnTop });
+
+      // Load auto update check preference (defaults to true)
+      const savedAutoCheck = await storageService.getPreference<boolean>("autoCheckUpdates");
+      const autoCheck = savedAutoCheck !== false;
+      set({ autoCheckUpdates: autoCheck });
+
+      // Run silent, rate-limited update check 10 seconds after launch without delaying startup
+      if (typeof window !== "undefined") {
+        window.setTimeout(() => {
+          get().checkUpdatesSilently();
+        }, 10000);
+      }
     },
 
     // Quick Window Controls
@@ -1101,8 +1130,73 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
       set((s) => ({ isPlaylistOpen: !s.isPlaylistOpen }));
     },
 
-    toggleSettingsModal: () => {
-      set((s) => ({ isSettingsOpen: !s.isSettingsOpen }));
+    toggleSettingsModal: (open?: boolean | unknown, initialTab?: string) => {
+      const isBool = typeof open === "boolean";
+      set((s) => ({
+        isSettingsOpen: isBool ? open : !s.isSettingsOpen,
+        settingsInitialTab: initialTab || (isBool && open ? s.settingsInitialTab : null),
+      }));
+    },
+
+    checkUpdatesSilently: async () => {
+      const { autoCheckUpdates } = get();
+      if (!autoCheckUpdates) return;
+
+      // Rate limit check: at most once every 24 hours (86,400,000 ms)
+      const lastCheck = (await storageService.getPreference<number>("lastUpdateCheckTimestamp")) || 0;
+      const now = Date.now();
+      if (now - lastCheck < 24 * 60 * 60 * 1000) {
+        // Restore cached available update so the subtle indicator in TopBar can show
+        const cachedVer = await storageService.getPreference<string>("cachedAvailableUpdateVer");
+        if (cachedVer) {
+          set({ availableUpdate: { version: cachedVer } });
+        }
+        return;
+      }
+
+      await storageService.setPreference("lastUpdateCheckTimestamp", now);
+
+      try {
+        const update = await updaterService.checkForUpdates();
+        if (update.state === "available" && update.latestVersion) {
+          const dismissedVer = await storageService.getPreference<string>("dismissedUpdateVersion");
+          const updateInfo = {
+            version: update.latestVersion,
+            releaseNotes: update.releaseNotes,
+          };
+          set({ availableUpdate: updateInfo });
+          await storageService.setPreference("cachedAvailableUpdateVer", update.latestVersion);
+
+          // DO NOT BOTHER: If the user is currently playing a video, NEVER interrupt them!
+          // Also if they already dismissed this specific version, do not show the toast.
+          const isCurrentlyPlaying = get().status === "playing";
+          if (!isCurrentlyPlaying && dismissedVer !== update.latestVersion) {
+            set({ showUpdateToast: true });
+          }
+        } else if (update.state === "up-to-date") {
+          set({ availableUpdate: null, showUpdateToast: false });
+          await storageService.setPreference("cachedAvailableUpdateVer", null);
+        }
+      } catch (err) {
+        console.debug("Silent update check skipped:", err);
+      }
+    },
+
+    dismissUpdateToast: async () => {
+      const { availableUpdate } = get();
+      if (availableUpdate?.version) {
+        await storageService.setPreference("dismissedUpdateVersion", availableUpdate.version);
+      }
+      set({ showUpdateToast: false });
+    },
+
+    toggleAutoCheckUpdates: async (enabled?: boolean) => {
+      const next = enabled !== undefined ? enabled : !get().autoCheckUpdates;
+      set({ autoCheckUpdates: next });
+      await storageService.setPreference("autoCheckUpdates", next);
+      get().showOSD(
+        next ? "Automatic Update Checks: Enabled" : "Automatic Update Checks: Disabled",
+      );
     },
 
     toggleLibraryModal: (open?: boolean) => {
