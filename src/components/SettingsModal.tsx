@@ -12,7 +12,7 @@ import {
   Tv,
   Check,
   Plus,
-  Sparkles,
+  Layers,
   Film,
   Headphones,
   Mic,
@@ -28,9 +28,11 @@ import {
   ExternalLink,
   CheckCircle2,
   AlertCircle,
+  Pencil,
+  Feather,
 } from "lucide-react";
 import { usePlayerStore } from "../stores/playerStore";
-import { useThemeStore, ACCENT_PRESETS } from "../stores/themeStore";
+import { useThemeStore, ACCENT_PRESETS, DEFAULT_THEME } from "../stores/themeStore";
 import { playerService } from "../services/player/mpvPlayerService";
 import { storageService } from "../services/storage/storageService";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -81,6 +83,8 @@ export function SettingsModal() {
     applyProfile,
     saveCustomProfile,
     deleteCustomProfile,
+    resetProfiles,
+    restoreAllDefaults,
     autoPlayNext,
     toggleAutoPlayNext,
     isGlobalShortcutsEnabled,
@@ -141,12 +145,49 @@ export function SettingsModal() {
   const [isCreatingProfile, setIsCreatingProfile] = useState(false);
   const [newProfileName, setNewProfileName] = useState("");
   const [newProfileIcon, setNewProfileIcon] = useState<
-    "sparkles" | "film" | "tv" | "headphones" | "mic" | "sliders"
-  >("sparkles");
+    "tv" | "layers" | "film" | "headphones" | "mic" | "sliders" | "sparkles"
+  >("tv");
 
   // Global shortcuts config
   const [mediaKeysEnabled, setMediaKeysEnabled] = useState(true);
   const [comboKeysEnabled, setComboKeysEnabled] = useState(true);
+
+  // Settings mode: Simple vs Advanced
+  const [settingsMode, setSettingsMode] = useState<"simple" | "advanced">("simple");
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+
+  useEffect(() => {
+    storageService.getPreference<"simple" | "advanced">("settingsMode").then((saved) => {
+      if (saved === "simple" || saved === "advanced") {
+        setSettingsMode(saved);
+      }
+    });
+  }, []);
+
+  const handleModeChange = (mode: "simple" | "advanced") => {
+    setSettingsMode(mode);
+    storageService.setPreference("settingsMode", mode);
+    if (mode === "simple" && !["playback", "appearance", "profiles", "shortcuts", "updates"].includes(activeTab)) {
+      setActiveTab("playback");
+    }
+  };
+
+  const handleRestoreDefaults = async () => {
+    await restoreAllDefaults();
+    setShowRestoreConfirm(false);
+    setBrightness(0);
+    setContrast(0);
+    setSaturation(0);
+    setGamma(0);
+    setDeinterlace(false);
+    setAudioNormalize(false);
+    setAudioDelay(0);
+    setSubFontSize(55);
+    setSubDelay(0);
+    setSubColor("#FFFFFF");
+    setCustomHex(DEFAULT_THEME.accentColor);
+  };
 
   // In-App GitHub Releases Updater state
   const [appVersion, setAppVersion] = useState<string>("0.1.1");
@@ -322,8 +363,9 @@ export function SettingsModal() {
   const handleSaveCustomProfile = async () => {
     if (!newProfileName.trim()) return;
 
+    const profileId = editingProfileId || `custom_${Date.now()}`;
     const customProf: PlaybackProfile = {
-      id: `custom_${Date.now()}`,
+      id: profileId,
       name: newProfileName.trim(),
       icon: newProfileIcon,
       description: `Custom profile created on ${new Date().toLocaleDateString()}`,
@@ -347,13 +389,34 @@ export function SettingsModal() {
     await saveCustomProfile(customProf);
     await applyProfile(customProf.id);
     setNewProfileName("");
+    setEditingProfileId(null);
     setIsCreatingProfile(false);
+  };
+
+  const handleEditProfile = (p: PlaybackProfile) => {
+    setEditingProfileId(p.id);
+    setNewProfileName(p.name);
+    setNewProfileIcon(p.icon);
+    setContrast(p.settings.contrast);
+    setBrightness(p.settings.brightness);
+    setSaturation(p.settings.saturation);
+    setGamma(p.settings.gamma);
+    setDeinterlace(p.settings.deinterlace);
+    setAudioNormalize(p.settings.audioNormalize);
+    setAudioDelay(p.settings.audioDelay);
+    setSubFontSize(p.settings.subFontSize);
+    setSubColor(p.settings.subColor);
+    setSubDelay(p.settings.subDelay);
+    setIsCreatingProfile(true);
   };
 
   const getProfileIcon = (icon: string) => {
     switch (icon) {
+      case "tv":
       case "sparkles":
-        return <Sparkles style={{ color: accentColor }} className="w-4 h-4" />;
+        return <Tv style={{ color: accentColor }} className="w-4 h-4" />;
+      case "layers":
+        return <Layers style={{ color: accentColor }} className="w-4 h-4" />;
       case "film":
         return <Film className="w-4 h-4 text-rose-400" />;
       case "headphones":
@@ -379,6 +442,7 @@ export function SettingsModal() {
     { key: "Backspace", desc: "Reset Speed to 1.0x" },
     { key: "S", desc: "Cycle Subtitle Track" },
     { key: "O", desc: "Open File" },
+    { key: "B", desc: "Toggle Media Library" },
     { key: "P", desc: "Toggle Playlist" },
     { key: "Esc", desc: "Close Menus / PiP" },
   ];
@@ -389,18 +453,27 @@ export function SettingsModal() {
   > = {
     playback: {
       title: "General & Playback",
-      description: "Window behavior, Picture-in-Picture, and hardware acceleration",
+      description:
+        settingsMode === "simple"
+          ? "Essential window behavior, PiP mode, and auto-resume preferences"
+          : "Window behavior, Picture-in-Picture, GPU decoding, and multi-instance concurrency",
       icon: <Sliders className="w-4 h-4" />,
     },
     appearance: {
       title: "Appearance & Theme",
-      description: "Accent color presets, custom wheel, glassmorphism, and subtitles",
+      description:
+        settingsMode === "simple"
+          ? "Curated accent color presets, theme surfaces, and subtitle readability"
+          : "Color presets, custom HEX wheel, WCAG contrast, glass styles, and scrubber neon aura",
       icon: <Palette className="w-4 h-4" />,
     },
     profiles: {
       title: "Playback Profiles",
-      description: "Tailored picture, audio, subtitle, and speed presets for genres",
-      icon: <Sparkles className="w-4 h-4" />,
+      description:
+        settingsMode === "simple"
+          ? "1-click tailored presets for anime, movies, music, and podcasts"
+          : "Tailored picture, audio, subtitle, and speed presets with custom profile creator",
+      icon: <Layers className="w-4 h-4" />,
     },
     sleep: {
       title: "Night & Sleep Timer",
@@ -409,22 +482,25 @@ export function SettingsModal() {
     },
     video: {
       title: "Picture & Calibration",
-      description: "Brightness, contrast, saturation, gamma color tuning, and deinterlace",
+      description: "Hardware GPU brightness, contrast, saturation, gamma tuning, and deinterlace",
       icon: <Tv className="w-4 h-4" />,
     },
     audio: {
       title: "Audio & Subtitles",
-      description: "Normalization, audio sync delay, external subtitles, and timing",
+      description: "Loudnorm dynamic range normalization, audio delay sync, and subtitle timing",
       icon: <Music2 className="w-4 h-4" />,
     },
     shortcuts: {
       title: "Keyboard Shortcuts",
-      description: "Hotkeys reference and system-wide background media key bindings",
+      description:
+        settingsMode === "simple"
+          ? "Quick reference of in-app player hotkeys for playback, seeking, and volume"
+          : "In-app hotkeys reference and system-wide background media key hooks",
       icon: <Keyboard className="w-4 h-4" />,
     },
     history: {
       title: "Playback History",
-      description: "Recently played files with saved timestamps and auto-resume",
+      description: "Recently played files with saved timestamps, completion %, and auto-resume",
       icon: <History className="w-4 h-4" />,
     },
     updates: {
@@ -434,16 +510,27 @@ export function SettingsModal() {
     },
   };
 
-  const navTabs: { id: SettingsTab; label: string; icon: any }[] = [
+  const simpleTabs: { id: SettingsTab; label: string; icon: any }[] = [
     { id: "playback", label: "General", icon: Sliders },
     { id: "appearance", label: "Appearance", icon: Palette },
-    { id: "profiles", label: "Profiles", icon: Sparkles },
-    { id: "sleep", label: "Night & Sleep", icon: Moon },
-    { id: "video", label: "Picture", icon: Tv },
-    { id: "audio", label: "Audio & Subs", icon: Music2 },
+    { id: "profiles", label: "Profiles", icon: Layers },
     { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
-    { id: "history", label: "History", icon: History },
     { id: "updates", label: "Updates", icon: Download },
+  ];
+
+  const advancedCoreTabs: { id: SettingsTab; label: string; icon: any }[] = [
+    { id: "playback", label: "General", icon: Sliders },
+    { id: "appearance", label: "Appearance", icon: Palette },
+    { id: "profiles", label: "Profiles", icon: Layers },
+    { id: "updates", label: "Updates", icon: Download },
+  ];
+
+  const advancedProTabs: { id: SettingsTab; label: string; icon: any }[] = [
+    { id: "video", label: "Picture Calibration", icon: Tv },
+    { id: "audio", label: "Audio & Sync", icon: Music2 },
+    { id: "sleep", label: "Night & Sleep", icon: Moon },
+    { id: "shortcuts", label: "Global Shortcuts", icon: Keyboard },
+    { id: "history", label: "Playback History", icon: History },
   ];
 
   return (
@@ -451,9 +538,9 @@ export function SettingsModal() {
       <div className="bg-neutral-900/98 border border-white/10 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-row h-[630px] max-h-[88vh]">
         {/* Left Sidebar Navigation */}
         <div className="w-56 bg-neutral-950/85 border-r border-white/10 flex flex-col justify-between p-3.5 shrink-0 select-none">
-          <div className="space-y-3">
+          <div className="space-y-3 min-h-0 flex flex-col">
             {/* Sidebar Title */}
-            <div className="px-2.5 py-1.5 flex items-center gap-2.5">
+            <div className="px-2.5 py-1.5 flex items-center gap-2.5 shrink-0">
               <div
                 style={{ backgroundColor: accentGlow, color: accentColor }}
                 className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
@@ -467,61 +554,182 @@ export function SettingsModal() {
             </div>
 
             {/* Vertical Navigation Items */}
-            <nav className="flex flex-col gap-1">
-              {navTabs.map((item) => {
-                const Icon = item.icon;
-                const isSelected = activeTab === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => setActiveTab(item.id)}
-                    style={{
-                      backgroundColor: isSelected ? accentColor : undefined,
-                      color: isSelected ? accentText : undefined,
-                      boxShadow: isSelected ? `0 2px 14px ${accentGlow}` : "none",
-                    }}
-                    className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition text-left ${
-                      isSelected
-                        ? "font-bold shadow"
-                        : "text-neutral-400 hover:text-white hover:bg-white/5"
-                    }`}
-                  >
-                    <Icon className="w-4 h-4 shrink-0" />
-                    <span className="truncate">{item.label}</span>
-                  </button>
-                );
-              })}
+            <nav className="flex flex-col gap-2 overflow-y-auto pr-1 flex-1">
+              {settingsMode === "simple" ? (
+                <div className="flex flex-col gap-1">
+                  <div className="px-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 flex items-center justify-between">
+                    <span>Essentials</span>
+                    <span className="text-[9px] font-mono text-neutral-400">Simple</span>
+                  </div>
+                  {simpleTabs.map((item) => {
+                    const Icon = item.icon;
+                    const isSelected = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => setActiveTab(item.id)}
+                        style={{
+                          backgroundColor: isSelected ? accentColor : undefined,
+                          color: isSelected ? accentText : undefined,
+                          boxShadow: isSelected ? `0 2px 14px ${accentGlow}` : "none",
+                        }}
+                        className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition text-left cursor-pointer ${
+                          isSelected
+                            ? "font-bold shadow"
+                            : "text-neutral-400 hover:text-white hover:bg-white/5"
+                        }`}
+                      >
+                        <Icon className="w-4 h-4 shrink-0" />
+                        <span className="truncate">{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-col gap-1">
+                    <div className="px-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                      Core Preferences
+                    </div>
+                    {advancedCoreTabs.map((item) => {
+                      const Icon = item.icon;
+                      const isSelected = activeTab === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => setActiveTab(item.id)}
+                          style={{
+                            backgroundColor: isSelected ? accentColor : undefined,
+                            color: isSelected ? accentText : undefined,
+                            boxShadow: isSelected ? `0 2px 14px ${accentGlow}` : "none",
+                          }}
+                          className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition text-left cursor-pointer ${
+                            isSelected
+                              ? "font-bold shadow"
+                              : "text-neutral-400 hover:text-white hover:bg-white/5"
+                          }`}
+                        >
+                          <Icon className="w-4 h-4 shrink-0" />
+                          <span className="truncate">{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex flex-col gap-1 pt-2 border-t border-white/5">
+                    <div className="px-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 flex items-center justify-between">
+                      <span>Pro & Calibration</span>
+                      <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-white/10 text-neutral-300 font-semibold">
+                        ADVANCED
+                      </span>
+                    </div>
+                    {advancedProTabs.map((item) => {
+                      const Icon = item.icon;
+                      const isSelected = activeTab === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => setActiveTab(item.id)}
+                          style={{
+                            backgroundColor: isSelected ? accentColor : undefined,
+                            color: isSelected ? accentText : undefined,
+                            boxShadow: isSelected ? `0 2px 14px ${accentGlow}` : "none",
+                          }}
+                          className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition text-left cursor-pointer ${
+                            isSelected
+                              ? "font-bold shadow"
+                              : "text-neutral-400 hover:text-white hover:bg-white/5"
+                          }`}
+                        >
+                          <Icon className="w-4 h-4 shrink-0" />
+                          <span className="truncate">{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </nav>
           </div>
 
           {/* Sidebar Footer info */}
-          <div className="pt-3 border-t border-white/5 px-2 text-[10px] text-neutral-500 font-mono flex items-center justify-between">
-            <span className="font-bold tracking-wider text-neutral-400">EYTAA</span>
-            <span className="text-neutral-600">libmpv • v1.0</span>
+          <div className="pt-3 border-t border-white/5 px-2 flex items-center justify-between text-[11px] text-neutral-400 shrink-0">
+            <div className="flex items-center gap-1.5 font-bold tracking-wider text-neutral-300">
+              <span>EYTAA</span>
+              <span className="text-[10px] text-neutral-500 font-normal">v1.0</span>
+            </div>
+            <button
+              onClick={() => setShowRestoreConfirm(true)}
+              className="text-neutral-500 hover:text-rose-400 text-[10px] transition cursor-pointer flex items-center gap-1 p-1 rounded hover:bg-white/5"
+              title="Restore all factory defaults"
+            >
+              <RotateCcw className="w-2.5 h-2.5" />
+              <span>Reset</span>
+            </button>
           </div>
         </div>
 
         {/* Right Main Content */}
         <div className="flex-1 flex flex-col min-w-0 bg-neutral-900/90 overflow-hidden">
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 shrink-0">
+          <div className="flex items-center justify-between px-6 py-3 border-b border-white/10 shrink-0">
             <div>
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+              <div className="flex items-center gap-2">
                 <span style={{ color: accentColor }}>{tabMetadata[activeTab].icon}</span>
-                <span>{tabMetadata[activeTab].title}</span>
-              </h2>
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <span>{tabMetadata[activeTab].title}</span>
+                </h2>
+              </div>
               <p className="text-xs text-neutral-400 mt-0.5">
                 {tabMetadata[activeTab].description}
               </p>
             </div>
 
-            <button
-              onClick={toggleSettingsModal}
-              className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition"
-              title="Close (Esc)"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Simple vs Advanced Mode Switcher */}
+              <div className="flex items-center bg-black/50 border border-white/10 rounded-xl p-0.5">
+                <button
+                  onClick={() => handleModeChange("simple")}
+                  style={settingsMode === "simple" ? { backgroundColor: accentColor, color: accentText } : {}}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                    settingsMode === "simple" ? "shadow font-bold" : "text-neutral-400 hover:text-white"
+                  }`}
+                  title="Streamlined settings: everyday playback & appearance"
+                >
+                  <Feather className="w-3.5 h-3.5" />
+                  <span>Simple</span>
+                </button>
+                <button
+                  onClick={() => handleModeChange("advanced")}
+                  style={settingsMode === "advanced" ? { backgroundColor: accentColor, color: accentText } : {}}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                    settingsMode === "advanced" ? "shadow font-bold" : "text-neutral-400 hover:text-white"
+                  }`}
+                  title="Advanced power settings: hardware decoding, calibration, EQ & global hotkeys"
+                >
+                  <Sliders className="w-3.5 h-3.5" />
+                  <span>Advanced</span>
+                </button>
+              </div>
+
+              {/* Compact Reset Defaults Button */}
+              <button
+                onClick={() => setShowRestoreConfirm(true)}
+                className="p-1.5 rounded-xl bg-white/5 hover:bg-rose-500/15 hover:text-rose-300 text-neutral-400 border border-white/10 transition cursor-pointer"
+                title="Reset all settings to factory defaults"
+                aria-label="Reset all settings to factory defaults"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={toggleSettingsModal}
+                className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white border border-white/10 transition cursor-pointer"
+                title="Close (Esc)"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Modal Body with vertical scrolling only */}
@@ -590,25 +798,6 @@ export function SettingsModal() {
                 />
               </div>
 
-              {/* Multiple Windows Mode */}
-              <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
-                <div>
-                  <span className="font-medium text-neutral-200 text-xs">
-                    Allow Multiple Player Windows
-                  </span>
-                  <p className="text-xs text-neutral-500">
-                    Open each video in a new window so you can watch 2 or more videos simultaneously
-                  </p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={allowMultipleWindows}
-                  onChange={handleToggleMultipleWindows}
-                  style={{ accentColor }}
-                  className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
-                />
-              </div>
-
               {/* Auto Resume */}
               <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
                 <div>
@@ -647,33 +836,86 @@ export function SettingsModal() {
                 />
               </div>
 
-              {/* Hardware Decoding Mode */}
-              <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
-                <div>
-                  <span className="font-medium text-neutral-200 text-xs">
-                    GPU Hardware Decoding (hwdec)
-                  </span>
-                  <p className="text-xs text-neutral-500">
-                    Utilize NVIDIA, Intel, or AMD GPU for silky 4K/60fps HEVC/AV1 playback
-                  </p>
+              {/* Simple Mode Switch Callout */}
+              {settingsMode === "simple" && (
+                <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-between text-xs text-neutral-400">
+                  <div className="flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-neutral-400" />
+                    <span>Looking for GPU hardware decoding or multiple window playback?</span>
+                  </div>
+                  <button
+                    onClick={() => handleModeChange("advanced")}
+                    style={{ color: accentColor }}
+                    className="font-bold hover:underline cursor-pointer shrink-0"
+                  >
+                    Switch to Advanced &rarr;
+                  </button>
                 </div>
-                <select
-                  value={hwdec}
-                  onChange={async (e) => {
-                    const val = e.target.value;
-                    setHwdec(val);
-                    await storageService.setPreference("hwdec", val);
-                    await playerService.setMpvProperty("hwdec", val);
-                    showOSD(`Hardware Decoding: ${val}`);
-                  }}
-                  className="bg-neutral-800 border border-white/10 rounded-lg px-2.5 py-1 text-xs text-neutral-200 focus:outline-none cursor-pointer font-mono"
-                >
-                  <option value="auto-safe">auto-safe (Recommended)</option>
-                  <option value="auto">auto (Aggressive)</option>
-                  <option value="d3d11va">d3d11va (Windows Direct3D)</option>
-                  <option value="no">no (Software CPU)</option>
-                </select>
-              </div>
+              )}
+
+              {/* Advanced Hardware & Concurrency Section */}
+              {settingsMode === "advanced" && (
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Sliders className="w-3.5 h-3.5 text-neutral-400" />
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                        Engine Hardware & Concurrency
+                      </h4>
+                    </div>
+                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/10 text-neutral-300">
+                      ADVANCED
+                    </span>
+                  </div>
+
+                  {/* Hardware Decoding Mode */}
+                  <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
+                    <div>
+                      <span className="font-medium text-neutral-200 text-xs">
+                        GPU Hardware Decoding (hwdec)
+                      </span>
+                      <p className="text-xs text-neutral-500">
+                        Utilize NVIDIA, Intel, or AMD GPU for silky 4K/60fps HEVC/AV1 playback
+                      </p>
+                    </div>
+                    <select
+                      value={hwdec}
+                      onChange={async (e) => {
+                        const val = e.target.value;
+                        setHwdec(val);
+                        await storageService.setPreference("hwdec", val);
+                        await playerService.setMpvProperty("hwdec", val);
+                        showOSD(`Hardware Decoding: ${val}`);
+                      }}
+                      className="bg-neutral-800 border border-white/10 rounded-lg px-2.5 py-1 text-xs text-neutral-200 focus:outline-none cursor-pointer font-mono"
+                    >
+                      <option value="auto-safe">auto-safe (Recommended)</option>
+                      <option value="auto">auto (Aggressive)</option>
+                      <option value="d3d11va">d3d11va (Windows Direct3D)</option>
+                      <option value="no">no (Software CPU)</option>
+                    </select>
+                  </div>
+
+                  {/* Multiple Windows Mode */}
+                  <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
+                    <div>
+                      <span className="font-medium text-neutral-200 text-xs">
+                        Allow Multiple Player Windows
+                      </span>
+                      <p className="text-xs text-neutral-500">
+                        Open each video in a new window so you can watch 2 or more videos simultaneously
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={allowMultipleWindows}
+                      onChange={handleToggleMultipleWindows}
+                      style={{ accentColor }}
+                      className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -828,49 +1070,95 @@ export function SettingsModal() {
                   })}
                 </div>
 
-                {/* Custom Color Input */}
-                <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="color"
-                      value={accentColor}
-                      onChange={(e) => {
-                        setCustomHex(e.target.value);
-                        setCustomAccentColor(e.target.value);
-                      }}
-                      className="w-8 h-8 rounded-lg cursor-pointer bg-transparent border-0 p-0"
-                      title="Choose custom color"
-                    />
-                    <div>
-                      <div className="text-xs font-semibold text-white">Custom Color Wheel</div>
-                      <div className="text-[11px] text-neutral-400">Pick any custom shade or enter hex code</div>
+                {/* Advanced Color Tuning & Precision Controls (Advanced Mode Only) */}
+                {settingsMode === "advanced" && (
+                  <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <span>Custom Color & Precision Calibration</span>
+                      </div>
+                      <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/10 text-neutral-300">
+                        ADVANCED
+                      </span>
+                    </div>
+
+                    {/* Custom Color Input */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="color"
+                          value={accentColor}
+                          onChange={(e) => {
+                            setCustomHex(e.target.value);
+                            setCustomAccentColor(e.target.value);
+                          }}
+                          className="w-8 h-8 rounded-lg cursor-pointer bg-transparent border-0 p-0"
+                          title="Choose custom color"
+                        />
+                        <div>
+                          <div className="text-xs font-semibold text-white">Custom Color Wheel</div>
+                          <div className="text-[11px] text-neutral-400">Pick any custom shade or enter hex code</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={customHex}
+                          onChange={(e) => {
+                            setCustomHex(e.target.value);
+                            if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) {
+                              setCustomAccentColor(e.target.value);
+                            }
+                          }}
+                          placeholder="#F59E0B"
+                          maxLength={7}
+                          className="w-24 px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/15 text-xs font-mono text-white text-center uppercase focus:outline-none focus:border-white/40"
+                        />
+
+                        {/* WCAG Accessible Text Contrast Indicator */}
+                        <div
+                          style={{ backgroundColor: accentColor, color: accentText }}
+                          className="text-[10px] font-bold px-2.5 py-1.5 rounded-lg font-mono flex items-center gap-1.5 shadow border border-black/20"
+                          title="Computed high-contrast readable text (WCAG AAA/AA compliant)"
+                        >
+                          <Check className="w-3 h-3" />
+                          <span>{accentText === "#0a0a0a" ? "DARK TEXT" : "LIGHT TEXT"}</span>
+                        </div>
+
+                        {/* Focus indicator test preview */}
+                        <div
+                          style={{
+                            outline: `2px solid ${accentColor}`,
+                            outlineOffset: "2px",
+                            boxShadow: `0 0 0 2px #0a0a0a, 0 0 10px ${accentGlow}`,
+                          }}
+                          className="text-[10px] font-semibold px-2 py-1 rounded bg-neutral-800 text-neutral-300 font-mono hidden sm:inline-block"
+                          title="Focus Ring Indicator preview"
+                        >
+                          Focus Ring
+                        </div>
+                      </div>
                     </div>
                   </div>
+                )}
 
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={customHex}
-                      onChange={(e) => {
-                        setCustomHex(e.target.value);
-                        if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) {
-                          setCustomAccentColor(e.target.value);
-                        }
-                      }}
-                      placeholder="#F59E0B"
-                      maxLength={7}
-                      className="w-24 px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/15 text-xs font-mono text-white text-center uppercase focus:outline-none focus:border-white/40"
-                    />
-                    {accentId === "custom" && (
-                      <span
-                        style={{ backgroundColor: accentColor, color: accentText }}
-                        className="text-[10px] font-bold px-2 py-1 rounded-md font-mono"
-                      >
-                        CUSTOM ACTIVE
-                      </span>
-                    )}
+                {/* Simple Mode Switch Callout */}
+                {settingsMode === "simple" && (
+                  <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-between text-xs text-neutral-400">
+                    <div className="flex items-center gap-2">
+                      <Palette className="w-4 h-4 text-neutral-400" />
+                      <span>Looking for custom 6-digit HEX codes, contrast accessibility, or timeline glow?</span>
+                    </div>
+                    <button
+                      onClick={() => handleModeChange("advanced")}
+                      style={{ color: accentColor }}
+                      className="font-bold hover:underline cursor-pointer shrink-0"
+                    >
+                      Switch to Advanced &rarr;
+                    </button>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Section 2: Window Backdrop & Glass Style */}
@@ -914,62 +1202,69 @@ export function SettingsModal() {
                 </div>
               </div>
 
-              {/* Section 3: Scrubber Styling */}
-              <div className="space-y-3">
-                <div>
-                  <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                    Progress Scrubber & Aura
-                  </h4>
-                  <p className="text-xs text-neutral-400">
-                    Fine-tune the scrubber thickness and neon glow
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Thickness */}
-                  <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/5 space-y-2">
-                    <div className="text-xs font-medium text-neutral-200">Scrubber Thickness</div>
-                    <div className="flex gap-2">
-                      {[
-                        { id: "slim", label: "Slim" },
-                        { id: "medium", label: "Standard" },
-                        { id: "bold", label: "Chunky Bold" },
-                      ].map((thick) => (
-                        <button
-                          key={thick.id}
-                          onClick={() => setScrubberHeight(thick.id as any)}
-                          style={{
-                            backgroundColor: scrubberHeight === thick.id ? accentColor : undefined,
-                            color: scrubberHeight === thick.id ? accentText : undefined,
-                          }}
-                          className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
-                            scrubberHeight === thick.id
-                              ? "font-bold shadow"
-                              : "bg-white/5 text-neutral-300 hover:bg-white/10"
-                          }`}
-                        >
-                          {thick.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Glow */}
-                  <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-between">
+              {/* Section 3: Scrubber Styling (Advanced Mode Only) */}
+              {settingsMode === "advanced" && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-xs font-medium text-neutral-200">Progress Neon Glow</div>
-                      <div className="text-[11px] text-neutral-500">Radiant aura along the playback line</div>
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                        Progress Scrubber & Neon Aura
+                      </h4>
+                      <p className="text-xs text-neutral-400">
+                        Fine-tune the scrubber thickness and neon glow
+                      </p>
                     </div>
-                    <input
-                      type="checkbox"
-                      checked={scrubberGlow}
-                      onChange={(e) => setScrubberGlow(e.target.checked)}
-                      style={{ accentColor: accentColor }}
-                      className="w-4 h-4 rounded cursor-pointer"
-                    />
+                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/10 text-neutral-300">
+                      ADVANCED
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Thickness */}
+                    <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/5 space-y-2">
+                      <div className="text-xs font-medium text-neutral-200">Scrubber Thickness</div>
+                      <div className="flex gap-2">
+                        {[
+                          { id: "slim", label: "Slim" },
+                          { id: "medium", label: "Standard" },
+                          { id: "bold", label: "Chunky Bold" },
+                        ].map((thick) => (
+                          <button
+                            key={thick.id}
+                            onClick={() => setScrubberHeight(thick.id as any)}
+                            style={{
+                              backgroundColor: scrubberHeight === thick.id ? accentColor : undefined,
+                              color: scrubberHeight === thick.id ? accentText : undefined,
+                            }}
+                            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
+                              scrubberHeight === thick.id
+                                ? "font-bold shadow"
+                                : "bg-white/5 text-neutral-300 hover:bg-white/10"
+                            }`}
+                          >
+                            {thick.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Glow */}
+                    <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-medium text-neutral-200">Progress Neon Glow</div>
+                        <div className="text-[11px] text-neutral-500">Radiant aura along the playback line</div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={scrubberGlow}
+                        onChange={(e) => setScrubberGlow(e.target.checked)}
+                        style={{ accentColor: accentColor }}
+                        className="w-4 h-4 rounded cursor-pointer"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Section 4: Subtitles Styling */}
               <div className="space-y-3">
@@ -1074,21 +1369,37 @@ export function SettingsModal() {
                     Tailored picture, audio, subtitle, and speed presets for different genres
                   </p>
                 </div>
-                <button
-                  onClick={() => setIsCreatingProfile(!isCreatingProfile)}
-                  style={{
-                    backgroundColor: `${accentGlow}`,
-                    color: accentColor,
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold hover:brightness-110 transition active:scale-95"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Save Current as Profile</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={resetProfiles}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-300 hover:text-white text-xs font-medium border border-white/10 transition active:scale-95 cursor-pointer"
+                    title="Reset all profiles to default factory presets"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Reset to Defaults</span>
+                  </button>
+
+                  {settingsMode === "advanced" && (
+                    <button
+                      onClick={() => {
+                        setEditingProfileId(null);
+                        setIsCreatingProfile(!isCreatingProfile);
+                      }}
+                      style={{
+                        backgroundColor: `${accentGlow}`,
+                        color: accentColor,
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold hover:brightness-110 transition active:scale-95 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Save Current as Profile</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {/* Profile Creation Drawer */}
-              {isCreatingProfile && (
+              {/* Profile Creation Drawer (Advanced Mode Only) */}
+              {settingsMode === "advanced" && isCreatingProfile && (
                 <div
                   style={{
                     borderColor: `${accentColor}50`,
@@ -1119,7 +1430,8 @@ export function SettingsModal() {
                       }
                       className="px-2.5 py-1.5 rounded-lg bg-neutral-800 border border-white/10 text-xs text-white focus:outline-none cursor-pointer"
                     >
-                      <option value="sparkles">✨ Sparkles (Anime)</option>
+                      <option value="tv">📺 TV & Anime</option>
+                      <option value="layers">📑 Profile Preset</option>
                       <option value="film">🎬 Film (Movies)</option>
                       <option value="headphones">🎧 Headphones (Music)</option>
                       <option value="mic">🎙️ Mic (Podcasts)</option>
@@ -1184,12 +1496,14 @@ export function SettingsModal() {
                           <p className="text-xs text-neutral-400 mt-0.5">
                             {p.description}
                           </p>
-                          <div className="flex items-center gap-3 mt-1.5 text-[11px] font-mono text-neutral-500">
-                            <span>Saturation: {p.settings.saturation > 0 ? `+${p.settings.saturation}` : p.settings.saturation}</span>
-                            <span>Contrast: {p.settings.contrast > 0 ? `+${p.settings.contrast}` : p.settings.contrast}</span>
-                            <span>Speed: {p.settings.playbackRate}x</span>
-                            <span>Sub: {p.settings.subFontSize}px</span>
-                          </div>
+                          {settingsMode === "advanced" && (
+                            <div className="flex items-center gap-3 mt-1.5 text-[11px] font-mono text-neutral-500">
+                              <span>Saturation: {p.settings.saturation > 0 ? `+${p.settings.saturation}` : p.settings.saturation}</span>
+                              <span>Contrast: {p.settings.contrast > 0 ? `+${p.settings.contrast}` : p.settings.contrast}</span>
+                              <span>Speed: {p.settings.playbackRate}x</span>
+                              <span>Sub: {p.settings.subFontSize}px</span>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -1217,20 +1531,46 @@ export function SettingsModal() {
                           </span>
                         )}
 
-                        {!p.isBuiltIn && (
-                          <button
-                            onClick={() => deleteCustomProfile(p.id)}
-                            title="Delete custom profile"
-                            className="p-1.5 rounded-lg text-neutral-400 hover:text-rose-400 hover:bg-rose-500/10 transition"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                        {settingsMode === "advanced" && !p.isBuiltIn && (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleEditProfile(p)}
+                              title="Edit custom profile"
+                              className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => deleteCustomProfile(p.id)}
+                              title="Delete custom profile"
+                              className="p-1.5 rounded-lg text-neutral-400 hover:text-rose-400 hover:bg-rose-500/10 transition cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
                   );
                 })}
               </div>
+
+              {/* Simple Mode Switch Callout */}
+              {settingsMode === "simple" && (
+                <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-between text-xs text-neutral-400">
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-neutral-400" />
+                    <span>Want to design custom profiles with tailored contrast, speed, and audio EQ?</span>
+                  </div>
+                  <button
+                    onClick={() => handleModeChange("advanced")}
+                    style={{ color: accentColor }}
+                    className="font-bold hover:underline cursor-pointer shrink-0"
+                  >
+                    Switch to Advanced &rarr;
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1379,72 +1719,94 @@ export function SettingsModal() {
           {/* GLOBAL SHORTCUTS & LOCAL SHORTCUTS TAB */}
           {activeTab === "shortcuts" && (
             <div className="space-y-5">
-              {/* Global Media Shortcuts Banner */}
-              <div
-                style={{
-                  background: `linear-gradient(to right, ${accentGlow}, transparent)`,
-                  borderColor: `${accentColor}40`,
-                }}
-                className="p-4 rounded-xl border space-y-3"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <Radio style={{ color: accentColor }} className="w-4 h-4" />
-                    <div>
-                      <div className="text-xs font-bold text-white">
-                        Global Background Media Shortcuts
-                      </div>
-                      <div className="text-xs text-neutral-400">
-                        Control playback from anywhere without focusing the player window
+              {/* Simple Mode Switch Callout */}
+              {settingsMode === "simple" && (
+                <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-between text-xs text-neutral-400">
+                  <div className="flex items-center gap-2">
+                    <Radio className="w-4 h-4 text-neutral-400" />
+                    <span>Looking for background global media keys and system-wide hotkey hooks?</span>
+                  </div>
+                  <button
+                    onClick={() => handleModeChange("advanced")}
+                    style={{ color: accentColor }}
+                    className="font-bold hover:underline cursor-pointer shrink-0"
+                  >
+                    Switch to Advanced &rarr;
+                  </button>
+                </div>
+              )}
+
+              {/* Global Media Shortcuts Banner (Advanced Mode Only) */}
+              {settingsMode === "advanced" && (
+                <div
+                  style={{
+                    background: `linear-gradient(to right, ${accentGlow}, transparent)`,
+                    borderColor: `${accentColor}40`,
+                  }}
+                  className="p-4 rounded-xl border space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <Radio style={{ color: accentColor }} className="w-4 h-4" />
+                      <div>
+                        <div className="text-xs font-bold text-white flex items-center gap-2">
+                          <span>Global Background Media Shortcuts</span>
+                          <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/10 text-neutral-300">
+                            ADVANCED
+                          </span>
+                        </div>
+                        <div className="text-xs text-neutral-400">
+                          Control playback from anywhere without focusing the player window
+                        </div>
                       </div>
                     </div>
+
+                    <input
+                      type="checkbox"
+                      checked={isGlobalShortcutsEnabled}
+                      onChange={(e) => toggleGlobalShortcuts(e.target.checked)}
+                      style={{ accentColor }}
+                      className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                    />
                   </div>
 
-                  <input
-                    type="checkbox"
-                    checked={isGlobalShortcutsEnabled}
-                    onChange={(e) => toggleGlobalShortcuts(e.target.checked)}
-                    style={{ accentColor }}
-                    className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
-                  />
+                  {isGlobalShortcutsEnabled && (
+                    <div className="pt-2 border-t border-white/10 flex flex-col sm:flex-row gap-3">
+                      <label className="flex items-center gap-2 text-xs text-neutral-300 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={mediaKeysEnabled}
+                          onChange={async (e) => {
+                            setMediaKeysEnabled(e.target.checked);
+                            await globalShortcutsService.updateConfig({
+                              mediaKeys: e.target.checked,
+                            });
+                          }}
+                          style={{ accentColor }}
+                          className="rounded cursor-pointer"
+                        />
+                        <span>Hardware Media Keys (Play/Pause, Next, Prev)</span>
+                      </label>
+
+                      <label className="flex items-center gap-2 text-xs text-neutral-300 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={comboKeysEnabled}
+                          onChange={async (e) => {
+                            setComboKeysEnabled(e.target.checked);
+                            await globalShortcutsService.updateConfig({
+                              comboKeys: e.target.checked,
+                            });
+                          }}
+                          style={{ accentColor }}
+                          className="rounded cursor-pointer"
+                        />
+                        <span>Global Combos (Ctrl+Alt+Space, Ctrl+Alt+Arrows)</span>
+                      </label>
+                    </div>
+                  )}
                 </div>
-
-                {isGlobalShortcutsEnabled && (
-                  <div className="pt-2 border-t border-white/10 flex flex-col sm:flex-row gap-3">
-                    <label className="flex items-center gap-2 text-xs text-neutral-300 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={mediaKeysEnabled}
-                        onChange={async (e) => {
-                          setMediaKeysEnabled(e.target.checked);
-                          await globalShortcutsService.updateConfig({
-                            mediaKeys: e.target.checked,
-                          });
-                        }}
-                        style={{ accentColor }}
-                        className="rounded cursor-pointer"
-                      />
-                      <span>Hardware Media Keys (Play/Pause, Next, Prev)</span>
-                    </label>
-
-                    <label className="flex items-center gap-2 text-xs text-neutral-300 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={comboKeysEnabled}
-                        onChange={async (e) => {
-                          setComboKeysEnabled(e.target.checked);
-                          await globalShortcutsService.updateConfig({
-                            comboKeys: e.target.checked,
-                          });
-                        }}
-                        style={{ accentColor }}
-                        className="rounded cursor-pointer"
-                      />
-                      <span>Global Combos (Ctrl+Alt+Space, Ctrl+Alt+Arrows)</span>
-                    </label>
-                  </div>
-                )}
-              </div>
+              )}
 
               {/* Local App Shortcuts List */}
               <div>
@@ -2086,6 +2448,46 @@ export function SettingsModal() {
         </div>
       </div>
     </div>
+
+    {/* Global Restore Factory Defaults Confirmation Dialog */}
+    {showRestoreConfirm && (
+      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center p-4 animate-in fade-in duration-150">
+        <div className="bg-neutral-900 border border-white/15 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+          <div className="flex items-center gap-3">
+            <div
+              style={{ backgroundColor: `${accentGlow}`, color: accentColor }}
+              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border border-white/10"
+            >
+              <RotateCcw className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white">Restore All Factory Defaults?</h3>
+              <p className="text-xs text-neutral-400">Reset settings, themes, calibrations & profiles</p>
+            </div>
+          </div>
+
+          <p className="text-xs text-neutral-300 leading-relaxed bg-white/5 p-3 rounded-xl border border-white/5">
+            This will reset all playback profiles, theme colors, video adjustments, audio normalization, and preferences to their factory defaults. Your media library and playlists will not be affected.
+          </p>
+
+          <div className="flex items-center justify-end gap-2.5 pt-2">
+            <button
+              onClick={() => setShowRestoreConfirm(false)}
+              className="px-4 py-2 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 text-neutral-300 transition cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleRestoreDefaults}
+              style={{ backgroundColor: accentColor, color: accentText }}
+              className="px-4 py-2 rounded-xl text-xs font-bold transition shadow hover:brightness-110 active:scale-95 cursor-pointer"
+            >
+              Restore Defaults
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   </div>
 );
 }

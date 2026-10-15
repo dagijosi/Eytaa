@@ -11,6 +11,7 @@ import { SleepTimerModal } from "./components/SleepTimerModal";
 import { SiblingPromptToast } from "./components/SiblingPromptToast";
 import { DragDropOverlay } from "./components/DragDropOverlay";
 import { PiPOverlay } from "./components/PiPOverlay";
+import { MediaLibraryModal } from "./components/MediaLibraryModal";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
@@ -37,11 +38,14 @@ export default function App() {
     toggleMute,
     changePlaybackRate,
     setPlaybackRate,
+    loadSubtitle,
     selectSubtitleTrack,
     subtitleTracks,
     currentSubtitleTrackId,
     togglePlaylistDrawer,
     toggleSettingsModal,
+    isLibraryOpen,
+    toggleLibraryModal,
     setControlsVisible,
     isPiP,
     togglePiP,
@@ -210,6 +214,15 @@ export default function App() {
 
   const handleDroppedPaths = async (paths: string[], mode: "play" | "playlist") => {
     if (!paths || paths.length === 0) return;
+
+    // Detect if dropped file is an external subtitle file (.srt, .vtt, .ass, .ssa, .sub, .lrc)
+    const ext = paths[0].split(".").pop()?.toLowerCase() || "";
+    const SUBTITLE_EXTS = new Set(["srt", "vtt", "ass", "ssa", "sub", "lrc"]);
+    if (SUBTITLE_EXTS.has(ext) && (status === "playing" || status === "paused")) {
+      await loadSubtitle(paths[0]);
+      return;
+    }
+
     if (mode === "play") {
       await openFile(paths[0]);
       if (paths.length > 1) {
@@ -341,6 +354,10 @@ export default function App() {
           e.preventDefault();
           togglePiP();
           break;
+        case "b":
+          e.preventDefault();
+          toggleLibraryModal();
+          break;
         case "f7":
           e.preventDefault();
           cycleProfile();
@@ -352,6 +369,7 @@ export default function App() {
         case "escape":
           if (isPiP) togglePiP();
           if (isSleepTimerOpen) toggleSleepTimer(false);
+          if (isLibraryOpen) toggleLibraryModal(false);
           if (isPlaylistOpen) togglePlaylistDrawer();
           if (isSettingsOpen) toggleSettingsModal();
           break;
@@ -374,6 +392,8 @@ export default function App() {
     openFile,
     isPlaylistOpen,
     isSettingsOpen,
+    isLibraryOpen,
+    toggleLibraryModal,
     isSleepTimerOpen,
     toggleSleepTimer,
     togglePlaylistDrawer,
@@ -549,6 +569,9 @@ export default function App() {
 
       {/* Settings / Shortcuts Modal */}
       <SettingsModal />
+
+      {/* Local Media Library Modal */}
+      <MediaLibraryModal />
 
       {/* Night Listening & Sleep Timer Modal */}
       <SleepTimerModal

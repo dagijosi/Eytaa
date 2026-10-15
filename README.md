@@ -1,6 +1,8 @@
-# Vistara (Technical Foundation)
+# EYTAA (Vistara Player)
 
-A high-performance Windows desktop media player inspired by VLC and PotPlayer, built with **Tauri 2**, **React + TypeScript + Vite**, **Tailwind CSS v4**, **Zustand**, **SQLite**, and **MPV / libmpv**.
+A high-performance Windows desktop media player inspired by VLC and PotPlayer, built with **Tauri 2**, **React 19 + TypeScript + Vite**, **Tailwind CSS v4**, **Zustand**, **SQLite**, and **MPV / libmpv**.
+
+> 📖 **Comprehensive Documentation**: For a full breakdown of the system architecture, features, keyboard shortcuts, and file structures, see **[SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md)**.
 
 ---
 

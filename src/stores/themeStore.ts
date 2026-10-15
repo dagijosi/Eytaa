@@ -92,7 +92,7 @@ export interface ThemeSettings {
   subSize: number;
 }
 
-const DEFAULT_THEME: ThemeSettings = {
+export const DEFAULT_THEME: ThemeSettings = {
   accentId: "amber",
   accentColor: "#f59e0b",
   accentHover: "#fbbf24",
@@ -106,12 +106,39 @@ const DEFAULT_THEME: ThemeSettings = {
   subSize: 55,
 };
 
+export function getAccessibleTextColor(hexColor: string): "#0a0a0a" | "#ffffff" {
+  try {
+    const cleanHex = hexColor.replace("#", "").trim();
+    let r = 255, g = 255, b = 255;
+    if (cleanHex.length === 6) {
+      r = parseInt(cleanHex.substring(0, 2), 16);
+      g = parseInt(cleanHex.substring(2, 4), 16);
+      b = parseInt(cleanHex.substring(4, 6), 16);
+    } else if (cleanHex.length === 3) {
+      r = parseInt(cleanHex[0] + cleanHex[0], 16);
+      g = parseInt(cleanHex[1] + cleanHex[1], 16);
+      b = parseInt(cleanHex[2] + cleanHex[2], 16);
+    }
+    // WCAG 2.1 relative luminance calculation
+    const sRGB = [r, g, b].map((val) => {
+      const c = val / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    const luminance = 0.2126 * sRGB[0] + 0.7152 * sRGB[1] + 0.0722 * sRGB[2];
+    // Threshold 0.42 provides crisp readability against light vs dark accent colors
+    return luminance > 0.42 ? "#0a0a0a" : "#ffffff";
+  } catch {
+    return "#ffffff";
+  }
+}
+
 function applyCssVariables(theme: ThemeSettings) {
   const root = document.documentElement;
   root.style.setProperty("--accent", theme.accentColor);
   root.style.setProperty("--accent-hover", theme.accentHover);
   root.style.setProperty("--accent-glow", theme.accentGlow);
   root.style.setProperty("--accent-text", theme.accentText);
+  root.style.setProperty("--accent-focus", theme.accentColor);
 
   // Glass backdrop variables
   switch (theme.glassStyle) {
@@ -188,14 +215,15 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
   },
 
   setCustomAccentColor: async (hex: string) => {
-    // Generate glow and text colors
-    const glow = `${hex}55`;
+    // Generate accessible text color (black vs white based on WCAG luminance)
+    const accessibleText = getAccessibleTextColor(hex);
+    const glow = `${hex}66`;
     const updated: Partial<ThemeSettings> = {
       accentId: "custom",
       accentColor: hex,
       accentHover: hex,
       accentGlow: glow,
-      accentText: "#ffffff",
+      accentText: accessibleText,
     };
     set(updated);
     const full = { ...get(), ...updated };

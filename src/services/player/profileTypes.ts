@@ -16,7 +16,7 @@ export interface ProfileSettings {
 export interface PlaybackProfile {
   id: string;
   name: string;
-  icon: "sparkles" | "film" | "tv" | "headphones" | "mic" | "sliders";
+  icon: "tv" | "layers" | "film" | "headphones" | "mic" | "sliders" | "sparkles";
   description: string;
   isBuiltIn?: boolean;
   settings: ProfileSettings;
@@ -47,7 +47,7 @@ export const DEFAULT_PROFILES: PlaybackProfile[] = [
   {
     id: "anime",
     name: "Anime & Animation",
-    icon: "sparkles",
+    icon: "tv",
     description: "Vibrant saturation, crisp contrast for lineart, and high-visibility subtitles.",
     isBuiltIn: true,
     settings: {

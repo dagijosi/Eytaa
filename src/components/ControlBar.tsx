@@ -18,7 +18,8 @@ import {
   Scaling,
   Moon,
   PictureInPicture2,
-  Sparkles,
+  Layers,
+  Tv,
   MoreHorizontal,
   Check,
   Film,
@@ -189,8 +190,11 @@ export function ControlBar() {
 
   const getProfileIcon = (icon: string) => {
     switch (icon) {
+      case "tv":
       case "sparkles":
-        return <Sparkles style={{ color: accentColor }} className="w-3.5 h-3.5" />;
+        return <Tv style={{ color: accentColor }} className="w-3.5 h-3.5" />;
+      case "layers":
+        return <Layers style={{ color: accentColor }} className="w-3.5 h-3.5" />;
       case "film":
         return <Film className="w-3.5 h-3.5 text-rose-400" />;
       case "headphones":

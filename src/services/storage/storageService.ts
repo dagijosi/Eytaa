@@ -55,9 +55,9 @@ export class StorageService {
     }
   }
 
-  public async setResumePosition(filePath: string, position: number): Promise<void> {
+  public async setResumePosition(filePath: string, position: number, duration?: number): Promise<void> {
     try {
-      await invoke("db_set_resume_position", { filePath, position });
+      await invoke("db_set_resume_position", { filePath, position, duration: duration ?? null });
     } catch (err) {
       console.warn(`[StorageService] Failed to save resume position for '${filePath}':`, err);
     }

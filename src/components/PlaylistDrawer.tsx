@@ -15,10 +15,13 @@ import {
   ArrowDownAZ,
   ArrowUpZA,
   ListOrdered,
+  FileUp,
+  FileDown,
 } from "lucide-react";
 import { usePlayerStore } from "../stores/playerStore";
 import { useThemeStore } from "../stores/themeStore";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { libraryService } from "../services/library/libraryService";
 
 export function PlaylistDrawer() {
   const {
@@ -34,6 +37,7 @@ export function PlaylistDrawer() {
     clearPlaylist,
     playPlaylistItem,
     status,
+    showOSD,
   } = usePlayerStore();
 
   const { accentColor, accentGlow, accentText } = useThemeStore();
@@ -76,6 +80,51 @@ export function PlaylistDrawer() {
       }
     } catch (err) {
       console.error("Add files error:", err);
+    }
+  };
+
+  const handleImportPlaylist = async () => {
+    try {
+      const selected = await openDialog({
+        title: "Import Playlist",
+        multiple: false,
+        filters: [{ name: "Playlists (*.m3u, *.m3u8, *.json)", extensions: ["m3u", "m3u8", "json"] }],
+      });
+      if (!selected || typeof selected !== "string") return;
+      const imported = await libraryService.importPlaylist(selected);
+      if (imported.length > 0) {
+        addToPlaylist(imported.map((i) => i.filePath));
+        showOSD(`Imported ${imported.length} tracks into playlist`);
+      } else {
+        showOSD("Playlist is empty or invalid");
+      }
+    } catch (err) {
+      console.error("Import playlist error:", err);
+      showOSD("Import failed");
+    }
+  };
+
+  const handleExportPlaylist = async () => {
+    if (playlist.length === 0) {
+      showOSD("Playlist is empty");
+      return;
+    }
+    try {
+      const savePath = await saveDialog({
+        title: "Export Playlist",
+        defaultPath: "eytaa-playlist.m3u8",
+        filters: [
+          { name: "M3U8 Playlist", extensions: ["m3u8", "m3u"] },
+          { name: "JSON Playlist", extensions: ["json"] },
+        ],
+      });
+      if (!savePath) return;
+      const format = savePath.endsWith(".json") ? "json" : "m3u8";
+      await libraryService.exportPlaylist(savePath, format, playlist);
+      showOSD(`Exported playlist to ${savePath.split(/[/\\]/).pop()}`);
+    } catch (err) {
+      console.error("Export playlist error:", err);
+      showOSD("Export failed");
     }
   };
 
@@ -224,6 +273,24 @@ export function PlaylistDrawer() {
             >
               <Plus className="w-4 h-4" />
             </button>
+
+            <button
+              onClick={handleImportPlaylist}
+              className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition active:scale-95"
+              title="Import Playlist (.m3u, .m3u8, .json)"
+            >
+              <FileUp className="w-4 h-4" />
+            </button>
+
+            {playlist.length > 0 && (
+              <button
+                onClick={handleExportPlaylist}
+                className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition active:scale-95"
+                title="Export Playlist (.m3u8, .json)"
+              >
+                <FileDown className="w-4 h-4" />
+              </button>
+            )}
 
             {playlist.length > 0 && (
               <button

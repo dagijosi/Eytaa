@@ -34,6 +34,7 @@ const OBSERVED_PROPERTIES = [
   ["vid", "string", "none"],
   ["aid", "string", "none"],
   ["sid", "string", "none"],
+  ["hwdec-current", "string", "none"],
 ] as const satisfies MpvObservableProperty[];
 
 export class MpvPlayerService implements MediaPlayerService {
@@ -55,10 +56,13 @@ export class MpvPlayerService implements MediaPlayerService {
 
   private listeners: Set<(state: PlayerState) => void> = new Set();
   private endFileListeners: Set<(reason: string) => void> = new Set();
+  private hwdecFallbackListeners: Set<(filePath: string) => void> = new Set();
   private hasFiredEofForCurrent = false;
   private unlistenProperties: UnlistenFn | null = null;
   private unlistenEvents: UnlistenFn | null = null;
   private initializingPromise: Promise<void> | null = null;
+  private lastLoadedPath: string | null = null;
+  private hwdecFallbackAttempted = false;
 
   public async initialize(): Promise<void> {
     if (this.state.isInitialized) {
@@ -237,6 +241,13 @@ export class MpvPlayerService implements MediaPlayerService {
         break;
       case "end-file": {
         const reason = (event as unknown as { reason?: string }).reason || "eof";
+        if (reason === "error" && this.lastLoadedPath && !this.hwdecFallbackAttempted) {
+          console.warn(`Playback error for ${this.lastLoadedPath}. Attempting software decoding fallback (hwdec=no)...`);
+          this.hwdecFallbackAttempted = true;
+          this.notifyHwdecFallback(this.lastLoadedPath);
+          this.fallbackToSoftwareDecoding(this.lastLoadedPath);
+          return;
+        }
         this.updateState({ status: "stopped" });
         this.notifyEndFile(reason);
         break;
@@ -247,6 +258,41 @@ export class MpvPlayerService implements MediaPlayerService {
         }
         break;
     }
+  }
+
+  private async fallbackToSoftwareDecoding(filePath: string): Promise<void> {
+    try {
+      await setProperty("hwdec", "no");
+      await command("loadfile", [filePath, "replace"]);
+      await setProperty("pause", false);
+      this.updateState({ status: "playing", error: null });
+    } catch (err) {
+      console.error("Software decoding fallback also failed:", err);
+      const playerError: PlayerError = {
+        code: "CODEC_UNSUPPORTED",
+        message: `Playback failed: file damaged or codec unsupported by hardware/software decoders.`,
+        details: err,
+      };
+      this.updateState({ status: "error", error: playerError });
+      this.notifyEndFile("error");
+    }
+  }
+
+  public onHwdecFallback(listener: (filePath: string) => void): () => void {
+    this.hwdecFallbackListeners.add(listener);
+    return () => {
+      this.hwdecFallbackListeners.delete(listener);
+    };
+  }
+
+  private notifyHwdecFallback(filePath: string): void {
+    this.hwdecFallbackListeners.forEach((listener) => {
+      try {
+        listener(filePath);
+      } catch (e) {
+        console.error("hwdec fallback listener error:", e);
+      }
+    });
   }
 
   private parseTrackList(rawList: Array<Record<string, unknown>>): void {
@@ -276,6 +322,8 @@ export class MpvPlayerService implements MediaPlayerService {
     await this.ensureInitialized();
     try {
       this.hasFiredEofForCurrent = false;
+      this.lastLoadedPath = filePath;
+      this.hwdecFallbackAttempted = false;
       this.updateState({
         status: "loading",
         error: null,
@@ -325,6 +373,9 @@ export class MpvPlayerService implements MediaPlayerService {
   public async openStream(url: string): Promise<void> {
     await this.ensureInitialized();
     try {
+      this.hasFiredEofForCurrent = false;
+      this.lastLoadedPath = url;
+      this.hwdecFallbackAttempted = false;
       this.updateState({
         status: "loading",
         error: null,
@@ -405,9 +456,15 @@ export class MpvPlayerService implements MediaPlayerService {
     this.updateState({ playbackRate: clamped });
   }
 
-  public async loadSubtitle(filePath: string): Promise<void> {
+  public async loadSubtitle(filePath: string): Promise<boolean> {
     await this.ensureInitialized();
-    await command("sub-add", [filePath, "select"]);
+    try {
+      await command("sub-add", [filePath, "select"]);
+      return true;
+    } catch (err) {
+      console.warn("Failed to load subtitle file:", filePath, err);
+      return false;
+    }
   }
 
   public async selectAudioTrack(trackId: number): Promise<void> {

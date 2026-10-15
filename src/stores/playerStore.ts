@@ -10,6 +10,7 @@ import {
 } from "../services/player/profileTypes";
 import { globalShortcutsService } from "../services/shortcuts/globalShortcutsService";
 import { formatMediaTitle } from "../utils/mediaTitle";
+import { useThemeStore } from "./themeStore";
 
 export interface PlaylistItem {
   id: string;
@@ -34,6 +35,7 @@ export interface SleepTimerState {
 
 let sleepTimerInterval: number | null = null;
 let savedPreFadeVolume: number | null = null;
+let activeLoadSequence = 0;
 const promptedDirectories = new Set<string>();
 
 interface PlayerStoreState extends PlayerState {
@@ -47,6 +49,8 @@ interface PlayerStoreState extends PlayerState {
   isControlsVisible: boolean;
   isPlaylistOpen: boolean;
   isSettingsOpen: boolean;
+  isLibraryOpen: boolean;
+  toggleLibraryModal: (open?: boolean) => void;
   videoFitMode: "fit" | "fill" | "stretch";
   detectedSiblings: string[] | null;
   showSiblingPrompt: boolean;
@@ -84,6 +88,8 @@ interface PlayerStoreState extends PlayerState {
   cycleProfile: () => Promise<void>;
   saveCustomProfile: (profile: PlaybackProfile) => Promise<void>;
   deleteCustomProfile: (profileId: string) => Promise<void>;
+  resetProfiles: () => Promise<void>;
+  restoreAllDefaults: () => Promise<void>;
 
   // Global Media Shortcuts
   isGlobalShortcutsEnabled: boolean;
@@ -131,6 +137,9 @@ interface PlayerStoreState extends PlayerState {
   dispose: () => Promise<void>;
 }
 
+let lastAutoSavedTime = 0;
+let lastAutoSavedFile = "";
+
 export const usePlayerStore = create<PlayerStoreState>((set, get) => {
   playerService.subscribe((state) => {
     set({
@@ -148,6 +157,17 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
       error: state.error,
       isInitialized: state.isInitialized,
     });
+
+    // Automatically persist progress and duration periodically while playing
+    const filePath = state.mediaMetadata?.filePath;
+    if (filePath && state.currentTime > 5 && state.status === "playing") {
+      const delta = Math.abs(state.currentTime - lastAutoSavedTime);
+      if (filePath !== lastAutoSavedFile || delta >= 5) {
+        lastAutoSavedTime = state.currentTime;
+        lastAutoSavedFile = filePath;
+        storageService.setResumePosition(filePath, state.currentTime, state.duration);
+      }
+    }
   });
 
   return {
@@ -167,6 +187,7 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
     isControlsVisible: true,
     isPlaylistOpen: false,
     isSettingsOpen: false,
+    isLibraryOpen: false,
     videoFitMode: "fit",
     detectedSiblings: null,
     showSiblingPrompt: false,
@@ -205,6 +226,20 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
     initialize: async () => {
       await playerService.initialize();
 
+      // Ensure current position is saved when closing the window
+      if (typeof window !== "undefined") {
+        window.addEventListener("beforeunload", () => {
+          const current = get();
+          if (current.mediaMetadata?.filePath && current.currentTime > 5) {
+            storageService.setResumePosition(
+              current.mediaMetadata.filePath,
+              current.currentTime,
+              current.duration,
+            );
+          }
+        });
+      }
+
       // Load saved volume
       const savedVolume = await storageService.getPreference<number>("volume");
       if (typeof savedVolume === "number") {
@@ -222,7 +257,7 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
         set({ autoPlayNext: savedAutoPlay });
       }
 
-      // Listen for natural end of playback for auto-play next
+      // Listen for natural end of playback or playback errors
       playerService.onEndFile(async (reason) => {
         if (reason === "eof") {
           const { autoPlayNext, playlist, currentPlaylistIndex } = get();
@@ -234,7 +269,23 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
               get().showOSD("End of playlist reached");
             }
           }
+        } else if (reason === "error") {
+          get().showOSD("Playback error: file damaged or unsupported stream");
+          const { autoPlayNext, playlist, currentPlaylistIndex } = get();
+          if (autoPlayNext && playlist.length > 1) {
+            const nextIdx = currentPlaylistIndex >= 0 ? currentPlaylistIndex + 1 : 1;
+            if (nextIdx < playlist.length) {
+              get().showOSD("Skipping unplayable file...");
+              await get().playPlaylistItem(nextIdx);
+            }
+          }
         }
+      });
+
+      playerService.onHwdecFallback(() => {
+        get().showOSD(
+          "Hardware acceleration failed — safely switched to CPU software decoding",
+        );
       });
 
       // Load saved profiles & active profile
@@ -594,6 +645,57 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
       get().showOSD("Profile removed");
     },
 
+    resetProfiles: async () => {
+      set({ profiles: DEFAULT_PROFILES, activeProfileId: "default" });
+      await storageService.setPreference("customProfiles", []);
+      await storageService.setPreference("activeProfileId", "default");
+      await get().applyProfile("default");
+      get().showOSD("Playback profiles reset to defaults");
+    },
+
+    restoreAllDefaults: async () => {
+      // 1. Reset theme settings
+      await useThemeStore.getState().resetTheme();
+
+      // 2. Reset playback profiles
+      await get().resetProfiles();
+
+      // 3. Reset playback states
+      set({
+        autoPlayNext: true,
+        isNightListening: false,
+        isAlwaysOnTop: false,
+        videoFitMode: "fit",
+        playbackRate: 1.0,
+        isGlobalShortcutsEnabled: true,
+      });
+
+      await storageService.setPreference("autoPlayNext", true);
+      await storageService.setPreference("isNightListening", false);
+      await storageService.setPreference("isAlwaysOnTop", false);
+      await storageService.setPreference("globalShortcutsEnabled", true);
+
+      // 4. Cancel active sleep timer
+      get().cancelSleepTimer();
+
+      // 5. Reset audio/video parameters in MPV engine
+      try {
+        await playerService.setMpvProperty("contrast", 0);
+        await playerService.setMpvProperty("brightness", 0);
+        await playerService.setMpvProperty("saturation", 0);
+        await playerService.setMpvProperty("gamma", 0);
+        await playerService.setMpvProperty("deinterlace", false);
+        await playerService.setMpvProperty("speed", 1.0);
+        await playerService.setMpvProperty("audio-delay", 0);
+        await playerService.setMpvProperty("sub-delay", 0);
+        await playerService.setMpvProperty("sub-color", "#ffffff");
+        await playerService.setMpvProperty("sub-font-size", 55);
+        await playerService.setMpvProperty("af", "");
+      } catch {}
+
+      get().showOSD("All settings restored to factory defaults");
+    },
+
     // Global Shortcuts
     toggleGlobalShortcuts: async (enabled: boolean) => {
       set({ isGlobalShortcutsEnabled: enabled });
@@ -605,18 +707,39 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
     },
 
     openFile: async (path: string) => {
+      const seq = ++activeLoadSequence;
+
+      // Save progress of currently playing media before opening a new file
+      const currentMedia = get();
+      if (currentMedia.mediaMetadata?.filePath && currentMedia.currentTime > 5) {
+        await storageService.setResumePosition(
+          currentMedia.mediaMetadata.filePath,
+          currentMedia.currentTime,
+          currentMedia.duration,
+        );
+      }
+      if (seq !== activeLoadSequence) return;
+
       await playerService.openFile(path);
+      if (seq !== activeLoadSequence) return;
+
       const resumePos = await storageService.getResumePosition(path);
+      if (seq !== activeLoadSequence) return;
+
       if (resumePos && resumePos > 5) {
         await playerService.seek(resumePos);
+        if (seq !== activeLoadSequence) return;
         get().showOSD(
           `Resumed at ${Math.floor(resumePos / 60)}:${Math.floor(resumePos % 60).toString().padStart(2, "0")}`,
         );
       }
       const rawName = path.split(/[/\\]/).pop() || path;
       const title = formatMediaTitle(rawName, path);
-      await storageService.recordPlaybackHistory(path, title);
+      await storageService.recordPlaybackHistory(path, title, undefined, resumePos || undefined);
+      if (seq !== activeLoadSequence) return;
+
       const recent = await storageService.getRecentFiles(15);
+      if (seq !== activeLoadSequence) return;
 
       // Add to playlist if not already present
       const currentPlaylist = get().playlist;
@@ -650,6 +773,8 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
           const siblings = await invoke<string[]>("find_sibling_episodes", {
             filePath: path,
           });
+          if (seq !== activeLoadSequence) return;
+
           const unadded = (siblings || []).filter((s) => !existingPaths.has(s));
           if (unadded.length > 0) {
             set({ detectedSiblings: unadded, showSiblingPrompt: true });
@@ -687,9 +812,11 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
       await playerService.pause();
       const current = get();
       if (current.mediaMetadata?.filePath && current.currentTime > 0) {
+        lastAutoSavedTime = current.currentTime;
         await storageService.setResumePosition(
           current.mediaMetadata.filePath,
           current.currentTime,
+          current.duration,
         );
       }
       get().showOSD("Pause");
@@ -705,6 +832,14 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
     },
 
     stop: async () => {
+      const current = get();
+      if (current.mediaMetadata?.filePath && current.currentTime > 0) {
+        await storageService.setResumePosition(
+          current.mediaMetadata.filePath,
+          current.currentTime,
+          current.duration,
+        );
+      }
       await playerService.stop();
       get().showOSD("Stop");
     },
@@ -757,9 +892,13 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
     },
 
     loadSubtitle: async (path: string) => {
-      await playerService.loadSubtitle(path);
+      const success = await playerService.loadSubtitle(path);
       const name = path.split(/[/\\]/).pop();
-      get().showOSD(`Loaded subtitle: ${name}`);
+      if (success) {
+        get().showOSD(`Loaded subtitle: ${name}`);
+      } else {
+        get().showOSD(`Failed to load subtitle: file missing or corrupt`);
+      }
     },
 
     selectAudioTrack: async (trackId: number) => {
@@ -964,6 +1103,12 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
 
     toggleSettingsModal: () => {
       set((s) => ({ isSettingsOpen: !s.isSettingsOpen }));
+    },
+
+    toggleLibraryModal: (open?: boolean) => {
+      set((s) => ({
+        isLibraryOpen: open !== undefined ? open : !s.isLibraryOpen,
+      }));
     },
 
     setVideoFitMode: async (mode: "fit" | "fill" | "stretch") => {

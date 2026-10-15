@@ -48,6 +48,56 @@ jobs:
       - name: Setup libmpv native binaries
         run: npm run setup:lib
 
+      - name: Generate Release Notes
+        id: release_notes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = '${{ github.ref_name || github.event.inputs.tag }}';
+            const cleanVersion = tag.replace(/^v/, '');
+            const { owner, repo } = context.repo;
+            const fs = require('fs');
+
+            let notes = '';
+
+            // 1. Try extracting notes from CHANGELOG.md for this version
+            if (fs.existsSync('CHANGELOG.md')) {
+              try {
+                const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
+                const escapedVer = cleanVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const regex = new RegExp(`##\\s*\\[?${escapedVer}\\]?[^\\n]*\\n([\\s\\S]*?)(?=\\n##\\s|$)`, 'i');
+                const match = changelog.match(regex);
+                if (match && match[1].trim()) {
+                  notes = match[1].trim();
+                  console.log(`Successfully extracted changelog notes for ${cleanVersion}`);
+                }
+              } catch (e) {
+                console.warn('Error reading CHANGELOG.md:', e);
+              }
+            }
+
+            // 2. Fallback to GitHub generateReleaseNotes API if CHANGELOG section not found
+            if (!notes) {
+              try {
+                const res = await github.rest.repos.generateReleaseNotes({
+                  owner,
+                  repo,
+                  tag_name: tag,
+                });
+                notes = res.data.body || '';
+                console.log(`Generated release notes via GitHub API for ${tag}`);
+              } catch (e) {
+                console.warn('GitHub generateReleaseNotes API failed:', e.message);
+              }
+            }
+
+            if (!notes) {
+              notes = `Release ${tag}\n\nSee commits for details.`;
+            }
+
+            fs.writeFileSync('RELEASE_NOTES.txt', notes, 'utf8');
+            core.setOutput('notes', notes);
+
       - name: Build and Publish Release to GitHub
         uses: tauri-apps/tauri-action@v0
         env:
@@ -57,10 +107,45 @@ jobs:
         with:
           tagName: ${{ github.ref_name || github.event.inputs.tag }}
           releaseName: "EYTAA ${{ github.ref_name || github.event.inputs.tag }}"
-          releaseBody: "See the assets below to download the latest EYTAA release for Windows."
+          releaseBody: ${{ steps.release_notes.outputs.notes }}
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
+
+      - name: Sync Full Release Notes to GitHub Release
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const tag = '${{ github.ref_name || github.event.inputs.tag }}';
+            const { owner, repo } = context.repo;
+            const fs = require('fs');
+
+            if (!fs.existsSync('RELEASE_NOTES.txt')) return;
+            const notes = fs.readFileSync('RELEASE_NOTES.txt', 'utf8').trim();
+            if (!notes) return;
+
+            try {
+              const release = await github.rest.repos.getReleaseByTag({
+                owner,
+                repo,
+                tag,
+              });
+
+              if (release && release.data && release.data.id) {
+                console.log(`Updating release ${tag} (ID: ${release.data.id}) with full changelog notes...`);
+                await github.rest.repos.updateRelease({
+                  owner,
+                  repo,
+                  release_id: release.data.id,
+                  body: notes,
+                });
+                console.log('GitHub Release description synchronized successfully!');
+              }
+            } catch (err) {
+              console.warn(`Could not sync release notes via API: ${err.message}`);
+            }
 
       - name: Clean up old releases to save storage
         uses: actions/github-script@v7

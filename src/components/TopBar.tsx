@@ -10,6 +10,7 @@ import {
   ChevronDown,
   Pin,
   LayoutGrid,
+  Film,
 } from "lucide-react";
 import { usePlayerStore } from "../stores/playerStore";
 import { useThemeStore } from "../stores/themeStore";
@@ -45,6 +46,7 @@ export function TopBar() {
     status,
     togglePlaylistDrawer,
     toggleSettingsModal,
+    toggleLibraryModal,
     isAlwaysOnTop,
     toggleAlwaysOnTop,
     showOSD,
@@ -440,6 +442,16 @@ export function TopBar() {
               <button
                 onClick={() => {
                   setIsMenuOpen(false);
+                  toggleLibraryModal();
+                }}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 text-left transition"
+              >
+                <Film style={{ color: accentColor }} className="w-3.5 h-3.5" />
+                <span>Media Library (B)</span>
+              </button>
+              <button
+                onClick={() => {
+                  setIsMenuOpen(false);
                   toggleSettingsModal();
                 }}
                 className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 text-left transition"
@@ -486,7 +498,20 @@ export function TopBar() {
       </div>
 
       {/* Right: Window Controls */}
-      <div className="flex items-center gap-0.5 shrink-0 -mr-1">
+      <div className="flex items-center gap-1 shrink-0 -mr-1">
+        {/* Quick Media Library Button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleLibraryModal();
+          }}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/15 text-neutral-300 hover:text-white text-xs font-medium transition cursor-pointer mr-0.5"
+          title="Local Media Library (B)"
+        >
+          <Film className="w-3.5 h-3.5" style={{ color: accentColor }} />
+          <span className="hidden md:inline text-[11px] font-bold">Library</span>
+        </button>
+
         {/* Quick Always On Top Button */}
         <button
           onClick={(e) => {

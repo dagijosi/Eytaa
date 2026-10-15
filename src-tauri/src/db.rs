@@ -58,6 +58,7 @@ pub fn init_db(app: &AppHandle) -> Result<DbState, String> {
         CREATE TABLE IF NOT EXISTS resume_positions (
             file_path TEXT PRIMARY KEY,
             position REAL NOT NULL,
+            duration REAL,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -75,9 +76,48 @@ pub fn init_db(app: &AppHandle) -> Result<DbState, String> {
             item_order INTEGER DEFAULT 0,
             FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS library_folders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            folder_path TEXT UNIQUE NOT NULL,
+            added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_scanned_at DATETIME
+        );
+
+        CREATE TABLE IF NOT EXISTS library_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            folder_path TEXT NOT NULL,
+            file_path TEXT UNIQUE NOT NULL,
+            file_name TEXT NOT NULL,
+            title TEXT NOT NULL,
+            media_type TEXT NOT NULL,
+            file_size INTEGER DEFAULT 0,
+            duration REAL,
+            last_modified INTEGER DEFAULT 0,
+            added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS library_favorites (
+            file_path TEXT PRIMARY KEY,
+            title TEXT,
+            media_type TEXT,
+            added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Performance Indexes for fast searching, filtering, and joins
+        CREATE INDEX IF NOT EXISTS idx_library_items_folder ON library_items (folder_path);
+        CREATE INDEX IF NOT EXISTS idx_library_items_type ON library_items (media_type);
+        CREATE INDEX IF NOT EXISTS idx_library_items_title ON library_items (title COLLATE NOCASE);
+        CREATE INDEX IF NOT EXISTS idx_library_items_path ON library_items (file_path);
+        CREATE INDEX IF NOT EXISTS idx_library_favorites_path ON library_favorites (file_path);
+        CREATE INDEX IF NOT EXISTS idx_resume_positions_path ON resume_positions (file_path);
+        CREATE INDEX IF NOT EXISTS idx_playback_history_path ON playback_history (file_path);
         "#,
     )
     .map_err(|e| format!("Failed to initialize database schema: {}", e))?;
+
+    // Migration: ensure duration column exists on resume_positions
+    let _ = conn.execute("ALTER TABLE resume_positions ADD COLUMN duration REAL", []);
 
     Ok(DbState {
         conn: Mutex::new(conn),
@@ -143,14 +183,42 @@ pub fn db_set_resume_position(
     state: tauri::State<'_, DbState>,
     file_path: String,
     position: f64,
+    duration: Option<f64>,
 ) -> Result<(), String> {
     let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+
+    // If near completion (>92% watched or within 20s of end for videos > 60s), remove from resume_positions
+    if let Some(dur) = duration {
+        if dur > 60.0 && (position >= dur * 0.92 || position >= dur - 20.0) {
+            let _ = conn.execute("DELETE FROM resume_positions WHERE file_path = ?1", params![file_path]);
+            return Ok(());
+        }
+    }
+
     conn.execute(
-        "INSERT INTO resume_positions (file_path, position, updated_at) VALUES (?1, ?2, CURRENT_TIMESTAMP)
-         ON CONFLICT(file_path) DO UPDATE SET position = excluded.position, updated_at = CURRENT_TIMESTAMP",
-        params![file_path, position],
+        "INSERT INTO resume_positions (file_path, position, duration, updated_at) VALUES (?1, ?2, ?3, CURRENT_TIMESTAMP)
+         ON CONFLICT(file_path) DO UPDATE SET
+            position = excluded.position,
+            duration = COALESCE(excluded.duration, resume_positions.duration),
+            updated_at = CURRENT_TIMESTAMP",
+        params![file_path, position, duration],
     )
     .map_err(|e| e.to_string())?;
+
+    // Update library_items duration so the library knows the total duration
+    if let Some(dur) = duration {
+        if dur > 0.0 {
+            let _ = conn.execute(
+                "UPDATE library_items SET duration = ?1 WHERE file_path = ?2 AND (duration IS NULL OR duration <= 0)",
+                params![dur, file_path],
+            );
+            let _ = conn.execute(
+                "UPDATE playback_history SET duration = ?1 WHERE file_path = ?2 AND (duration IS NULL OR duration <= 0)",
+                params![dur, file_path],
+            );
+        }
+    }
+
     Ok(())
 }
 
@@ -236,4 +304,359 @@ pub fn db_clear_history(state: tauri::State<'_, DbState>) -> Result<(), String> 
     let _ = conn.execute("DELETE FROM resume_positions", []);
     Ok(())
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LibraryFolderDto {
+    pub id: i64,
+    pub folder_path: String,
+    pub added_at: String,
+    pub last_scanned_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LibraryItemDto {
+    pub id: i64,
+    pub folder_path: String,
+    pub file_path: String,
+    pub file_name: String,
+    pub title: String,
+    pub media_type: String,
+    pub file_size: u64,
+    pub duration: Option<f64>,
+    pub last_modified: u64,
+    pub added_at: String,
+    pub is_favorite: bool,
+    pub resume_position: Option<f64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FavoriteItemDto {
+    pub file_path: String,
+    pub title: Option<String>,
+    pub media_type: Option<String>,
+    pub added_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UnfinishedVideoDto {
+    pub file_path: String,
+    pub title: String,
+    pub duration: Option<f64>,
+    pub position: f64,
+    pub updated_at: String,
+    pub progress_percent: f64,
+    pub media_type: String,
+}
+
+#[tauri::command]
+pub fn db_add_library_folder(
+    state: tauri::State<'_, DbState>,
+    folder_path: String,
+) -> Result<i64, String> {
+    let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+    conn.execute(
+        "INSERT INTO library_folders (folder_path, added_at, last_scanned_at)
+         VALUES (?1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+         ON CONFLICT(folder_path) DO UPDATE SET last_scanned_at = CURRENT_TIMESTAMP",
+        params![folder_path],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let id = conn.last_insert_rowid();
+    Ok(id)
+}
+
+#[tauri::command]
+pub fn db_remove_library_folder(
+    state: tauri::State<'_, DbState>,
+    folder_path: String,
+) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+    let _ = conn.execute(
+        "DELETE FROM library_folders WHERE folder_path = ?1",
+        params![folder_path],
+    );
+    let _ = conn.execute(
+        "DELETE FROM library_items WHERE folder_path = ?1",
+        params![folder_path],
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub fn db_get_library_folders(
+    state: tauri::State<'_, DbState>,
+) -> Result<Vec<LibraryFolderDto>, String> {
+    let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+    let mut stmt = conn
+        .prepare("SELECT id, folder_path, added_at, last_scanned_at FROM library_folders ORDER BY added_at DESC")
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(LibraryFolderDto {
+                id: row.get(0)?,
+                folder_path: row.get(1)?,
+                added_at: row.get(2)?,
+                last_scanned_at: row.get(3)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+
+    Ok(rows)
+}
+
+#[tauri::command]
+pub fn db_save_library_items(
+    state: tauri::State<'_, DbState>,
+    items: Vec<crate::library::ScannedMediaItem>,
+) -> Result<usize, String> {
+    let mut conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let mut count = 0;
+    {
+        let mut stmt = tx
+            .prepare(
+                "INSERT INTO library_items (folder_path, file_path, file_name, title, media_type, file_size, last_modified)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                 ON CONFLICT(file_path) DO UPDATE SET
+                    title = excluded.title,
+                    file_size = excluded.file_size,
+                    last_modified = excluded.last_modified",
+            )
+            .map_err(|e| e.to_string())?;
+
+        for item in items {
+            if stmt
+                .execute(params![
+                    item.folder_path,
+                    item.file_path,
+                    item.file_name,
+                    item.title,
+                    item.media_type,
+                    item.file_size as i64,
+                    item.last_modified as i64,
+                ])
+                .is_ok()
+            {
+                count += 1;
+            }
+        }
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(count)
+}
+
+#[tauri::command]
+pub fn db_get_library_items(
+    state: tauri::State<'_, DbState>,
+    folder: Option<String>,
+    media_type: Option<String>,
+    search: Option<String>,
+) -> Result<Vec<LibraryItemDto>, String> {
+    let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+
+    let mut sql = String::from(
+        "SELECT li.id, li.folder_path, li.file_path, li.file_name, li.title, li.media_type,
+                li.file_size, COALESCE(li.duration, rp.duration) as duration, li.last_modified, li.added_at,
+                (lf.file_path IS NOT NULL) as is_favorite,
+                rp.position as resume_position
+         FROM library_items li
+         LEFT JOIN library_favorites lf ON li.file_path = lf.file_path
+         LEFT JOIN resume_positions rp ON li.file_path = rp.file_path
+         WHERE 1=1 ",
+    );
+
+    let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+    if let Some(f) = folder {
+        if !f.is_empty() {
+            sql.push_str("AND li.folder_path = ? ");
+            params_vec.push(Box::new(f));
+        }
+    }
+
+    if let Some(mt) = media_type {
+        if !mt.is_empty() && mt != "all" {
+            sql.push_str("AND li.media_type = ? ");
+            params_vec.push(Box::new(mt));
+        }
+    }
+
+    if let Some(s) = search {
+        let trimmed = s.trim();
+        if !trimmed.is_empty() {
+            sql.push_str("AND (li.title LIKE ? OR li.file_name LIKE ?) ");
+            let pattern = format!("%{}%", trimmed);
+            params_vec.push(Box::new(pattern.clone()));
+            params_vec.push(Box::new(pattern));
+        }
+    }
+
+    sql.push_str("ORDER BY li.title COLLATE NOCASE ASC");
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+
+    let rusqlite_params: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|b| b.as_ref()).collect();
+
+    let items = stmt
+        .query_map(&rusqlite_params[..], |row| {
+            let file_size_i64: i64 = row.get(6)?;
+            let last_mod_i64: i64 = row.get(8)?;
+            Ok(LibraryItemDto {
+                id: row.get(0)?,
+                folder_path: row.get(1)?,
+                file_path: row.get(2)?,
+                file_name: row.get(3)?,
+                title: row.get(4)?,
+                media_type: row.get(5)?,
+                file_size: file_size_i64 as u64,
+                duration: row.get(7)?,
+                last_modified: last_mod_i64 as u64,
+                added_at: row.get(9)?,
+                is_favorite: row.get(10)?,
+                resume_position: row.get(11)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+
+    Ok(items)
+}
+
+#[tauri::command]
+pub fn db_toggle_favorite(
+    state: tauri::State<'_, DbState>,
+    file_path: String,
+    title: Option<String>,
+    media_type: Option<String>,
+) -> Result<bool, String> {
+    let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+
+    let mut stmt = conn
+        .prepare("SELECT 1 FROM library_favorites WHERE file_path = ?1")
+        .map_err(|e| e.to_string())?;
+
+    let exists = stmt.exists(params![file_path]).map_err(|e| e.to_string())?;
+
+    if exists {
+        conn.execute(
+            "DELETE FROM library_favorites WHERE file_path = ?1",
+            params![file_path],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(false)
+    } else {
+        conn.execute(
+            "INSERT INTO library_favorites (file_path, title, media_type, added_at) VALUES (?1, ?2, ?3, CURRENT_TIMESTAMP)",
+            params![file_path, title, media_type.unwrap_or_else(|| "video".to_string())],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+}
+
+#[tauri::command]
+pub fn db_get_favorites(
+    state: tauri::State<'_, DbState>,
+) -> Result<Vec<FavoriteItemDto>, String> {
+    let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+    let mut stmt = conn
+        .prepare("SELECT file_path, title, media_type, added_at FROM library_favorites ORDER BY added_at DESC")
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(FavoriteItemDto {
+                file_path: row.get(0)?,
+                title: row.get(1)?,
+                media_type: row.get(2)?,
+                added_at: row.get(3)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+
+    Ok(rows)
+}
+
+#[tauri::command]
+pub fn db_is_favorite(
+    state: tauri::State<'_, DbState>,
+    file_path: String,
+) -> Result<bool, String> {
+    let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+    let mut stmt = conn
+        .prepare("SELECT 1 FROM library_favorites WHERE file_path = ?1")
+        .map_err(|e| e.to_string())?;
+    let exists = stmt.exists(params![file_path]).map_err(|e| e.to_string())?;
+    Ok(exists)
+}
+
+#[tauri::command]
+pub fn db_get_unfinished_videos(
+    state: tauri::State<'_, DbState>,
+) -> Result<Vec<UnfinishedVideoDto>, String> {
+    let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT r.file_path,
+                    COALESCE(h.title, li.title, r.file_path) as title,
+                    COALESCE(r.duration, h.duration, li.duration) as duration,
+                    r.position,
+                    r.updated_at,
+                    COALESCE(li.media_type, 'video') as media_type
+             FROM resume_positions r
+             LEFT JOIN playback_history h ON r.file_path = h.file_path
+             LEFT JOIN library_items li ON r.file_path = li.file_path
+             WHERE r.position >= 10
+             ORDER BY r.updated_at DESC
+             LIMIT 30",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            let file_path: String = row.get(0)?;
+            let title: String = row.get(1)?;
+            let duration: Option<f64> = row.get(2)?;
+            let position: f64 = row.get(3)?;
+            let updated_at: String = row.get(4)?;
+            let media_type: String = row.get(5)?;
+
+            let percent = if let Some(dur) = duration {
+                if dur > 0.0 {
+                    ((position / dur) * 100.0).clamp(0.0, 100.0)
+                } else {
+                    0.0
+                }
+            } else {
+                0.0
+            };
+
+            Ok(UnfinishedVideoDto {
+                file_path,
+                title,
+                duration,
+                position,
+                updated_at,
+                progress_percent: percent,
+                media_type,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        // Filter out videos that are effectively finished (>92% watched)
+        .filter(|item| item.progress_percent < 92.0)
+        .collect();
+
+    Ok(rows)
+}
+
 

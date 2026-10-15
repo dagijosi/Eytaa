@@ -2,6 +2,8 @@ use tauri::{Emitter, Manager};
 
 mod db;
 mod media;
+mod library;
+mod thumbnailer;
 
 #[cfg(windows)]
 fn setup_dll_environment() {
@@ -101,13 +103,13 @@ fn should_reuse_single_window() -> bool {
             if let Ok(conn) = rusqlite::Connection::open(&db_path) {
                 if let Ok(mut stmt) = conn.prepare("SELECT value FROM user_preferences WHERE key = 'reuseSingleWindow'") {
                     if let Ok(val) = stmt.query_row([], |row| row.get::<_, String>(0)) {
-                        return val == "true";
+                        return val != "false";
                     }
                 }
             }
         }
     }
-    false
+    true // Clean Windows installations default to single-window media reuse
 }
 
 #[tauri::command]
@@ -171,7 +173,20 @@ pub fn run() {
             db::db_get_recent_files,
             db::db_delete_history,
             db::db_clear_history,
+            db::db_add_library_folder,
+            db::db_remove_library_folder,
+            db::db_get_library_folders,
+            db::db_save_library_items,
+            db::db_get_library_items,
+            db::db_toggle_favorite,
+            db::db_get_favorites,
+            db::db_is_favorite,
+            db::db_get_unfinished_videos,
             media::find_sibling_episodes,
+            library::scan_local_folder,
+            library::export_playlist_to_file,
+            library::import_playlist_from_file,
+            thumbnailer::get_thumbnail,
             pip::enter_pip,
             pip::exit_pip,
         ])

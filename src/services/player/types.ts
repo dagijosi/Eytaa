@@ -71,7 +71,7 @@ export interface MediaPlayerService {
   setVolume(value: number): Promise<void>;
   setMuted(muted: boolean): Promise<void>;
   setPlaybackRate(rate: number): Promise<void>;
-  loadSubtitle(filePath: string): Promise<void>;
+  loadSubtitle(filePath: string): Promise<boolean>;
   selectAudioTrack(trackId: number): Promise<void>;
   selectSubtitleTrack(trackId: number): Promise<void>;
   getPlayerState(): PlayerState;
