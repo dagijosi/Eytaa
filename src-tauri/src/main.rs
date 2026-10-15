@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    vistara_player_lib::run()
+    eytaa_player_lib::run()
 }

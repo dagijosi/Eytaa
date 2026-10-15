@@ -64,7 +64,7 @@ fn setup_dll_environment() {
                         );
                     }
                     println!(
-                        "[Vistara] Native DLL directory configured: {:?}",
+                        "[EYTAA] Native DLL directory configured: {:?}",
                         canonical
                     );
                     break;
@@ -96,9 +96,13 @@ fn extract_media_arg(args: &[String]) -> Option<String> {
 
 fn should_reuse_single_window() -> bool {
     if let Ok(app_data) = std::env::var("APPDATA") {
-        let db_path = std::path::PathBuf::from(app_data)
-            .join("com.dagi.eytaa")
-            .join("vistara.db");
+        let app_dir = std::path::PathBuf::from(app_data).join("com.dagi.eytaa");
+        let eytaa_db = app_dir.join("eytaa.db");
+        let db_path = if eytaa_db.exists() {
+            eytaa_db
+        } else {
+            app_dir.join("vistara.db")
+        };
         if db_path.exists() {
             if let Ok(conn) = rusqlite::Connection::open(&db_path) {
                 if let Ok(mut stmt) = conn.prepare("SELECT value FROM user_preferences WHERE key = 'reuseSingleWindow'") {
@@ -184,12 +188,17 @@ pub fn run() {
             db::db_get_unfinished_videos,
             media::find_sibling_episodes,
             library::scan_local_folder,
+            library::cancel_library_scan,
             library::export_playlist_to_file,
             library::import_playlist_from_file,
+            db::db_reconcile_missing_items,
+            db::db_clean_missing_items,
             thumbnailer::get_thumbnail,
+            thumbnailer::get_thumbnail_cache_stats,
+            thumbnailer::clean_thumbnail_cache,
             pip::enter_pip,
             pip::exit_pip,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Vistara application");
+        .expect("error while running EYTAA application");
 }

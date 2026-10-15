@@ -18,7 +18,11 @@ import {
   LayoutGrid,
   List,
   HardDrive,
+  Copy,
+  Database,
+  Ban,
 } from "lucide-react";
+import { listen } from "@tauri-apps/api/event";
 import { usePlayerStore } from "../stores/playerStore";
 import { useThemeStore } from "../stores/themeStore";
 import {
@@ -27,12 +31,14 @@ import {
   LibraryItem,
   FavoriteItem,
   UnfinishedVideo,
+  ScanProgressPayload,
+  ThumbnailCacheStats,
 } from "../services/library/libraryService";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { formatMediaTitle } from "../utils/mediaTitle";
 import { EytaaLogo } from "./EytaaLogo";
 
-type LibraryTab = "all" | "continue" | "recent" | "favorites" | "folders";
+type LibraryTab = "all" | "continue" | "recent" | "favorites" | "duplicates" | "folders";
 type MediaTypeFilter = "all" | "video" | "audio";
 
 function formatDuration(seconds?: number): string {
@@ -82,12 +88,16 @@ function MediaThumbnail({
   title,
   duration,
   progressPercent,
+  isAvailable = true,
+  isDuplicate = false,
 }: {
   filePath: string;
   mediaType: string;
   title: string;
   duration?: number;
   progressPercent?: number;
+  isAvailable?: boolean;
+  isDuplicate?: boolean;
 }) {
   const { accentColor, accentGlow } = useThemeStore();
   const [thumbSrc, setThumbSrc] = useState<string | null>(null);
@@ -99,7 +109,6 @@ function MediaThumbnail({
     const el = containerRef.current;
     if (!el) return;
 
-    // Use IntersectionObserver to only request thumbnails when the item enters or is near the viewport
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) {
@@ -107,7 +116,7 @@ function MediaThumbnail({
           observer.disconnect();
         }
       },
-      { rootMargin: "200px" }
+      { rootMargin: "200px" },
     );
 
     observer.observe(el);
@@ -152,7 +161,9 @@ function MediaThumbnail({
   return (
     <div
       ref={containerRef}
-      className="relative w-full aspect-video bg-neutral-900 rounded-xl overflow-hidden select-none border border-white/5"
+      className={`relative w-full aspect-video bg-neutral-900 rounded-xl overflow-hidden select-none border ${
+        !isAvailable ? "border-rose-500/30 opacity-70" : "border-white/5"
+      }`}
     >
       {isLoading && !thumbSrc && (
         <div className="absolute inset-0 flex items-center justify-center bg-neutral-900/40 z-10">
@@ -193,6 +204,17 @@ function MediaThumbnail({
       <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded-md bg-black/70 backdrop-blur-md text-[10px] font-mono font-bold text-neutral-300 border border-white/10 uppercase">
         {ext}
       </div>
+
+      {/* Offline / Duplicate status pill */}
+      {!isAvailable ? (
+        <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md bg-rose-600/90 backdrop-blur-md text-[9px] font-mono font-bold text-white border border-rose-400/40 uppercase">
+          Offline
+        </div>
+      ) : isDuplicate ? (
+        <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md bg-amber-500/90 backdrop-blur-md text-[9px] font-mono font-bold text-black border border-amber-300/40 uppercase">
+          Duplicate
+        </div>
+      ) : null}
 
       {/* Duration Badge */}
       {duration && duration > 0 ? (
@@ -236,12 +258,17 @@ export function MediaLibraryModal() {
   const [unfinished, setUnfinished] = useState<UnfinishedVideo[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [scanStatus, setScanStatus] = useState<string | null>(null);
+  const [scanProgress, setScanProgress] = useState<ScanProgressPayload | null>(null);
+
+  // Cache stats & maintenance
+  const [cacheStats, setCacheStats] = useState<ThumbnailCacheStats | null>(null);
+  const [isCleaningCache, setIsCleaningCache] = useState(false);
 
   // Progressive rendering / infinite scroll state to prevent React DOM overload
   const [visibleCount, setVisibleCount] = useState(48);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  // Debounce search input by 250ms to prevent hammering SQLite and lagging typing
+  // Debounce search input by 250ms
   useEffect(() => {
     if (searchInput !== debouncedSearchQuery) {
       setIsDebouncing(true);
@@ -256,7 +283,7 @@ export function MediaLibraryModal() {
   // Load all library data
   const loadData = useCallback(async () => {
     try {
-      const [fList, iList, favList, unfList] = await Promise.all([
+      const [fList, iList, favList, unfList, cStats] = await Promise.all([
         libraryService.getLibraryFolders(),
         libraryService.getLibraryItems({
           mediaType: mediaTypeFilter === "all" ? undefined : mediaTypeFilter,
@@ -264,12 +291,14 @@ export function MediaLibraryModal() {
         }),
         libraryService.getFavorites(),
         libraryService.getUnfinishedVideos(),
+        libraryService.getThumbnailCacheStats(),
       ]);
 
       setFolders(fList);
       setItems(iList);
       setFavorites(favList);
       setUnfinished(unfList);
+      setCacheStats(cStats);
     } catch (e) {
       console.error("Load library data error:", e);
     }
@@ -281,23 +310,40 @@ export function MediaLibraryModal() {
     }
   }, [isLibraryOpen, loadData]);
 
-  // Folder scanning handler
+  // Folder scanning handler with live event listening & missing item reconciliation
   const handleScanFolder = async (folderPath: string) => {
     setIsScanning(true);
     setScanStatus(`Scanning ${folderPath.split(/[/\\]/).pop()}...`);
+    let unlisten: (() => void) | null = null;
     try {
+      unlisten = await listen<ScanProgressPayload>("library_scan_progress", (event) => {
+        setScanProgress(event.payload);
+        if (event.payload.current_directory) {
+          const dirName =
+            event.payload.current_directory.split(/[/\\]/).pop() ||
+            event.payload.current_directory;
+          setScanStatus(`Scanning ${dirName}... (${event.payload.total_found} media files found)`);
+        }
+      });
+
       const scanned = await libraryService.scanFolder(folderPath);
       if (scanned.length > 0) {
         await libraryService.saveLibraryItems(scanned);
+        await libraryService.reconcileMissingItems(
+          folderPath,
+          scanned.map((s) => s.file_path),
+        );
       }
       showOSD(`Scanned ${scanned.length} media files`);
       await loadData();
     } catch (e) {
       console.error("Folder scan failed:", e);
-      showOSD("Folder scan failed");
+      showOSD("Folder scan failed or drive offline");
     } finally {
+      if (unlisten) unlisten();
       setIsScanning(false);
       setScanStatus(null);
+      setScanProgress(null);
     }
   };
 
@@ -325,7 +371,7 @@ export function MediaLibraryModal() {
     }
   };
 
-  // Rescan all watched folders
+  // Rescan all watched folders (skipping offline drives gracefully)
   const handleRescanAll = async () => {
     if (folders.length === 0) {
       await handleAddFolder();
@@ -334,13 +380,32 @@ export function MediaLibraryModal() {
 
     setIsScanning(true);
     setScanStatus("Rescanning all folders...");
+    let unlisten: (() => void) | null = null;
     try {
+      unlisten = await listen<ScanProgressPayload>("library_scan_progress", (event) => {
+        setScanProgress(event.payload);
+        if (event.payload.current_directory) {
+          const dirName =
+            event.payload.current_directory.split(/[/\\]/).pop() ||
+            event.payload.current_directory;
+          setScanStatus(`Scanning ${dirName}... (${event.payload.total_found} media files found)`);
+        }
+      });
+
       let totalFound = 0;
       for (const f of folders) {
+        if (f.is_accessible === false) {
+          // Gracefully protect offline external drives from accidental wipe
+          continue;
+        }
         setScanStatus(`Scanning ${f.folder_path.split(/[/\\]/).pop()}...`);
         const scanned = await libraryService.scanFolder(f.folder_path);
         if (scanned.length > 0) {
           totalFound += await libraryService.saveLibraryItems(scanned);
+          await libraryService.reconcileMissingItems(
+            f.folder_path,
+            scanned.map((s) => s.file_path),
+          );
         }
       }
       showOSD(`Library refreshed: ${totalFound} items updated`);
@@ -348,8 +413,43 @@ export function MediaLibraryModal() {
     } catch (e) {
       console.error("Rescan all error:", e);
     } finally {
+      if (unlisten) unlisten();
       setIsScanning(false);
       setScanStatus(null);
+      setScanProgress(null);
+    }
+  };
+
+  // Cancellation handler
+  const handleCancelScan = async () => {
+    await libraryService.cancelScan();
+    setScanStatus("Cancelling scan...");
+    showOSD("Scan cancelled");
+  };
+
+  // Thumbnail cache cleanup
+  const handleClearCache = async () => {
+    setIsCleaningCache(true);
+    try {
+      const removed = await libraryService.cleanThumbnailCache("all");
+      showOSD(`Cleared ${removed} cached thumbnails`);
+      const updated = await libraryService.getThumbnailCacheStats();
+      setCacheStats(updated);
+    } catch (e) {
+      console.error("Clear cache error:", e);
+    } finally {
+      setIsCleaningCache(false);
+    }
+  };
+
+  // Clean missing records
+  const handleCleanMissing = async () => {
+    try {
+      const removed = await libraryService.cleanMissingItems();
+      showOSD(`Removed ${removed} missing records`);
+      await loadData();
+    } catch (e) {
+      console.error("Clean missing records error:", e);
     }
   };
 
@@ -448,14 +548,16 @@ export function MediaLibraryModal() {
       if (imported.length > 0) {
         addToPlaylist(imported.map((i) => i.filePath));
         showOSD(`Imported ${imported.length} tracks into playlist`);
-      } else {
-        showOSD("Playlist is empty or invalid");
       }
-    } catch (err) {
-      console.error("Import playlist error:", err);
-      showOSD("Import failed");
+    } catch (e) {
+      console.error("Import playlist error:", e);
+      showOSD("Playlist import failed");
     }
   };
+
+  // Duplicates and offline statistics
+  const duplicateCount = useMemo(() => items.filter((i) => i.is_duplicate).length, [items]);
+  const offlineCount = useMemo(() => items.filter((i) => !i.is_available).length, [items]);
 
   // Filtered views
   const displayItems = useMemo(() => {
@@ -484,6 +586,14 @@ export function MediaLibraryModal() {
       );
     }
 
+    if (activeTab === "duplicates") {
+      return items.filter(
+        (i) =>
+          i.is_duplicate &&
+          (!q || i.title.toLowerCase().includes(q) || i.file_path.toLowerCase().includes(q)),
+      );
+    }
+
     return items;
   }, [activeTab, items, unfinished, favorites, debouncedSearchQuery]);
 
@@ -492,7 +602,7 @@ export function MediaLibraryModal() {
     setVisibleCount(48);
   }, [activeTab, mediaTypeFilter, debouncedSearchQuery]);
 
-  // Infinite scroll observer to progressively load items without UI frame drops
+  // Infinite scroll observer
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
@@ -537,6 +647,11 @@ export function MediaLibraryModal() {
               >
                 {items.length} {items.length === 1 ? "item" : "items"}
               </span>
+              {offlineCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                  {offlineCount} offline
+                </span>
+              )}
             </div>
             <p className="text-xs text-neutral-400">
               Browse, search, and manage your local movie, show, and music collection
@@ -651,17 +766,40 @@ export function MediaLibraryModal() {
         </div>
       </header>
 
-      {/* Scanning status banner */}
+      {/* Scanning status banner with real-time feedback and Cancel button */}
       {isScanning && (
         <div
           style={{ backgroundColor: `${accentColor}18`, borderColor: `${accentColor}44` }}
-          className="px-6 py-2 border-b flex items-center justify-between text-xs text-neutral-200"
+          className="px-6 py-2.5 border-b flex items-center justify-between text-xs text-neutral-200 animate-in fade-in duration-150"
         >
-          <div className="flex items-center gap-2">
-            <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ color: accentColor }} />
-            <span>{scanStatus || "Scanning folders for media files..."}</span>
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" style={{ color: accentColor }} />
+            <div className="min-w-0 flex-1">
+              <span className="font-medium text-white truncate block">
+                {scanStatus || "Scanning folders for media files..."}
+              </span>
+              {scanProgress && scanProgress.current_directory && (
+                <span className="text-[10px] text-neutral-400 truncate block font-mono">
+                  {scanProgress.current_directory}
+                </span>
+              )}
+            </div>
           </div>
-          <span className="text-[11px] font-mono opacity-70">Background scanner active</span>
+          <div className="flex items-center gap-3 shrink-0 ml-4">
+            {scanProgress && (
+              <span className="text-[11px] font-mono text-neutral-300">
+                Found {scanProgress.total_found} media
+              </span>
+            )}
+            <button
+              onClick={handleCancelScan}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-xs font-bold transition cursor-pointer"
+              title="Stop scanning"
+            >
+              <Ban className="w-3 h-3" />
+              <span>Cancel</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -671,9 +809,15 @@ export function MediaLibraryModal() {
           {[
             { id: "all", label: "All Media", count: items.length, icon: Film },
             { id: "continue", label: "Continue Watching", count: unfinished.length, icon: Clock },
-            { id: "recent", label: "Recently Played", count: items.filter(i => !!i.resume_position).length, icon: History },
+            {
+              id: "recent",
+              label: "Recently Played",
+              count: items.filter((i) => !!i.resume_position).length,
+              icon: History,
+            },
             { id: "favorites", label: "Favorites", count: favorites.length, icon: Heart },
-            { id: "folders", label: "Folders", count: folders.length, icon: Folder },
+            { id: "duplicates", label: "Duplicates", count: duplicateCount, icon: Copy },
+            { id: "folders", label: "Folders & Storage", count: folders.length, icon: Folder },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -692,7 +836,7 @@ export function MediaLibraryModal() {
                 }
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${
                   isActive
-                    ? "shadow-sm"
+                    ? "shadow-sm font-bold"
                     : "bg-white/5 border-transparent text-neutral-400 hover:text-white hover:bg-white/10"
                 }`}
               >
@@ -712,7 +856,7 @@ export function MediaLibraryModal() {
           })}
         </nav>
 
-        {/* Media Type Filter (only when on All Media tab) */}
+        {/* Media Type Filter (on All Media tab) */}
         {activeTab === "all" && (
           <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10 text-xs">
             {(["all", "video", "audio"] as MediaTypeFilter[]).map((type) => (
@@ -734,7 +878,7 @@ export function MediaLibraryModal() {
 
       {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto p-6">
-        {/* VIEW: Watched Folders Management */}
+        {/* VIEW: Watched Folders Management & Cache Storage */}
         {activeTab === "folders" ? (
           <div className="max-w-4xl mx-auto space-y-6">
             <div className="flex items-center justify-between">
@@ -780,31 +924,53 @@ export function MediaLibraryModal() {
                   const folderItemCount = items.filter(
                     (i) => i.folder_path === folder.folder_path,
                   ).length;
+                  const isOffline = folder.is_accessible === false;
 
                   return (
                     <div
                       key={folder.id}
-                      className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10 hover:border-white/20 transition group"
+                      className={`flex items-center justify-between p-4 rounded-xl border transition group ${
+                        isOffline
+                          ? "bg-amber-500/5 border-amber-500/20 hover:border-amber-500/30"
+                          : "bg-white/5 border-white/10 hover:border-white/20"
+                      }`}
                     >
                       <div className="flex items-center gap-3.5 min-w-0 flex-1">
                         <div
-                          style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
+                          style={{
+                            backgroundColor: isOffline
+                              ? "rgba(245, 158, 11, 0.15)"
+                              : `${accentColor}20`,
+                            color: isOffline ? "#f59e0b" : accentColor,
+                          }}
                           className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border border-white/5"
                         >
                           <HardDrive className="w-5 h-5" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h4 className="text-xs font-bold text-white truncate font-mono">
-                            {folder.folder_path}
-                          </h4>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-xs font-bold text-white truncate font-mono">
+                              {folder.folder_path}
+                            </h4>
+                            {isOffline && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-bold">
+                                Drive Offline
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-3 text-[11px] text-neutral-400 mt-0.5">
-                            <span>{folderItemCount} files indexed</span>
+                            <span>
+                              {folder.item_count || folderItemCount} files indexed
+                              {isOffline ? " (Safe offline)" : ""}
+                            </span>
                             <span>•</span>
                             <span>Added: {new Date(folder.added_at).toLocaleDateString()}</span>
                             {folder.last_scanned_at && (
                               <>
                                 <span>•</span>
-                                <span>Last scanned: {new Date(folder.last_scanned_at).toLocaleTimeString()}</span>
+                                <span>
+                                  Last scanned: {new Date(folder.last_scanned_at).toLocaleTimeString()}
+                                </span>
                               </>
                             )}
                           </div>
@@ -814,9 +980,9 @@ export function MediaLibraryModal() {
                       <div className="flex items-center gap-2 shrink-0 ml-4">
                         <button
                           onClick={() => handleScanFolder(folder.folder_path)}
-                          disabled={isScanning}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-medium text-neutral-200 transition"
-                          title="Rescan this folder"
+                          disabled={isScanning || isOffline}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-medium text-neutral-200 transition disabled:opacity-40"
+                          title={isOffline ? "Drive is offline / disconnected" : "Rescan this folder"}
                         >
                           <RefreshCw className="w-3 h-3" />
                           <span>Rescan</span>
@@ -835,6 +1001,55 @@ export function MediaLibraryModal() {
                 })}
               </div>
             )}
+
+            {/* Thumbnail Cache & Storage Limits Maintenance Card */}
+            <div className="p-5 rounded-2xl bg-white/5 border border-white/10 space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div
+                    style={{ backgroundColor: `${accentColor}18`, color: accentColor }}
+                    className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border border-white/5"
+                  >
+                    <Database className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                      Thumbnail Cache & Database Resilience
+                    </h3>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      Fast local image cache used to render video preview artwork without lag
+                    </p>
+                  </div>
+                </div>
+
+                {cacheStats && (
+                  <span className="text-xs font-mono font-bold text-neutral-300 bg-white/5 px-2.5 py-1 rounded-lg border border-white/10">
+                    {cacheStats.count} thumbnails ({formatBytes(cacheStats.total_bytes)})
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2.5 pt-3 border-t border-white/5">
+                <button
+                  onClick={handleClearCache}
+                  disabled={isCleaningCache}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-neutral-200 hover:text-white transition cursor-pointer disabled:opacity-50"
+                  title="Purge all generated thumbnail images from disk cache"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                  <span>{isCleaningCache ? "Cleaning..." : "Clear Thumbnail Cache"}</span>
+                </button>
+
+                <button
+                  onClick={handleCleanMissing}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-neutral-200 hover:text-white transition cursor-pointer"
+                  title="Remove library entries for files that were permanently deleted from disk"
+                >
+                  <Ban className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Purge Deleted / Offline Records</span>
+                </button>
+              </div>
+            </div>
           </div>
         ) : displayItems.length === 0 ? (
           /* Empty Search or Tab State */
@@ -844,6 +1059,8 @@ export function MediaLibraryModal() {
                 <Heart className="w-8 h-8" />
               ) : activeTab === "continue" ? (
                 <Clock className="w-8 h-8" />
+              ) : activeTab === "duplicates" ? (
+                <Copy className="w-8 h-8" />
               ) : (
                 <Film className="w-8 h-8" />
               )}
@@ -855,26 +1072,15 @@ export function MediaLibraryModal() {
                 ? "No favorite tracks or videos yet"
                 : activeTab === "continue"
                 ? "No unfinished videos"
+                : activeTab === "duplicates"
+                ? "No duplicate files found in your collection"
                 : "No media items found"}
             </h3>
             <p className="text-xs text-neutral-400 max-w-sm mt-1">
-              {debouncedSearchQuery
-                ? "Try searching for a different keyword or filename."
-                : activeTab === "favorites"
-                ? "Click the heart icon on any video or audio track to add it to your favorites."
-                : activeTab === "continue"
-                ? "Videos you begin watching will automatically appear here with progress bars."
-                : "Add folders to start building your personal library."}
+              {activeTab === "duplicates"
+                ? "EYTAA uses fingerprint hashing to detect identical media files across different folders."
+                : "Add watched folders or drag and drop video and audio files into EYTAA to get started."}
             </p>
-            {folders.length === 0 && !debouncedSearchQuery && (
-              <button
-                onClick={handleAddFolder}
-                style={{ backgroundColor: accentColor, color: accentText }}
-                className="mt-4 px-4 py-2 rounded-xl text-xs font-bold hover:brightness-110 cursor-pointer"
-              >
-                Add Your Media Folder
-              </button>
-            )}
           </div>
         ) : viewMode === "grid" ? (
           /* GRID VIEW */
@@ -883,28 +1089,46 @@ export function MediaLibraryModal() {
               const filePath = "file_path" in item ? item.file_path : "";
               const title =
                 formatMediaTitle(item.title, filePath) || item.title || "Untitled Media";
-              const duration = "duration" in item && typeof item.duration === "number" ? item.duration : undefined;
-              const mediaType = "media_type" in item && typeof item.media_type === "string" ? item.media_type : "video";
-              const fileSize = "file_size" in item && typeof (item as LibraryItem).file_size === "number" ? (item as LibraryItem).file_size : undefined;
+              const duration =
+                "duration" in item && typeof item.duration === "number" ? item.duration : undefined;
+              const mediaType =
+                "media_type" in item && typeof item.media_type === "string"
+                  ? item.media_type
+                  : "video";
+              const fileSize =
+                "file_size" in item && typeof (item as LibraryItem).file_size === "number"
+                  ? (item as LibraryItem).file_size
+                  : undefined;
               const isFav =
                 "is_favorite" in item
                   ? Boolean((item as LibraryItem).is_favorite)
                   : favorites.some((f) => f.file_path === filePath);
 
-              const resumePos = "resume_position" in item && typeof (item as LibraryItem).resume_position === "number" ? (item as LibraryItem).resume_position : undefined;
+              const resumePos =
+                "resume_position" in item && typeof (item as LibraryItem).resume_position === "number"
+                  ? (item as LibraryItem).resume_position
+                  : undefined;
               const progressPercent =
-                "progress_percent" in item && typeof (item as UnfinishedVideo).progress_percent === "number"
+                "progress_percent" in item &&
+                typeof (item as UnfinishedVideo).progress_percent === "number"
                   ? (item as UnfinishedVideo).progress_percent
                   : resumePos && duration && duration > 0
                   ? Math.round((resumePos / duration) * 100)
                   : undefined;
               const watchedStatus = formatWatchedStatus(resumePos, duration, progressPercent);
 
+              const isAvailable = (item as LibraryItem).is_available ?? true;
+              const isDuplicate = (item as LibraryItem).is_duplicate ?? false;
+
               return (
                 <div
                   key={filePath}
                   onClick={() => handlePlayItem(filePath)}
-                  className="group relative flex flex-col rounded-2xl bg-neutral-900/60 border border-white/10 hover:border-white/25 hover:bg-neutral-900 transition-all duration-200 cursor-pointer overflow-hidden shadow-lg hover:shadow-2xl hover:-translate-y-0.5"
+                  className={`group relative flex flex-col rounded-2xl bg-neutral-900/60 border hover:bg-neutral-900 transition-all duration-200 cursor-pointer overflow-hidden shadow-lg hover:shadow-2xl hover:-translate-y-0.5 ${
+                    !isAvailable
+                      ? "border-rose-500/30 opacity-75"
+                      : "border-white/10 hover:border-white/25"
+                  }`}
                 >
                   {/* Thumbnail Container */}
                   <div className="relative">
@@ -914,6 +1138,8 @@ export function MediaLibraryModal() {
                       title={title}
                       duration={duration}
                       progressPercent={progressPercent}
+                      isAvailable={isAvailable}
+                      isDuplicate={isDuplicate}
                     />
 
                     {/* Hover Overlay with Quick Actions */}
@@ -945,7 +1171,9 @@ export function MediaLibraryModal() {
                       onClick={(e) => handleToggleFavorite(e, filePath, title, mediaType)}
                       style={isFav ? { color: "#f43f5e" } : {}}
                       className={`absolute top-2 right-2 p-1.5 rounded-full bg-black/70 backdrop-blur-md transition ${
-                        isFav ? "opacity-100 text-rose-500" : "opacity-0 group-hover:opacity-100 text-neutral-300 hover:text-white"
+                        isFav
+                          ? "opacity-100 text-rose-500"
+                          : "opacity-0 group-hover:opacity-100 text-neutral-300 hover:text-white"
                       }`}
                       title={isFav ? "Remove from Favorites" : "Add to Favorites"}
                     >
@@ -956,12 +1184,24 @@ export function MediaLibraryModal() {
                   {/* Metadata Content */}
                   <div className="p-3 flex flex-col justify-between flex-1">
                     <div>
-                      <h3
-                        title={title}
-                        className="text-xs font-bold text-white group-hover:text-amber-300 transition truncate"
-                      >
-                        {title}
-                      </h3>
+                      <div className="flex items-center gap-1.5">
+                        <h3
+                          title={title}
+                          className="text-xs font-bold text-white group-hover:text-amber-300 transition truncate flex-1"
+                        >
+                          {title}
+                        </h3>
+                        {!isAvailable && (
+                          <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[9px] font-bold font-mono shrink-0">
+                            OFFLINE
+                          </span>
+                        )}
+                        {isAvailable && isDuplicate && (
+                          <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold font-mono shrink-0">
+                            DUP
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[11px] text-neutral-400 truncate mt-0.5 font-mono">
                         {filePath.split(/[/\\]/).slice(-2, -1)[0]}
                       </p>
@@ -995,7 +1235,9 @@ export function MediaLibraryModal() {
               >
                 <div className="flex items-center gap-2">
                   <RefreshCw className="w-4 h-4 animate-spin text-neutral-500" />
-                  <span>Showing {pagedItems.length} of {displayItems.length} items</span>
+                  <span>
+                    Showing {pagedItems.length} of {displayItems.length} items
+                  </span>
                 </div>
                 <button
                   onClick={() => setVisibleCount((prev) => Math.min(prev + 48, displayItems.length))}
@@ -1014,22 +1256,37 @@ export function MediaLibraryModal() {
                 const filePath = "file_path" in item ? item.file_path : "";
                 const title =
                   formatMediaTitle(item.title, filePath) || item.title || "Untitled Media";
-                const duration = "duration" in item && typeof item.duration === "number" ? item.duration : undefined;
-                const mediaType = "media_type" in item && typeof item.media_type === "string" ? item.media_type : "video";
-                const fileSize = "file_size" in item && typeof (item as LibraryItem).file_size === "number" ? (item as LibraryItem).file_size : undefined;
+                const duration =
+                  "duration" in item && typeof item.duration === "number" ? item.duration : undefined;
+                const mediaType =
+                  "media_type" in item && typeof item.media_type === "string"
+                    ? item.media_type
+                    : "video";
+                const fileSize =
+                  "file_size" in item && typeof (item as LibraryItem).file_size === "number"
+                    ? (item as LibraryItem).file_size
+                    : undefined;
                 const isFav =
                   "is_favorite" in item
                     ? Boolean((item as LibraryItem).is_favorite)
                     : favorites.some((f) => f.file_path === filePath);
 
-                const resumePos = "resume_position" in item && typeof (item as LibraryItem).resume_position === "number" ? (item as LibraryItem).resume_position : undefined;
+                const resumePos =
+                  "resume_position" in item &&
+                  typeof (item as LibraryItem).resume_position === "number"
+                    ? (item as LibraryItem).resume_position
+                    : undefined;
                 const progressPercent =
-                  "progress_percent" in item && typeof (item as UnfinishedVideo).progress_percent === "number"
+                  "progress_percent" in item &&
+                  typeof (item as UnfinishedVideo).progress_percent === "number"
                     ? (item as UnfinishedVideo).progress_percent
                     : resumePos && duration && duration > 0
                     ? Math.round((resumePos / duration) * 100)
                     : undefined;
                 const watchedStatus = formatWatchedStatus(resumePos, duration, progressPercent);
+
+                const isAvailable = (item as LibraryItem).is_available ?? true;
+                const isDuplicate = (item as LibraryItem).is_duplicate ?? false;
 
                 return (
                   <div
@@ -1050,9 +1307,21 @@ export function MediaLibraryModal() {
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <h4 className="text-xs font-bold text-white group-hover:text-amber-300 truncate">
-                          {title}
-                        </h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs font-bold text-white group-hover:text-amber-300 truncate">
+                            {title}
+                          </h4>
+                          {!isAvailable && (
+                            <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[9px] font-bold font-mono">
+                              OFFLINE
+                            </span>
+                          )}
+                          {isAvailable && isDuplicate && (
+                            <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold font-mono">
+                              DUPLICATE
+                            </span>
+                          )}
+                        </div>
                         <p className="text-[11px] text-neutral-400 font-mono truncate">
                           {filePath}
                         </p>
@@ -1100,7 +1369,9 @@ export function MediaLibraryModal() {
               >
                 <div className="flex items-center gap-2">
                   <RefreshCw className="w-4 h-4 animate-spin text-neutral-500" />
-                  <span>Showing {pagedItems.length} of {displayItems.length} items</span>
+                  <span>
+                    Showing {pagedItems.length} of {displayItems.length} items
+                  </span>
                 </div>
                 <button
                   onClick={() => setVisibleCount((prev) => Math.min(prev + 48, displayItems.length))}

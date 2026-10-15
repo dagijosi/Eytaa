@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -30,12 +30,18 @@ pub fn init_db(app: &AppHandle) -> Result<DbState, String> {
             .map_err(|e| format!("Failed to create app data directory: {}", e))?;
     }
 
-    let db_path: PathBuf = app_dir.join("vistara.db");
-    // Migrate from previous db if it exists
-    let old_db = app_dir.join("loomplayer.db");
-    if old_db.exists() && !db_path.exists() {
-        let _ = fs::copy(&old_db, &db_path);
+    let db_path: PathBuf = app_dir.join("eytaa.db");
+    // Transparent migration from legacy databases if eytaa.db does not exist
+    if !db_path.exists() {
+        let vistara_db = app_dir.join("vistara.db");
+        let loom_db = app_dir.join("loomplayer.db");
+        if vistara_db.exists() {
+            let _ = fs::copy(&vistara_db, &db_path);
+        } else if loom_db.exists() {
+            let _ = fs::copy(&loom_db, &db_path);
+        }
     }
+
     let conn = Connection::open(&db_path)
         .map_err(|e| format!("Failed to open SQLite database at {:?}: {}", db_path, e))?;
 
@@ -94,7 +100,10 @@ pub fn init_db(app: &AppHandle) -> Result<DbState, String> {
             file_size INTEGER DEFAULT 0,
             duration REAL,
             last_modified INTEGER DEFAULT 0,
-            added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            quick_hash TEXT,
+            is_available INTEGER DEFAULT 1,
+            missing_since DATETIME
         );
 
         CREATE TABLE IF NOT EXISTS library_favorites (
@@ -116,8 +125,13 @@ pub fn init_db(app: &AppHandle) -> Result<DbState, String> {
     )
     .map_err(|e| format!("Failed to initialize database schema: {}", e))?;
 
-    // Migration: ensure duration column exists on resume_positions
+    // Schema migrations for backward compatibility (run before creating column indexes)
     let _ = conn.execute("ALTER TABLE resume_positions ADD COLUMN duration REAL", []);
+    let _ = conn.execute("ALTER TABLE library_items ADD COLUMN quick_hash TEXT", []);
+    let _ = conn.execute("ALTER TABLE library_items ADD COLUMN is_available INTEGER DEFAULT 1", []);
+    let _ = conn.execute("ALTER TABLE library_items ADD COLUMN missing_since DATETIME", []);
+    let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_library_items_hash ON library_items (quick_hash)", []);
+    let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_library_items_avail ON library_items (is_available)", []);
 
     Ok(DbState {
         conn: Mutex::new(conn),
@@ -311,6 +325,9 @@ pub struct LibraryFolderDto {
     pub folder_path: String,
     pub added_at: String,
     pub last_scanned_at: Option<String>,
+    pub is_accessible: bool,
+    pub item_count: usize,
+    pub available_count: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -327,6 +344,9 @@ pub struct LibraryItemDto {
     pub added_at: String,
     pub is_favorite: bool,
     pub resume_position: Option<f64>,
+    pub is_available: bool,
+    pub is_duplicate: bool,
+    pub quick_hash: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -389,16 +409,31 @@ pub fn db_get_library_folders(
 ) -> Result<Vec<LibraryFolderDto>, String> {
     let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
     let mut stmt = conn
-        .prepare("SELECT id, folder_path, added_at, last_scanned_at FROM library_folders ORDER BY added_at DESC")
+        .prepare(
+            "SELECT lf.id, lf.folder_path, lf.added_at, lf.last_scanned_at,
+                    COUNT(li.id) as item_count,
+                    COALESCE(SUM(CASE WHEN COALESCE(li.is_available, 1) = 1 THEN 1 ELSE 0 END), 0) as available_count
+             FROM library_folders lf
+             LEFT JOIN library_items li ON lf.folder_path = li.folder_path
+             GROUP BY lf.id
+             ORDER BY lf.added_at DESC",
+        )
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
         .query_map([], |row| {
+            let folder_path: String = row.get(1)?;
+            let is_accessible = std::path::Path::new(&folder_path).exists();
+            let item_count: i64 = row.get(4)?;
+            let available_count: i64 = row.get(5)?;
             Ok(LibraryFolderDto {
                 id: row.get(0)?,
-                folder_path: row.get(1)?,
+                folder_path,
                 added_at: row.get(2)?,
                 last_scanned_at: row.get(3)?,
+                is_accessible,
+                item_count: item_count as usize,
+                available_count: available_count as usize,
             })
         })
         .map_err(|e| e.to_string())?
@@ -418,31 +453,142 @@ pub fn db_save_library_items(
 
     let mut count = 0;
     {
-        let mut stmt = tx
+        let mut check_path_stmt = tx
+            .prepare("SELECT id, file_size, last_modified FROM library_items WHERE file_path = ?1")
+            .map_err(|e| e.to_string())?;
+
+        let mut check_hash_stmt = tx
+            .prepare("SELECT id, file_path FROM library_items WHERE quick_hash = ?1 AND quick_hash IS NOT NULL AND quick_hash != ''")
+            .map_err(|e| e.to_string())?;
+
+        let mut touch_unchanged_stmt = tx
+            .prepare("UPDATE library_items SET is_available = 1, missing_since = NULL WHERE id = ?1")
+            .map_err(|e| e.to_string())?;
+
+        let mut update_modified_stmt = tx
             .prepare(
-                "INSERT INTO library_items (folder_path, file_path, file_name, title, media_type, file_size, last_modified)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-                 ON CONFLICT(file_path) DO UPDATE SET
-                    title = excluded.title,
-                    file_size = excluded.file_size,
-                    last_modified = excluded.last_modified",
+                "UPDATE library_items SET
+                    title = ?1,
+                    file_size = ?2,
+                    last_modified = ?3,
+                    quick_hash = ?4,
+                    is_available = 1,
+                    missing_since = NULL
+                 WHERE id = ?5",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let mut migrate_moved_stmt = tx
+            .prepare(
+                "UPDATE library_items SET
+                    file_path = ?1,
+                    folder_path = ?2,
+                    file_name = ?3,
+                    title = ?4,
+                    file_size = ?5,
+                    last_modified = ?6,
+                    is_available = 1,
+                    missing_since = NULL
+                 WHERE id = ?7",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let mut migrate_resume_stmt = tx
+            .prepare("UPDATE resume_positions SET file_path = ?1 WHERE file_path = ?2")
+            .map_err(|e| e.to_string())?;
+
+        let mut migrate_fav_stmt = tx
+            .prepare("UPDATE library_favorites SET file_path = ?1 WHERE file_path = ?2")
+            .map_err(|e| e.to_string())?;
+
+        let mut migrate_history_stmt = tx
+            .prepare("UPDATE playback_history SET file_path = ?1 WHERE file_path = ?2")
+            .map_err(|e| e.to_string())?;
+
+        let mut insert_new_stmt = tx
+            .prepare(
+                "INSERT INTO library_items (folder_path, file_path, file_name, title, media_type, file_size, last_modified, quick_hash, is_available)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1)",
             )
             .map_err(|e| e.to_string())?;
 
         for item in items {
-            if stmt
-                .execute(params![
-                    item.folder_path,
-                    item.file_path,
-                    item.file_name,
-                    item.title,
-                    item.media_type,
-                    item.file_size as i64,
-                    item.last_modified as i64,
-                ])
-                .is_ok()
-            {
+            // 1. Check if the exact path exists
+            let existing_by_path = check_path_stmt
+                .query_row(params![item.file_path], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)? as u64,
+                        row.get::<_, i64>(2)? as u64,
+                    ))
+                })
+                .optional()
+                .map_err(|e| e.to_string())?;
+
+            if let Some((id, old_size, old_mtime)) = existing_by_path {
+                if old_size == item.file_size && old_mtime == item.last_modified {
+                    // Fast path: file is unchanged, just confirm available
+                    let _ = touch_unchanged_stmt.execute(params![id]);
+                } else {
+                    let _ = update_modified_stmt.execute(params![
+                        item.title,
+                        item.file_size as i64,
+                        item.last_modified as i64,
+                        item.quick_hash,
+                        id
+                    ]);
+                }
                 count += 1;
+                continue;
+            }
+
+            // 2. Path not in DB: check if a file with same quick_hash was moved or renamed
+            let mut found_moved = false;
+            if let Some(ref hash) = item.quick_hash {
+                let existing_by_hash = check_hash_stmt
+                    .query_row(params![hash], |row| {
+                        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                    })
+                    .optional()
+                    .map_err(|e| e.to_string())?;
+
+                if let Some((old_id, old_path)) = existing_by_hash {
+                    if !std::path::Path::new(&old_path).exists() {
+                        let _ = migrate_moved_stmt.execute(params![
+                            item.file_path,
+                            item.folder_path,
+                            item.file_name,
+                            item.title,
+                            item.file_size as i64,
+                            item.last_modified as i64,
+                            old_id
+                        ]);
+                        let _ = migrate_resume_stmt.execute(params![item.file_path, old_path]);
+                        let _ = migrate_fav_stmt.execute(params![item.file_path, old_path]);
+                        let _ = migrate_history_stmt.execute(params![item.file_path, old_path]);
+                        found_moved = true;
+                        count += 1;
+                    }
+                }
+            }
+
+            // 3. Completely new item
+            if !found_moved {
+                if insert_new_stmt
+                    .execute(params![
+                        item.folder_path,
+                        item.file_path,
+                        item.file_name,
+                        item.title,
+                        item.media_type,
+                        item.file_size as i64,
+                        item.last_modified as i64,
+                        item.quick_hash,
+                    ])
+                    .is_ok()
+                {
+                    count += 1;
+                }
             }
         }
     }
@@ -452,11 +598,66 @@ pub fn db_save_library_items(
 }
 
 #[tauri::command]
+pub fn db_reconcile_missing_items(
+    state: tauri::State<'_, DbState>,
+    folder_path: String,
+    scanned_paths: Vec<String>,
+) -> Result<usize, String> {
+    if !std::path::Path::new(&folder_path).exists() {
+        // Removable drive or external folder is offline: NEVER mark files as missing!
+        return Ok(0);
+    }
+
+    let mut conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let mut missing_count = 0;
+    {
+        let mut stmt = tx
+            .prepare("SELECT id, file_path FROM library_items WHERE folder_path = ?1")
+            .map_err(|e| e.to_string())?;
+
+        let items: Vec<(i64, String)> = stmt
+            .query_map(params![folder_path], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect();
+
+        let scanned_set: std::collections::HashSet<String> = scanned_paths.into_iter().collect();
+
+        let mut mark_stmt = tx
+            .prepare("UPDATE library_items SET is_available = 0, missing_since = CURRENT_TIMESTAMP WHERE id = ?1")
+            .map_err(|e| e.to_string())?;
+
+        for (id, path) in items {
+            if !scanned_set.contains(&path) && !std::path::Path::new(&path).exists() {
+                let _ = mark_stmt.execute(params![id]);
+                missing_count += 1;
+            }
+        }
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(missing_count)
+}
+
+#[tauri::command]
+pub fn db_clean_missing_items(state: tauri::State<'_, DbState>) -> Result<usize, String> {
+    let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+    let count = conn
+        .execute("DELETE FROM library_items WHERE is_available = 0", [])
+        .map_err(|e| e.to_string())?;
+    Ok(count)
+}
+
+#[tauri::command]
 pub fn db_get_library_items(
     state: tauri::State<'_, DbState>,
     folder: Option<String>,
     media_type: Option<String>,
     search: Option<String>,
+    duplicates_only: Option<bool>,
+    available_only: Option<bool>,
 ) -> Result<Vec<LibraryItemDto>, String> {
     let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
 
@@ -464,7 +665,10 @@ pub fn db_get_library_items(
         "SELECT li.id, li.folder_path, li.file_path, li.file_name, li.title, li.media_type,
                 li.file_size, COALESCE(li.duration, rp.duration) as duration, li.last_modified, li.added_at,
                 (lf.file_path IS NOT NULL) as is_favorite,
-                rp.position as resume_position
+                rp.position as resume_position,
+                COALESCE(li.is_available, 1) as is_available,
+                li.quick_hash,
+                (SELECT COUNT(*) FROM library_items dup WHERE dup.quick_hash = li.quick_hash AND dup.quick_hash IS NOT NULL AND dup.quick_hash != '') > 1 as is_duplicate
          FROM library_items li
          LEFT JOIN library_favorites lf ON li.file_path = lf.file_path
          LEFT JOIN resume_positions rp ON li.file_path = rp.file_path
@@ -497,6 +701,14 @@ pub fn db_get_library_items(
         }
     }
 
+    if duplicates_only == Some(true) {
+        sql.push_str("AND (SELECT COUNT(*) FROM library_items dup WHERE dup.quick_hash = li.quick_hash AND dup.quick_hash IS NOT NULL AND dup.quick_hash != '') > 1 ");
+    }
+
+    if available_only == Some(true) {
+        sql.push_str("AND COALESCE(li.is_available, 1) = 1 ");
+    }
+
     sql.push_str("ORDER BY li.title COLLATE NOCASE ASC");
 
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -507,6 +719,8 @@ pub fn db_get_library_items(
         .query_map(&rusqlite_params[..], |row| {
             let file_size_i64: i64 = row.get(6)?;
             let last_mod_i64: i64 = row.get(8)?;
+            let is_avail_i64: i64 = row.get(12)?;
+            let is_dup_i64: i64 = row.get(14)?;
             Ok(LibraryItemDto {
                 id: row.get(0)?,
                 folder_path: row.get(1)?,
@@ -520,6 +734,9 @@ pub fn db_get_library_items(
                 added_at: row.get(9)?,
                 is_favorite: row.get(10)?,
                 resume_position: row.get(11)?,
+                is_available: is_avail_i64 == 1,
+                quick_hash: row.get(13)?,
+                is_duplicate: is_dup_i64 > 0,
             })
         })
         .map_err(|e| e.to_string())?

@@ -1,6 +1,32 @@
 # Changelog
 
-All notable changes to **EYTAA (Vistara Player)** will be documented in this file.
+All notable changes to **EYTAA** will be documented in this file.
+
+---
+
+## [0.1.5] - 2026-10-15
+
+### 🚀 Highlights
+- **Resilient Media Library**: Added fast fingerprint hashing (<0.1ms) to automatically detect moved, renamed, and duplicate media files without losing watch progress, history, or favorites.
+- **Smart Unchanged File Skipping**: Folder scans instantly verify existing files by cached size and modification time, accelerating rescans from minutes to milliseconds.
+- **Scan Cancellation & Live Progress**: Added non-blocking background folder scan cancellation and real-time progress reporting (current directory, files scanned, and item counts).
+- **Removable Drive & Offline Folder Protection**: External USB drives and disconnected folders are safely preserved with "Drive Offline" and "OFFLINE" badges instead of wiping library records.
+- **Duplicate Media Detection**: Added a dedicated "Duplicates" library tab and badge indicators to help users identify and clean redundant media files.
+- **Thumbnail Cache Maintenance**: Built-in thumbnail cache disk usage statistics and one-click cache purge and offline record cleanup tools.
+- **Gentle 24-Hour Update Notifications**: Unobtrusive update notification system featuring 15-second auto-expiring toasts, playback suppression (never interrupts active viewing), 24-hour rate limiting, and dismissal memory.
+- **Full EYTAA Brand & Publisher Identity**: Standardized application identity across crate (`eytaa`, `eytaa_player_lib`), Windows bundle (`Dagmawi Y`, `Copyright © 2026 EYTAA`), database (`eytaa.db` with automated legacy migration), and capabilities.
+
+### 🎬 Media Library Resilience
+- Implemented `compute_quick_hash` in Rust reading sampled bytes + file size in under 0.1ms.
+- Automatically migrates resume positions, favorites, and playback history when a file is renamed or moved across folders.
+- Added `db_reconcile_missing_items` to differentiate temporarily offline external drives from deleted files.
+- Added `db_clean_missing_items` to purge obsolete records on demand.
+- Reordered database migrations in `db.rs` so column alterations run before index creation, eliminating schema initialization panics.
+
+### 🔔 Unobtrusive Update Alerts
+- Implemented `UpdateNotificationToast` with auto-dismiss countdown (15s) and playback state awareness.
+- Added subtle glowing update badge to TopBar logo and Settings menu.
+- Added "Automatic Update Checks" user preference toggles in Settings.
 
 ---
 

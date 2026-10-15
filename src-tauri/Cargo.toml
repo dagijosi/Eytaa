@@ -1,12 +1,12 @@
 [package]
-name = "vistara-player"
-version = "0.1.4"
+name = "eytaa"
+version = "0.1.5"
 description = "EYTAA - Every story, in view. Modern Windows Desktop Media Player powered by Tauri 2 and libmpv"
-authors = ["Dagi"]
+authors = ["Dagmawi Y"]
 edition = "2021"
 
 [lib]
-name = "vistara_player_lib"
+name = "eytaa_player_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

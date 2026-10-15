@@ -234,3 +234,69 @@ pub async fn get_thumbnail(app: AppHandle, file_path: String) -> Result<Option<S
         .await
         .map_err(|e| e.to_string())?
 }
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+pub struct ThumbnailCacheStats {
+    pub count: usize,
+    pub total_bytes: u64,
+    pub cache_dir: String,
+}
+
+#[tauri::command]
+pub async fn get_thumbnail_cache_stats(app: AppHandle) -> Result<ThumbnailCacheStats, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache_dir = get_thumbnail_cache_dir(&app)?;
+        let mut count = 0;
+        let mut total_bytes = 0;
+        if let Ok(entries) = fs::read_dir(&cache_dir) {
+            for entry in entries.flatten() {
+                if let Ok(meta) = entry.metadata() {
+                    if meta.is_file() {
+                        count += 1;
+                        total_bytes += meta.len();
+                    }
+                }
+            }
+        }
+        Ok(ThumbnailCacheStats {
+            count,
+            total_bytes,
+            cache_dir: cache_dir.to_string_lossy().to_string(),
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn clean_thumbnail_cache(app: AppHandle, clean_mode: String) -> Result<usize, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache_dir = get_thumbnail_cache_dir(&app)?;
+        let mut removed = 0;
+        if let Ok(entries) = fs::read_dir(&cache_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    let should_remove = if clean_mode == "all" {
+                        true
+                    } else if clean_mode == "markers" {
+                        path.extension().map_or(false, |e| e == "no_thumb")
+                    } else {
+                        if let Ok(meta) = path.metadata() {
+                            meta.len() == 0 || path.extension().map_or(false, |e| e == "no_thumb")
+                        } else {
+                            false
+                        }
+                    };
+
+                    if should_remove && fs::remove_file(&path).is_ok() {
+                        removed += 1;
+                    }
+                }
+            }
+        }
+        Ok(removed)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
