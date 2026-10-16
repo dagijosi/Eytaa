@@ -30,6 +30,8 @@ import {
 import { usePlayerStore } from "../stores/playerStore";
 import { useThemeStore } from "../stores/themeStore";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { toggleWindowFullscreen } from "../utils/windowControls";
 
 function formatSeconds(seconds: number): string {
   if (isNaN(seconds) || seconds < 0) return "00:00";
@@ -62,6 +64,8 @@ export function ControlBar() {
     toggleMute,
     setPlaybackRate,
     selectSubtitleTrack,
+    toggleSubtitleTrack,
+    loadSubtitle,
     playNext,
     playPrevious,
     togglePlaylistDrawer,
@@ -94,12 +98,14 @@ export function ControlBar() {
   const [showRemainingTime, setShowRemainingTime] = useState(false);
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showSubMenu, setShowSubMenu] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const scrubberRef = useRef<HTMLDivElement>(null);
   const speedMenuRef = useRef<HTMLDivElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
+  const subMenuRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
   const isPlaying = status === "playing";
@@ -127,25 +133,22 @@ export function ControlBar() {
       if (profileMenuRef.current && !profileMenuRef.current.contains(target)) {
         setShowProfileMenu(false);
       }
+      if (subMenuRef.current && !subMenuRef.current.contains(target)) {
+        setShowSubMenu(false);
+      }
       if (moreMenuRef.current && !moreMenuRef.current.contains(target)) {
         setShowMoreMenu(false);
       }
     };
-    if (showSpeedMenu || showProfileMenu || showMoreMenu) {
+    if (showSpeedMenu || showProfileMenu || showSubMenu || showMoreMenu) {
       window.addEventListener("mousedown", handleOutsideClick);
     }
     return () => window.removeEventListener("mousedown", handleOutsideClick);
-  }, [showSpeedMenu, showProfileMenu, showMoreMenu]);
+  }, [showSpeedMenu, showProfileMenu, showSubMenu, showMoreMenu]);
 
   const handleToggleFullscreen = async () => {
-    try {
-      const appWindow = getCurrentWindow();
-      const current = await appWindow.isFullscreen();
-      await appWindow.setFullscreen(!current);
-      setIsFullscreen(!current);
-    } catch (e) {
-      console.warn("Fullscreen toggle error:", e);
-    }
+    const newFs = await toggleWindowFullscreen();
+    setIsFullscreen(newFs);
   };
 
   const handleScrubberMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -178,13 +181,6 @@ export function ControlBar() {
     return () => window.removeEventListener("mouseup", handleMouseUp);
   }, [isScrubbing]);
 
-  const handleCycleSubtitles = () => {
-    if (subtitleTracks.length === 0) return;
-    const trackIds = [0, ...subtitleTracks.map((t) => t.id)];
-    const currentIdx = trackIds.indexOf(currentSubtitleTrackId || 0);
-    const nextIdx = (currentIdx + 1) % trackIds.length;
-    selectSubtitleTrack(trackIds[nextIdx]);
-  };
 
   const speedOptions = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
@@ -533,19 +529,93 @@ export function ControlBar() {
               )}
             </div>
 
-            {/* Subtitles Quick Toggle */}
-            <button
-              onClick={handleCycleSubtitles}
-              style={activeBtnStyle(Boolean(currentSubtitleTrackId && currentSubtitleTrackId > 0))}
-              className={`p-1.5 sm:p-2 rounded-lg border transition ${
-                !currentSubtitleTrackId
-                  ? "bg-white/5 text-neutral-300 border-white/10 hover:bg-white/10"
-                  : ""
-              }`}
-              title="Cycle Subtitles (S)"
-            >
-              <Subtitles className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
-            </button>
+            {/* Subtitles Quick Toggle & Track Picker */}
+            <div className="relative" ref={subMenuRef}>
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  await toggleSubtitleTrack();
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowSubMenu((prev) => !prev);
+                }}
+                style={activeBtnStyle(Boolean(currentSubtitleTrackId && currentSubtitleTrackId > 0))}
+                className={`p-1.5 sm:p-2 rounded-lg border transition ${
+                  !currentSubtitleTrackId
+                    ? "bg-white/5 text-neutral-300 border-white/10 hover:bg-white/10"
+                    : ""
+                }`}
+                title={
+                  currentSubtitleTrackId && currentSubtitleTrackId > 0
+                    ? "Subtitles: ON (Click to turn OFF, right-click to choose language)"
+                    : "Subtitles: OFF (Click to turn ON, right-click to choose language)"
+                }
+              >
+                <Subtitles className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
+              </button>
+
+              {showSubMenu && (
+                <div className="absolute bottom-full mb-2 right-0 bg-neutral-900/98 backdrop-blur-xl border border-white/15 rounded-xl p-1.5 shadow-2xl flex flex-col gap-1 min-w-[160px] z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 border-b border-white/5 mb-1">
+                    Subtitles
+                  </div>
+                  <button
+                    onClick={() => {
+                      selectSubtitleTrack(0);
+                      setShowSubMenu(false);
+                    }}
+                    style={!currentSubtitleTrackId ? { backgroundColor: accentGlow, color: accentColor } : undefined}
+                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition ${
+                      !currentSubtitleTrackId ? "font-bold" : "text-neutral-300 hover:bg-white/10"
+                    }`}
+                  >
+                    <span>Off</span>
+                    {!currentSubtitleTrackId && <Check className="w-3.5 h-3.5" style={{ color: accentColor }} />}
+                  </button>
+                  {subtitleTracks.map((track) => {
+                    const isSelected = currentSubtitleTrackId === track.id;
+                    return (
+                      <button
+                        key={track.id}
+                        onClick={() => {
+                          selectSubtitleTrack(track.id);
+                          setShowSubMenu(false);
+                        }}
+                        style={isSelected ? { backgroundColor: accentGlow, color: accentColor } : undefined}
+                        className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition truncate ${
+                          isSelected ? "font-bold" : "text-neutral-300 hover:bg-white/10"
+                        }`}
+                      >
+                        <span className="truncate">{track.title || track.lang || `Track ${track.id}`}</span>
+                        {isSelected && <Check className="w-3.5 h-3.5 shrink-0" style={{ color: accentColor }} />}
+                      </button>
+                    );
+                  })}
+                  <div className="h-px bg-white/10 my-1" />
+                  <button
+                    onClick={async () => {
+                      setShowSubMenu(false);
+                      try {
+                        const file = await openDialog({
+                          multiple: false,
+                          filters: [{ name: "Subtitles", extensions: ["srt", "vtt", "ass", "ssa"] }],
+                        });
+                        if (file && typeof file === "string") {
+                          await loadSubtitle(file);
+                        }
+                      } catch (err) {
+                        console.warn("Subtitle load error:", err);
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] text-neutral-400 hover:text-white hover:bg-white/5 rounded-lg transition"
+                  >
+                    <span>+ Load External Subtitle...</span>
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Video Aspect / Scaling (Visible on xl+ screens) */}
             <button

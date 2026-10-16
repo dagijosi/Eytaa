@@ -1,6 +1,6 @@
 [package]
 name = "eytaa"
-version = "0.2.0"
+version = "0.2.1"
 description = "EYTAA - Every story, in view. Modern Windows Desktop Media Player powered by Tauri 2 and libmpv"
 authors = ["Dagmawi Y"]
 edition = "2021"

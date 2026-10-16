@@ -125,6 +125,63 @@ fn strip_scene_noise(s: &str) -> String {
     clean_words.join(" ")
 }
 
+fn clean_series_name_and_extract_metadata(
+    raw: &str,
+) -> (String, Option<String>, Option<i64>) {
+    let cleaned = strip_scene_noise(&clean_word_delimiters(raw));
+    let words: Vec<&str> = cleaned.split_whitespace().collect();
+    let mut year_opt: Option<String> = None;
+    let mut season_opt: Option<i64> = None;
+    let mut title_words: Vec<String> = Vec::new();
+
+    let mut i = 0;
+    while i < words.len() {
+        let w = words[i];
+        let lower = w.to_lowercase();
+
+        // Check if word is season keyword e.g. "season", "series" followed by number, or "season1"
+        if lower == "season" || lower == "series" || lower == "s" {
+            if i + 1 < words.len() {
+                let candidate: String = words[i + 1].chars().filter(|c| c.is_ascii_digit()).collect();
+                if let Ok(s_num) = candidate.parse::<i64>() {
+                    season_opt = Some(s_num);
+                    i += 2;
+                    continue;
+                }
+            }
+        } else if lower.starts_with("season") || lower.starts_with("series") {
+            let digits: String = w.chars().filter(|c| c.is_ascii_digit()).collect();
+            if let Ok(s_num) = digits.parse::<i64>() {
+                season_opt = Some(s_num);
+                i += 1;
+                continue;
+            }
+        }
+
+        // Check if word is 4-digit release year e.g. "2024" or "(2024)" or "[2024]"
+        let trimmed_num: String = w.chars().filter(|c| c.is_ascii_digit()).collect();
+        if trimmed_num.len() == 4 {
+            if let Ok(y_num) = trimmed_num.parse::<i64>() {
+                if (1920..=2035).contains(&y_num) {
+                    year_opt = Some(trimmed_num);
+                    i += 1;
+                    continue;
+                }
+            }
+        }
+
+        title_words.push(w.to_string());
+        i += 1;
+    }
+
+    let mut final_title = title_words.join(" ");
+    final_title = final_title
+        .trim_matches(|c: char| c == '-' || c == ',' || c == ':' || c == '.' || c == '_' || c.is_whitespace())
+        .to_string();
+
+    (final_title, year_opt, season_opt)
+}
+
 fn extract_first_number(s: &str) -> Option<i64> {
     let mut in_num = false;
     let mut digits = String::new();
@@ -314,6 +371,12 @@ pub fn parse_media_info(
             show_name = "Series".to_string();
         }
 
+        let (cleaned_show, year_opt, extra_s) = clean_series_name_and_extract_metadata(&show_name);
+        if !cleaned_show.is_empty() {
+            show_name = cleaned_show;
+        }
+        let season = extra_s.unwrap_or(season);
+
         let ep_title_clean = if start_pos <= 2 {
             String::new()
         } else {
@@ -334,7 +397,96 @@ pub fn parse_media_info(
             Some(season),
             Some(episode),
             ep_title_opt,
-            None,
+            year_opt,
+        );
+    }
+
+    // 1b. Check for written Season and Episode: "Show Season 1 Episode 2" or "Godfather season 1, episode 2"
+    let mut written_idx = None;
+    let base_lower = base.to_lowercase();
+    if let Some(s_pos) = base_lower.find("season").or_else(|| base_lower.find("series")) {
+        let after_season = &base_lower[s_pos..];
+        let after_chars: Vec<char> = after_season.chars().collect();
+        let mut d_start = None;
+        let mut d_end = None;
+        for (idx, &ch) in after_chars.iter().enumerate() {
+            if ch.is_ascii_digit() {
+                if d_start.is_none() {
+                    d_start = Some(idx);
+                }
+            } else if d_start.is_some() {
+                d_end = Some(idx);
+                break;
+            }
+        }
+        if let (Some(ds), Some(de)) = (d_start, d_end.or(Some(after_chars.len()))) {
+            let s_digits: String = after_chars[ds..de].iter().collect();
+            if let Ok(s_num) = s_digits.parse::<i64>() {
+                let after_s_num = &after_season[de..];
+                if let Some(ep_rel) = after_s_num.find("episode").or_else(|| after_s_num.find("ep")) {
+                    let ep_part = &after_s_num[ep_rel..];
+                    let ep_chars: Vec<char> = ep_part.chars().collect();
+                    let mut ed_start = None;
+                    let mut ed_end = None;
+                    for (idx, &ch) in ep_chars.iter().enumerate() {
+                        if ch.is_ascii_digit() {
+                            if ed_start.is_none() {
+                                ed_start = Some(idx);
+                            }
+                        } else if ed_start.is_some() {
+                            ed_end = Some(idx);
+                            break;
+                        }
+                    }
+                    if let (Some(eds), Some(ede)) = (ed_start, ed_end.or(Some(ep_chars.len()))) {
+                        let ep_digits: String = ep_chars[eds..ede].iter().collect();
+                        if let Ok(e_num) = ep_digits.parse::<i64>() {
+                            let ep_end_global = s_pos + de + ep_rel + ede;
+                            written_idx = Some((s_pos, ep_end_global, s_num, e_num));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some((start_pos, end_pos, season, episode)) = written_idx {
+        let raw_show: String = chars[..start_pos].iter().collect();
+        let raw_ep_title: String = if end_pos < len {
+            chars[end_pos..].iter().collect()
+        } else {
+            String::new()
+        };
+
+        let (mut show_name, year_opt, _) = clean_series_name_and_extract_metadata(&raw_show);
+        if show_name.len() < 2 {
+            if let Some(parent) = path.parent() {
+                let p_name = parent.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                let (p_clean, _, _) = clean_series_name_and_extract_metadata(p_name);
+                show_name = p_clean;
+            }
+        }
+        if show_name.is_empty() {
+            show_name = "Series".to_string();
+        }
+
+        let ep_title_clean = strip_scene_noise(&clean_word_delimiters(&raw_ep_title));
+        let ep_title_opt = if ep_title_clean.is_empty() { None } else { Some(ep_title_clean) };
+
+        let display_title = if let Some(ref ep_title) = ep_title_opt {
+            format!("{} • S{:02}E{:02} - {}", show_name, season, episode, ep_title)
+        } else {
+            format!("{} • S{:02}E{:02}", show_name, season, episode)
+        };
+
+        return (
+            display_title,
+            Some("series".to_string()),
+            Some(show_name),
+            Some(season),
+            Some(episode),
+            ep_title_opt,
+            year_opt,
         );
     }
 
@@ -387,15 +539,17 @@ pub fn parse_media_info(
             String::new()
         };
 
-        let mut show_name = strip_scene_noise(&clean_word_delimiters(&raw_show));
+        let (mut show_name, year_opt, _) = clean_series_name_and_extract_metadata(&raw_show);
         if show_name.len() < 2 {
             if let Some(parent) = path.parent() {
                 let p_name = parent.file_name().and_then(|n| n.to_str()).unwrap_or("");
                 if let Some(gp) = parent.parent() {
                     let gp_name = gp.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                    show_name = strip_scene_noise(&clean_word_delimiters(if extract_season_number_from_text(p_name).is_some() { gp_name } else { p_name }));
+                    let (clean_p, _, _) = clean_series_name_and_extract_metadata(if extract_season_number_from_text(p_name).is_some() { gp_name } else { p_name });
+                    show_name = clean_p;
                 } else {
-                    show_name = strip_scene_noise(&clean_word_delimiters(p_name));
+                    let (clean_p, _, _) = clean_series_name_and_extract_metadata(p_name);
+                    show_name = clean_p;
                 }
             }
         }
@@ -419,7 +573,7 @@ pub fn parse_media_info(
             Some(season),
             Some(episode),
             ep_title_opt,
-            None,
+            year_opt,
         );
     }
 
@@ -453,10 +607,11 @@ pub fn parse_media_info(
             String::new()
         };
 
-        let mut show_name = strip_scene_noise(&clean_word_delimiters(&raw_show));
+        let (mut show_name, year_opt, _) = clean_series_name_and_extract_metadata(&raw_show);
         if show_name.len() < 2 {
             if let Some(parent) = path.parent() {
-                show_name = strip_scene_noise(&clean_word_delimiters(parent.file_name().and_then(|n| n.to_str()).unwrap_or("Series")));
+                let (clean_p, _, _) = clean_series_name_and_extract_metadata(parent.file_name().and_then(|n| n.to_str()).unwrap_or("Series"));
+                show_name = clean_p;
             }
         }
         if show_name.is_empty() {
@@ -479,7 +634,7 @@ pub fn parse_media_info(
             Some(season),
             Some(episode),
             ep_title_opt,
-            None,
+            year_opt,
         );
     }
 
@@ -525,20 +680,25 @@ pub fn parse_media_info(
             String::new()
         };
 
-        let mut show_name = strip_scene_noise(&clean_word_delimiters(&raw_show));
-        let mut season_num = 1;
+        let (cleaned_show, year_opt, extra_s) = clean_series_name_and_extract_metadata(&raw_show);
+        let mut show_name = cleaned_show;
+        let mut season_num = extra_s.unwrap_or(1);
 
         if let Some(parent) = path.parent() {
             let p_name = parent.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if let Some(s) = extract_season_number_from_text(p_name) {
-                season_num = s;
+                if extra_s.is_none() {
+                    season_num = s;
+                }
                 if show_name.len() < 2 {
                     if let Some(gp) = parent.parent() {
-                        show_name = strip_scene_noise(&clean_word_delimiters(gp.file_name().and_then(|n| n.to_str()).unwrap_or("Series")));
+                        let (gp_clean, _, _) = clean_series_name_and_extract_metadata(gp.file_name().and_then(|n| n.to_str()).unwrap_or("Series"));
+                        show_name = gp_clean;
                     }
                 }
             } else if show_name.len() < 2 {
-                show_name = strip_scene_noise(&clean_word_delimiters(p_name));
+                let (p_clean, _, _) = clean_series_name_and_extract_metadata(p_name);
+                show_name = p_clean;
             }
         }
 
@@ -562,7 +722,7 @@ pub fn parse_media_info(
             Some(season_num),
             Some(episode),
             ep_title_opt,
-            None,
+            year_opt,
         );
     }
 

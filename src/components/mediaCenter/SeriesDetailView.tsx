@@ -9,6 +9,8 @@ import {
   RotateCcw,
   RectangleHorizontal,
   RectangleVertical,
+  Search,
+  X,
 } from "lucide-react";
 import { useThemeStore } from "../../stores/themeStore";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -16,12 +18,15 @@ import {
   LibraryItem,
   libraryService,
 } from "../../services/library/libraryService";
+import { normalizeSeriesKey } from "../../utils/mediaTitle";
 import { MediaCard } from "./MediaCard";
 import { ProceduralPoster } from "./ProceduralPoster";
 
 interface SeriesDetailViewProps {
   seriesName: string;
   items: LibraryItem[];
+  searchQuery?: string;
+  onClearSearch?: () => void;
   cardFormat?: "poster" | "widescreen";
   onToggleCardFormat?: (format: "poster" | "widescreen") => void;
   onBack: () => void;
@@ -35,6 +40,8 @@ interface SeriesDetailViewProps {
 export function SeriesDetailView({
   seriesName,
   items,
+  searchQuery,
+  onClearSearch,
   cardFormat = "widescreen",
   onToggleCardFormat,
   onBack,
@@ -45,13 +52,47 @@ export function SeriesDetailView({
   onRefreshData,
 }: SeriesDetailViewProps) {
   const { accentColor, accentGlow, accentText } = useThemeStore();
+  const [unfilteredEpisodes, setUnfilteredEpisodes] = useState<LibraryItem[]>([]);
+  const [showAllEpisodes, setShowAllEpisodes] = useState(false);
 
-  // All episodes belonging to this series
+  // Fetch full unfiltered series episodes if a search query is active
+  useEffect(() => {
+    let isMounted = true;
+    if (searchQuery && searchQuery.trim()) {
+      libraryService.getLibraryItems({ category: "series" }).then((allItems) => {
+        if (isMounted) {
+          const normTarget = normalizeSeriesKey(seriesName);
+          const matched = allItems
+            .filter((i) => normalizeSeriesKey(i.series_name) === normTarget)
+            .sort((a, b) => {
+              const sA = a.season_number ?? 1;
+              const sB = b.season_number ?? 1;
+              if (sA !== sB) return sA - sB;
+              return (a.episode_number ?? 0) - (b.episode_number ?? 0);
+            });
+          setUnfilteredEpisodes(matched);
+        }
+      });
+    } else {
+      setUnfilteredEpisodes([]);
+      setShowAllEpisodes(false);
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [seriesName, searchQuery]);
+
+  // All episodes belonging to this series (using normalized key for robust grouping)
   const seriesEpisodes = useMemo(() => {
+    if (showAllEpisodes && unfilteredEpisodes.length > 0) {
+      return unfilteredEpisodes;
+    }
+    const normTarget = normalizeSeriesKey(seriesName);
     return items
-      .filter(
-        (i) => (i.series_name || "").toLowerCase() === seriesName.toLowerCase(),
-      )
+      .filter((i) => {
+        const itemNorm = normalizeSeriesKey(i.series_name);
+        return itemNorm === normTarget || (i.series_name || "").toLowerCase() === seriesName.toLowerCase();
+      })
       .sort((a, b) => {
         const sA = a.season_number ?? 1;
         const sB = b.season_number ?? 1;
@@ -60,7 +101,7 @@ export function SeriesDetailView({
         const eB = b.episode_number ?? 0;
         return eA - eB;
       });
-  }, [items, seriesName]);
+  }, [items, seriesName, showAllEpisodes, unfilteredEpisodes]);
 
   // Dynamic series hero poster
   const [heroThumb, setHeroThumb] = useState<string | null>(
@@ -261,6 +302,56 @@ export function SeriesDetailView({
 
   return (
     <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+      {/* Active Search Banner in Series Detail */}
+      {searchQuery && searchQuery.trim() && (
+        <div className="rounded-2xl bg-sky-500/10 border border-sky-500/25 px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-sky-200 animate-in fade-in duration-150">
+          <div className="flex items-center gap-2 min-w-0">
+            <Search className="w-4 h-4 text-sky-400 shrink-0" />
+            <span className="truncate">
+              {showAllEpisodes ? (
+                <span>
+                  Showing all <strong className="text-white">{seriesEpisodes.length}</strong> episodes (search filter bypassed).
+                </span>
+              ) : (
+                <span>
+                  Search active: filtering for <strong className="text-white">"{searchQuery}"</strong> (showing {seriesEpisodes.length} of {unfilteredEpisodes.length || seriesEpisodes.length} episodes).
+                </span>
+              )}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+            {unfilteredEpisodes.length > seriesEpisodes.length && !showAllEpisodes && (
+              <button
+                type="button"
+                onClick={() => setShowAllEpisodes(true)}
+                className="px-2.5 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-white font-medium transition cursor-pointer"
+              >
+                Show All {unfilteredEpisodes.length} Episodes
+              </button>
+            )}
+            {showAllEpisodes && (
+              <button
+                type="button"
+                onClick={() => setShowAllEpisodes(false)}
+                className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-neutral-300 hover:text-white transition cursor-pointer"
+              >
+                Re-apply Filter
+              </button>
+            )}
+            {onClearSearch && (
+              <button
+                type="button"
+                onClick={onClearSearch}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-neutral-300 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Clear Search</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Top Navigation & Actions Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
         <button

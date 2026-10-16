@@ -37,6 +37,11 @@ const OBSERVED_PROPERTIES = [
   ["hwdec-current", "string", "none"],
 ] as const satisfies MpvObservableProperty[];
 
+const PREFERRED_SUBTITLE_LANGS: Array<{ code: string; label: string }> = [
+  { code: "en", label: "english" },
+  { code: "ar", label: "arabic" },
+];
+
 export class MpvPlayerService implements MediaPlayerService {
   private state: PlayerState = {
     status: "idle",
@@ -63,6 +68,8 @@ export class MpvPlayerService implements MediaPlayerService {
   private initializingPromise: Promise<void> | null = null;
   private lastLoadedPath: string | null = null;
   private hwdecFallbackAttempted = false;
+  private autoSelectGeneration = 0;
+  private autoSelectTimers: ReturnType<typeof setTimeout>[] = [];
 
   public async initialize(): Promise<void> {
     if (this.state.isInitialized) {
@@ -90,6 +97,11 @@ export class MpvPlayerService implements MediaPlayerService {
             "sub-pos": "88",
             "sub-margin-y": "65",
             "sub-use-margins": "yes",
+            "slang": "en,ar",
+            "demuxer-mkv-subtitle-preroll": "yes",
+            "osd-bar": "no",
+            "osd-on-seek": "no",
+            "osd-level": "0",
           },
           observedProperties: OBSERVED_PROPERTIES,
         });
@@ -238,6 +250,7 @@ export class MpvPlayerService implements MediaPlayerService {
       case "file-loaded":
         this.hasFiredEofForCurrent = false;
         this.updateState({ status: "playing", error: null });
+        this.scheduleAutoSubtitleSelection();
         break;
       case "end-file": {
         const reason = (event as unknown as { reason?: string }).reason || "eof";
@@ -299,6 +312,7 @@ export class MpvPlayerService implements MediaPlayerService {
     const audio: TrackInfo[] = [];
     const subs: TrackInfo[] = [];
 
+    let activeSubId: number | undefined = undefined;
     for (const item of rawList) {
       const type = item.type as string;
       const id = Number(item.id);
@@ -312,10 +326,73 @@ export class MpvPlayerService implements MediaPlayerService {
         audio.push({ id, type: "audio", title, lang, codec, selected, external });
       } else if (type === "sub") {
         subs.push({ id, type: "sub", title, lang, codec, selected, external });
+        if (selected && id > 0) {
+          activeSubId = id;
+        }
       }
     }
 
-    this.updateState({ audioTracks: audio, subtitleTracks: subs });
+    const nextState: Partial<PlayerState> = { audioTracks: audio, subtitleTracks: subs };
+    nextState.currentSubtitleTrackId = activeSubId;
+    this.updateState(nextState);
+  }
+
+  private pickBestSubtitleTrack(tracks: TrackInfo[]): TrackInfo | undefined {
+    if (tracks.length === 0) return undefined;
+
+    let best: TrackInfo | undefined;
+    let bestScore = -Infinity;
+
+    for (const track of tracks) {
+      const lang = (track.lang || "").toLowerCase();
+      const title = (track.title || "").toLowerCase();
+      let score = !lang && !title ? 5 : 10;
+
+      for (let i = 0; i < PREFERRED_SUBTITLE_LANGS.length; i++) {
+        const { code, label } = PREFERRED_SUBTITLE_LANGS[i];
+        const langMatches =
+          lang === code || (lang.length === 3 && lang.startsWith(code));
+        if (langMatches) {
+          score = 100 - i * 10;
+          break;
+        }
+        if (title.includes(label)) {
+          score = 95 - i * 10;
+          break;
+        }
+      }
+      if (/\b(forced|sdh|cc|hi|ad)\b/.test(title) || /forced|sdh/.test(lang)) {
+        score -= 20;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        best = track;
+      }
+    }
+    return best;
+  }
+
+  private scheduleAutoSubtitleSelection(): void {
+    const gen = ++this.autoSelectGeneration;
+    for (const timer of this.autoSelectTimers) clearTimeout(timer);
+    this.autoSelectTimers = [];
+
+    const attempt = () => {
+      if (gen !== this.autoSelectGeneration) return;
+      if (this.state.currentSubtitleTrackId) return;
+      const tracks = this.state.subtitleTracks;
+      if (tracks.length === 0) return;
+      const best = this.pickBestSubtitleTrack(tracks);
+      if (best) {
+        this.selectSubtitleTrack(best.id).catch((e) =>
+          console.warn("Auto subtitle selection failed:", e),
+        );
+      }
+    };
+
+    // track-list arrives asynchronously after file-loaded; retry once if empty
+    this.autoSelectTimers.push(setTimeout(attempt, 300));
+    this.autoSelectTimers.push(setTimeout(attempt, 1000));
   }
 
   public async openFile(filePath: string): Promise<void> {
@@ -324,10 +401,17 @@ export class MpvPlayerService implements MediaPlayerService {
       this.hasFiredEofForCurrent = false;
       this.lastLoadedPath = filePath;
       this.hwdecFallbackAttempted = false;
+      this.autoSelectGeneration++;
+      for (const timer of this.autoSelectTimers) clearTimeout(timer);
+      this.autoSelectTimers = [];
       this.updateState({
         status: "loading",
         error: null,
         currentTime: 0,
+        audioTracks: [],
+        subtitleTracks: [],
+        currentAudioTrackId: undefined,
+        currentSubtitleTrackId: undefined,
         mediaMetadata: {
           filePath,
           duration: 0,
@@ -475,8 +559,28 @@ export class MpvPlayerService implements MediaPlayerService {
 
   public async selectSubtitleTrack(trackId: number): Promise<void> {
     await this.ensureInitialized();
-    await setProperty("sid", trackId);
-    this.updateState({ currentSubtitleTrackId: trackId });
+    if (!trackId || trackId <= 0) {
+      try {
+        await setProperty("sid", "no");
+      } catch (e) {
+        console.warn("Failed to set sid to no:", e);
+      }
+      this.updateState({ currentSubtitleTrackId: undefined });
+    } else {
+      try {
+        await setProperty("sub-visibility", true);
+      } catch {}
+      try {
+        await setProperty("sid", trackId);
+      } catch {
+        try {
+          await setProperty("sid", String(trackId));
+        } catch (e) {
+          console.warn("Failed to set subtitle track:", e);
+        }
+      }
+      this.updateState({ currentSubtitleTrackId: trackId });
+    }
   }
 
   public async setSubtitlePosition(pos: number): Promise<void> {

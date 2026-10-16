@@ -35,12 +35,23 @@ export interface SleepTimerState {
   action: "pause" | "closeApp";
 }
 
+export interface SkipAnimationState {
+  direction: "forward" | "backward";
+  accumulatedSeconds: number;
+  timestamp: number;
+}
+
 let sleepTimerInterval: number | null = null;
 let savedPreFadeVolume: number | null = null;
 let activeLoadSequence = 0;
+let skipAnimationTimer: number | null = null;
 const promptedDirectories = new Set<string>();
 
 interface PlayerStoreState extends PlayerState {
+  skipAnimation: SkipAnimationState | null;
+  triggerSkipAnimation: (deltaSeconds: number) => void;
+  showSkipIndicators: boolean;
+  toggleShowSkipIndicators: (enabled?: boolean) => Promise<void>;
   recentFiles: HistoryEntry[];
   playlist: PlaylistItem[];
   currentPlaylistIndex: number;
@@ -116,6 +127,8 @@ interface PlayerStoreState extends PlayerState {
   loadSubtitle: (path: string) => Promise<void>;
   selectAudioTrack: (trackId: number) => Promise<void>;
   selectSubtitleTrack: (trackId: number) => Promise<void>;
+  toggleSubtitleTrack: () => Promise<void>;
+  lastActiveSubtitleTrackId: number | null;
   addToPlaylist: (paths: string[]) => void;
   removeFromPlaylist: (index: number) => void;
   reorderPlaylist: (fromIndex: number, toIndex: number) => void;
@@ -193,6 +206,14 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
       set({ autoPlayNext: next });
       await storageService.setPreference("autoPlayNext", next);
       get().showOSD(next ? "Auto-Play Next: On" : "Auto-Play Next: Off");
+    },
+    skipAnimation: null,
+    showSkipIndicators: true,
+    toggleShowSkipIndicators: async (enabled?: boolean) => {
+      const next = enabled !== undefined ? enabled : !get().showSkipIndicators;
+      set({ showSkipIndicators: next });
+      await storageService.setPreference("showSkipIndicators", next);
+      get().showOSD(next ? "Skip Badges: Enabled" : "Skip Badges: Disabled");
     },
     osdMessage: null,
     osdTimer: null,
@@ -391,6 +412,12 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
         }
       }
       set({ isAlwaysOnTop: savedAlwaysOnTop });
+
+      // Load skip indicator display preference (defaults to true)
+      const savedShowSkip = await storageService.getPreference<boolean>("showSkipIndicators");
+      if (typeof savedShowSkip === "boolean") {
+        set({ showSkipIndicators: savedShowSkip });
+      }
 
       // Load auto update check preference (defaults to true)
       const savedAutoCheck = await storageService.getPreference<boolean>("autoCheckUpdates");
@@ -707,6 +734,7 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
         autoPlayNext: true,
         isNightListening: false,
         isAlwaysOnTop: false,
+        showSkipIndicators: true,
         videoFitMode: "fit",
         playbackRate: 1.0,
         isGlobalShortcutsEnabled: true,
@@ -715,6 +743,7 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
       await storageService.setPreference("autoPlayNext", true);
       await storageService.setPreference("isNightListening", false);
       await storageService.setPreference("isAlwaysOnTop", false);
+      await storageService.setPreference("showSkipIndicators", true);
       await storageService.setPreference("globalShortcutsEnabled", true);
 
       // 4. Cancel active sleep timer
@@ -847,7 +876,6 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
 
     play: async () => {
       await playerService.play();
-      get().showOSD("Play");
     },
 
     pause: async () => {
@@ -861,7 +889,6 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
           current.duration,
         );
       }
-      get().showOSD("Pause");
     },
 
     togglePlayback: async () => {
@@ -883,7 +910,6 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
         );
       }
       await playerService.stop();
-      get().showOSD("Stop");
     },
 
     seek: async (seconds: number) => {
@@ -894,7 +920,7 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
       const current = get().currentTime;
       const target = Math.max(0, current + deltaSeconds);
       await playerService.seek(target);
-      get().showOSD(`${deltaSeconds > 0 ? "+" : ""}${deltaSeconds}s`);
+      get().triggerSkipAnimation(deltaSeconds);
     },
 
     setVolume: async (value: number) => {
@@ -951,15 +977,39 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
       );
     },
 
+    lastActiveSubtitleTrackId: null,
+
     selectSubtitleTrack: async (trackId: number) => {
       await playerService.selectSubtitleTrack(trackId);
-      if (trackId === 0) {
+      if (!trackId || trackId <= 0) {
+        set({ currentSubtitleTrackId: undefined });
         get().showOSD("Subtitles: Off");
       } else {
+        set({ lastActiveSubtitleTrackId: trackId, currentSubtitleTrackId: trackId });
         const track = get().subtitleTracks.find((t) => t.id === trackId);
         get().showOSD(
           `Subtitles: ${track?.title || track?.lang || `Track ${trackId}`}`,
         );
+      }
+    },
+
+    toggleSubtitleTrack: async () => {
+      const state = get();
+      if (state.currentSubtitleTrackId && state.currentSubtitleTrackId > 0) {
+        set({ lastActiveSubtitleTrackId: state.currentSubtitleTrackId });
+        await get().selectSubtitleTrack(0);
+      } else {
+        const available = state.subtitleTracks;
+        if (available.length === 0) {
+          get().showOSD("No subtitle tracks found");
+          return;
+        }
+        const targetId =
+          state.lastActiveSubtitleTrackId &&
+          available.some((t) => t.id === state.lastActiveSubtitleTrackId)
+            ? state.lastActiveSubtitleTrackId
+            : available[0]?.id || 1;
+        await get().selectSubtitleTrack(targetId);
       }
     },
 
@@ -1234,6 +1284,36 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
       const modes: Array<"fit" | "fill" | "stretch"> = ["fit", "fill", "stretch"];
       const next = modes[(modes.indexOf(current) + 1) % modes.length];
       await get().setVideoFitMode(next);
+    },
+
+    triggerSkipAnimation: (deltaSeconds: number) => {
+      if (!get().showSkipIndicators) return;
+      const prev = get().skipAnimation;
+      const direction: "forward" | "backward" = deltaSeconds >= 0 ? "forward" : "backward";
+      const absDelta = Math.abs(deltaSeconds);
+      const now = Date.now();
+
+      let accumulated = absDelta;
+      if (prev && prev.direction === direction && now - prev.timestamp < 900) {
+        accumulated = prev.accumulatedSeconds + absDelta;
+      }
+
+      if (skipAnimationTimer) {
+        window.clearTimeout(skipAnimationTimer);
+      }
+
+      set({
+        skipAnimation: {
+          direction,
+          accumulatedSeconds: accumulated,
+          timestamp: now,
+        },
+      });
+
+      skipAnimationTimer = window.setTimeout(() => {
+        set({ skipAnimation: null });
+        skipAnimationTimer = null;
+      }, 750);
     },
 
     showOSD: (text: string) => {

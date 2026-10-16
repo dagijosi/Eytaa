@@ -8,6 +8,21 @@ export interface ParsedMediaTitle {
 }
 
 /**
+ * Normalizes series names for grouping (strips "The ", years like 2024, punctuation, and season tags)
+ */
+export function normalizeSeriesKey(name?: string | null): string {
+  if (!name) return "";
+  let s = name.toLowerCase().trim();
+  if (s.startsWith("the ")) s = s.slice(4).trim();
+  if (s.startsWith("a ")) s = s.slice(2).trim();
+  if (s.startsWith("an ")) s = s.slice(3).trim();
+  s = s.replace(/[\(\[]?(19\d\d|20\d\d)[\)\]]?/g, "").trim();
+  s = s.replace(/\b(season|series)\s*\d+\b/gi, "").trim();
+  s = s.replace(/[._\-:,]/g, " ").replace(/\s+/g, " ").trim();
+  return s || (name || "").toLowerCase().trim();
+}
+
+/**
  * Strips release scene noise, hashes, encoders, and formats TV/movie/music titles cleanly.
  */
 export function formatMediaTitle(rawTitle?: string | null, filePath?: string | null): string {
@@ -56,6 +71,25 @@ export function formatMediaTitle(rawTitle?: string | null, filePath?: string | n
     const epBadge = `S${season}E${episode}`;
 
     // Clean episode title by stripping trailing codecs/groups
+    const epTitle = cleanEpisodeTitle(rawEpTitle);
+
+    if (epTitle) {
+      return `${showName} • ${epBadge} - ${epTitle}`;
+    }
+    return `${showName} • ${epBadge}`;
+  }
+
+  // 1b. Check for written Season and Episode: "Show Name Season 1 Episode 2" or "Show Name season 1, episode 2"
+  const writtenTvPattern = /(.*?)[.\s_,-]+(?:season|series)[.\s_,-]*(\d{1,2})[.\s_,-]+(?:episode|ep)[.\s_,-]*(\d{1,3})(?:[.\s_,-]+(.*))?$/i;
+  const writtenTvMatch = cleaned.match(writtenTvPattern);
+  if (writtenTvMatch) {
+    const rawShow = writtenTvMatch[1];
+    const season = writtenTvMatch[2].padStart(2, "0");
+    const episode = writtenTvMatch[3].padStart(2, "0");
+    const rawEpTitle = writtenTvMatch[4] || "";
+
+    const showName = cleanShowOrMovieName(rawShow);
+    const epBadge = `S${season}E${episode}`;
     const epTitle = cleanEpisodeTitle(rawEpTitle);
 
     if (epTitle) {
@@ -114,8 +148,14 @@ function cleanShowOrMovieName(str: string): string {
     .replace(/\([^\)]*\)/g, "")
     .trim();
 
+  // Strip 4-digit release year if attached to show name e.g. "The Godfather 2024" -> "The Godfather"
+  s = s.replace(/\b(19\d\d|20\d\d)\b/g, "").trim();
+
+  // Strip leftover season keywords e.g. "Season 1" or "S1"
+  s = s.replace(/\b(season|series)\s*\d+\b/gi, "").trim();
+
   // Remove leading/trailing dashes or symbols
-  s = s.replace(/^[-–—\s]+|[-–—\s]+$/g, "");
+  s = s.replace(/^[-–—,\s]+|[-–—,\s]+$/g, "");
   return s;
 }
 

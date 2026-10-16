@@ -96,6 +96,8 @@ export function SettingsModal() {
     settingsInitialTab,
     autoCheckUpdates,
     toggleAutoCheckUpdates,
+    showSkipIndicators,
+    toggleShowSkipIndicators,
   } = usePlayerStore();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("playback");
@@ -840,6 +842,25 @@ export function SettingsModal() {
                   type="checkbox"
                   checked={autoPlayNext}
                   onChange={() => toggleAutoPlayNext()}
+                  style={{ accentColor }}
+                  className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                />
+              </div>
+
+              {/* Show Skip Indicators */}
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
+                <div>
+                  <span className="font-medium text-neutral-200 text-xs">
+                    Show Skip Indicators
+                  </span>
+                  <p className="text-xs text-neutral-500">
+                    Display visual forward (+10s) and rewind (-10s) animations on screen edges when skipping
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={showSkipIndicators}
+                  onChange={() => toggleShowSkipIndicators()}
                   style={{ accentColor }}
                   className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
                 />

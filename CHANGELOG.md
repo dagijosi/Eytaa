@@ -4,6 +4,18 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ---
 
+## [0.2.1] - 2026-10-16
+
+### ✨ Improvements & Fixes
+- **Side-Screen Skip Indicators**: Replaced intrusive center `+10s`/`-10s` popups with sleek, edge-aligned fast-forward and rewind animations that never block video action or subtitles. Added setting toggle in Settings > Playback to enable/disable skip badges.
+- **Clean Play / Pause Experience**: Removed obstructive "Play" and "Pause" center text overlays, keeping frame inspection clean when paused.
+- **Top-Center Status HUD**: Repositioned general status notifications (volume, speed, tracks, sleep timer) into a compact Apple TV / Dynamic Island style capsule at top-center.
+- **Responsive Media Center Header**: Global search bar now dynamically flexes with guaranteed minimum width so search text is always legible across narrow and split-screen layouts.
+- **Balanced Media Hub Hero Card**: Fixed horizontal layout and responsive poster sizing on the hero spotlight banner to eliminate empty space and text clipping on medium-width windows.
+- **Window Controls & Dragging**: Added native-feel minimize, maximize/restore, and close buttons to Media Library modal header alongside full window dragging.
+
+---
+
 ## [0.2.0] - 2026-10-15
 
 ### 🚀 Smart Media Center (Version 2.0)

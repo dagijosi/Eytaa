@@ -29,9 +29,12 @@ import {
   RectangleHorizontal,
   Layers,
   Menu,
+  Minus,
+  Square,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { usePlayerStore } from "../stores/playerStore";
 import { useThemeStore } from "../stores/themeStore";
 import {
@@ -48,6 +51,7 @@ import { MediaCard } from "./mediaCenter/MediaCard";
 import { EditMetadataModal } from "./mediaCenter/EditMetadataModal";
 import { SeriesDetailView } from "./mediaCenter/SeriesDetailView";
 import { ProceduralPoster } from "./mediaCenter/ProceduralPoster";
+import { normalizeSeriesKey } from "../utils/mediaTitle";
 
 type MediaCenterTab = "hub" | "movies" | "series" | "all" | "favorites" | "duplicates" | "folders";
 type WatchFilter = "all" | "in_progress" | "unwatched" | "watched";
@@ -335,6 +339,74 @@ export function MediaLibraryModal() {
     }
   });
 
+  // Track window maximized state for custom window controls
+  const [isWindowMaximized, setIsWindowMaximized] = useState(false);
+
+  useEffect(() => {
+    if (!isLibraryOpen) return;
+    const checkMax = async () => {
+      try {
+        const appWindow = getCurrentWindow();
+        setIsWindowMaximized(await appWindow.isMaximized());
+      } catch (e) {
+        console.warn("Max check error:", e);
+      }
+    };
+    checkMax();
+    const appWindow = getCurrentWindow();
+    const unlistenPromise = appWindow.onResized(async () => {
+      try {
+        setIsWindowMaximized(await appWindow.isMaximized());
+      } catch (e) {
+        console.warn("Resize error:", e);
+      }
+    });
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten()).catch(() => {});
+    };
+  }, [isLibraryOpen]);
+
+  // Auto-collapse sidebar on very narrow windows (< 850px) on initial open
+  useEffect(() => {
+    if (!isLibraryOpen) return;
+    const isNarrow = window.innerWidth < 850;
+    const hasSavedPref = localStorage.getItem("eytaa_library_sidebar_collapsed") !== null;
+    if (isNarrow && !hasSavedPref) {
+      setIsSidebarCollapsed(true);
+    }
+  }, [isLibraryOpen]);
+
+  const handleWindowMinimize = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const appWindow = getCurrentWindow();
+      await appWindow.minimize();
+    } catch (e) {
+      console.warn("Minimize error:", e);
+    }
+  };
+
+  const handleWindowToggleMaximize = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      const appWindow = getCurrentWindow();
+      await appWindow.toggleMaximize();
+      setIsWindowMaximized(await appWindow.isMaximized());
+    } catch (e) {
+      console.warn("Toggle maximize error:", e);
+    }
+  };
+
+  const handleWindowClose = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const appWindow = getCurrentWindow();
+      await appWindow.close();
+    } catch (e) {
+      console.warn("Close error:", e);
+    }
+  };
+
   const toggleSidebarCollapsed = () => {
     setIsSidebarCollapsed((prev) => {
       const next = !prev;
@@ -459,20 +531,27 @@ export function MediaLibraryModal() {
     );
   }, [items]);
 
-  // Group TV series
+  // Group TV series (using normalizeSeriesKey for robust grouping)
   const seriesGroups = useMemo(() => {
-    const map = new Map<string, LibraryItem[]>();
+    const map = new Map<string, { displayName: string; episodes: LibraryItem[] }>();
     for (const item of items) {
       if (item.category === "series" || item.series_name) {
-        const name = (item.series_name || "Unknown Series").trim();
-        if (!map.has(name)) {
-          map.set(name, []);
+        const rawName = (item.series_name || "Unknown Series").trim();
+        const normKey = normalizeSeriesKey(rawName);
+        if (!map.has(normKey)) {
+          map.set(normKey, { displayName: rawName, episodes: [] });
         }
-        map.get(name)!.push(item);
+        const entry = map.get(normKey)!;
+        if (rawName.toLowerCase().startsWith("the ") && !entry.displayName.toLowerCase().startsWith("the ")) {
+          entry.displayName = rawName;
+        } else if (rawName.length > entry.displayName.length && !entry.displayName.toLowerCase().startsWith("the ")) {
+          entry.displayName = rawName;
+        }
+        entry.episodes.push(item);
       }
     }
 
-    const groups = Array.from(map.entries()).map(([name, episodes]) => {
+    const groups = Array.from(map.values()).map(({ displayName, episodes }) => {
       const seasonsSet = new Set<number>();
       let watchedCount = 0;
       for (const ep of episodes) {
@@ -480,7 +559,7 @@ export function MediaLibraryModal() {
         if (ep.is_watched) watchedCount++;
       }
       return {
-        seriesName: name,
+        seriesName: displayName,
         episodes,
         seasonsCount: seasonsSet.size,
         episodesCount: episodes.length,
@@ -891,45 +970,52 @@ export function MediaLibraryModal() {
       aria-label="Smart Media Center"
       className="fixed inset-0 z-50 bg-neutral-950/95 backdrop-blur-2xl flex flex-col text-white animate-in fade-in duration-200 overflow-hidden font-sans"
     >
-      {/* Top Header Bar */}
-      <header className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-b border-white/10 shrink-0 bg-neutral-900/60">
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="w-9 h-9 flex items-center justify-center shrink-0">
+      {/* Top Header Bar with Window Drag Region and Controls */}
+      <header
+        data-tauri-drag-region
+        onDoubleClick={() => handleWindowToggleMaximize()}
+        className="flex items-center justify-between gap-2 sm:gap-3 px-3 sm:px-6 py-2.5 border-b border-white/10 shrink-0 bg-neutral-900/80 backdrop-blur-md select-none cursor-default"
+      >
+        <div className="flex items-center gap-2.5 shrink-0" data-tauri-drag-region>
+          <div className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center shrink-0">
             <EytaaLogo className="w-full h-full" variant="color" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base font-black tracking-wide uppercase">Smart Media Center</h1>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <h1 className="text-xs sm:text-sm font-black tracking-wide uppercase truncate hidden sm:block">
+                Smart Media Center
+              </h1>
               <span
                 style={{ backgroundColor: `${accentColor}25`, color: accentColor }}
-                className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold"
+                className="px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-mono font-bold shrink-0"
               >
                 v2.0
               </span>
               {offlineCount > 0 && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 hidden lg:inline shrink-0">
                   {offlineCount} offline
                 </span>
               )}
             </div>
-            <p className="text-xs text-neutral-400">
-              Automatically organize movies, series, continue watching, and local metadata
-            </p>
           </div>
         </div>
 
-        {/* Global Search Bar */}
-        <div className="relative w-full sm:w-80 md:w-96">
-          <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        {/* Global Search Bar (Responsive with min-width and auto-fill) */}
+        <div className="relative flex-1 min-w-[130px] sm:min-w-[180px] max-w-xs sm:max-w-sm md:max-w-md mx-1 sm:mx-2" data-tauri-drag-region="false">
+          <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-neutral-400 absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search movies, series, episodes..."
-            className="w-full pl-9 pr-9 py-2 rounded-xl bg-white/5 border border-white/10 hover:border-white/20 focus:border-white/40 focus:outline-none text-xs text-white placeholder-neutral-500 transition"
+            placeholder="Search movies, series..."
+            className={`w-full pl-8 sm:pl-9 pr-7 sm:pr-8 py-1.5 rounded-xl bg-white/5 border text-xs text-white placeholder-neutral-500 transition focus:outline-none ${
+              searchInput
+                ? "border-sky-500/50 shadow-[0_0_12px_rgba(56,189,248,0.2)] focus:border-sky-400"
+                : "border-white/10 hover:border-white/20 focus:border-white/40"
+            }`}
           />
           {isDebouncing ? (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+            <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
               <RefreshCw className="w-3.5 h-3.5 text-neutral-400 animate-spin" />
             </div>
           ) : searchInput ? (
@@ -938,61 +1024,117 @@ export function MediaLibraryModal() {
                 setSearchInput("");
                 setDebouncedSearchQuery("");
               }}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white cursor-pointer p-0.5"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           ) : null}
         </div>
 
-        {/* Top Action Buttons */}
-        <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+        {/* Top Action Buttons + Window Controls */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0" data-tauri-drag-region="false">
           <button
             onClick={handleAddFolder}
             style={{
               backgroundColor: accentColor,
               color: accentText,
-              boxShadow: `0 4px 14px ${accentGlow}`,
+              boxShadow: `0 2px 10px ${accentGlow}`,
             }}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition hover:brightness-110 active:scale-95 cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition hover:brightness-110 active:scale-95 cursor-pointer"
             title="Add a folder to scan for media"
           >
-            <FolderPlus className="w-4 h-4" />
-            <span>Add Folder</span>
+            <FolderPlus className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Add Folder</span>
           </button>
 
           <button
             onClick={handleRescanAll}
             disabled={isScanning}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-neutral-300 hover:text-white transition cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-neutral-300 hover:text-white transition cursor-pointer disabled:opacity-50"
             title="Rescan all library folders"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? "animate-spin text-amber-400" : ""}`} />
-            <span className="hidden md:inline">Rescan</span>
+            <span className="hidden lg:inline">Rescan</span>
           </button>
 
           <button
             onClick={handleReclassifyMedia}
             disabled={isScanning || isReclassifying}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-neutral-300 hover:text-white transition cursor-pointer disabled:opacity-50"
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-neutral-300 hover:text-white transition cursor-pointer disabled:opacity-50"
             title="Re-analyze library with smart episode & series detection"
           >
             <SlidersHorizontal className={`w-3.5 h-3.5 ${isReclassifying ? "animate-spin text-sky-400" : "text-sky-400"}`} />
-            <span className="hidden lg:inline">{isReclassifying ? "Organizing..." : "Organize Series & Movies"}</span>
+            <span className="hidden xl:inline">{isReclassifying ? "Organizing..." : "Organize"}</span>
           </button>
 
-          <div className="h-6 w-px bg-white/10 mx-1 hidden sm:block" />
+          <div className="h-4 w-px bg-white/15 mx-0.5 sm:mx-1 hidden sm:block" />
 
-          {/* Close Modal */}
+          {/* Close Library Overlay Button */}
           <button
             onClick={() => toggleLibraryModal(false)}
-            className="p-2 rounded-xl bg-white/5 hover:bg-red-500/20 hover:text-red-400 text-neutral-400 border border-white/10 transition cursor-pointer"
-            title="Close Media Center (Esc)"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-300 hover:text-white border border-white/10 text-xs font-semibold transition cursor-pointer"
+            title="Back to Video Player (Esc)"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5" />
+            <span className="hidden lg:inline">Close Library</span>
           </button>
+
+          <div className="h-4 w-px bg-white/15 mx-0.5 sm:mx-1" />
+
+          {/* Native-style Window Controls */}
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={handleWindowMinimize}
+              className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+              title="Minimize Window"
+            >
+              <Minus className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={handleWindowToggleMaximize}
+              className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+              title={isWindowMaximized ? "Restore Window" : "Maximize Window"}
+            >
+              {isWindowMaximized ? (
+                <Copy className="w-3.5 h-3.5" />
+              ) : (
+                <Square className="w-3.5 h-3.5" />
+              )}
+            </button>
+            <button
+              onClick={handleWindowClose}
+              className="p-1.5 rounded-lg text-neutral-400 hover:text-red-400 hover:bg-red-500/20 transition cursor-pointer"
+              title="Close EYTAA"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       </header>
+
+      {/* Active Search Banner Notification */}
+      {debouncedSearchQuery.trim() && (
+        <div className="bg-sky-500/10 border-b border-sky-500/25 px-6 py-2 flex items-center justify-between text-xs text-sky-200 animate-in fade-in duration-150 shrink-0">
+          <div className="flex items-center gap-2">
+            <Search className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+            <span>
+              Search filter active: filtering results for{" "}
+              <strong className="text-white font-semibold">"{debouncedSearchQuery}"</strong>
+              {" "}• {items.length} item{items.length === 1 ? "" : "s"} found across library
+            </span>
+          </div>
+          <button
+            onClick={() => {
+              setSearchInput("");
+              setDebouncedSearchQuery("");
+            }}
+            className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-white font-semibold transition cursor-pointer"
+          >
+            <X className="w-3 h-3" />
+            <span>Clear Search</span>
+          </button>
+        </div>
+      )}
 
       {/* Scanning status banner */}
       {isScanning && (
@@ -1358,6 +1500,11 @@ export function MediaLibraryModal() {
           <SeriesDetailView
             seriesName={inspectingSeriesName}
             items={items}
+            searchQuery={debouncedSearchQuery}
+            onClearSearch={() => {
+              setSearchInput("");
+              setDebouncedSearchQuery("");
+            }}
             cardFormat={cardFormat}
             onToggleCardFormat={handleToggleCardFormat}
             onBack={() => setInspectingSeriesName(null)}
@@ -1372,7 +1519,7 @@ export function MediaLibraryModal() {
           <div className="flex-1 overflow-y-auto px-6 py-6 space-y-8">
             {/* HERO SPOTLIGHT BANNER */}
             {spotlightItem && (
-              <div className="relative rounded-3xl overflow-hidden border border-white/10 bg-gradient-to-r from-neutral-950 via-neutral-900/90 to-neutral-950 p-6 sm:p-8 flex flex-col md:flex-row items-center gap-6 shadow-2xl">
+              <div className="relative rounded-3xl overflow-hidden border border-white/10 bg-gradient-to-r from-neutral-950 via-neutral-900/90 to-neutral-950 p-4 sm:p-6 lg:p-7 flex flex-row items-center gap-4 sm:gap-6 shadow-2xl">
                 {/* Ambient Glow */}
                 <div
                   style={{ backgroundColor: accentGlow }}
@@ -1381,8 +1528,9 @@ export function MediaLibraryModal() {
 
                 {/* Cinematic Ambient Backdrop from spotlight artwork */}
                 {spotlightThumb && (
-                  <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
-                    <img src={spotlightThumb} alt="" className="w-full h-full object-cover blur-3xl scale-125" />
+                  <div className="absolute right-0 top-0 bottom-0 w-3/4 sm:w-1/2 overflow-hidden pointer-events-none opacity-20">
+                    <img src={spotlightThumb} alt="" className="w-full h-full object-cover blur-2xl scale-125" />
+                    <div className="absolute inset-0 bg-gradient-to-l from-transparent via-neutral-950/70 to-neutral-950" />
                   </div>
                 )}
 
@@ -1390,8 +1538,8 @@ export function MediaLibraryModal() {
                 <div
                   className={`relative rounded-2xl overflow-hidden bg-neutral-950 shrink-0 shadow-2xl border border-white/10 group ${
                     cardFormat === "widescreen"
-                      ? "aspect-video w-56 sm:w-72 md:w-80"
-                      : "aspect-[2/3] w-36 sm:w-48"
+                      ? "aspect-video w-44 sm:w-56 md:w-64 lg:w-72 xl:w-80"
+                      : "aspect-[2/3] w-28 sm:w-36 md:w-44"
                   }`}
                 >
                   {spotlightThumb ? (
@@ -1420,7 +1568,7 @@ export function MediaLibraryModal() {
                 </div>
 
                 {/* Spotlight details */}
-                <div className="flex-1 flex flex-col justify-between space-y-3.5 z-10 w-full">
+                <div className="flex-1 flex flex-col justify-between space-y-3 z-10 w-full min-w-0">
                   <div>
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                       <span
@@ -1442,11 +1590,11 @@ export function MediaLibraryModal() {
                       )}
                     </div>
 
-                    <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight line-clamp-1">
+                    <h1 className="text-lg sm:text-xl md:text-2xl font-black text-white tracking-tight break-words line-clamp-2">
                       {spotlightItem.series_name ? `${spotlightItem.series_name}: ${spotlightItem.title}` : spotlightItem.title}
                     </h1>
 
-                    <p className="text-xs text-neutral-400 font-mono mt-1">
+                    <p className="text-xs text-neutral-400 font-mono mt-1 break-words">
                       {spotlightItem.season_number && spotlightItem.episode_number
                         ? `Season ${spotlightItem.season_number} • Episode ${spotlightItem.episode_number} • `
                         : ""}
@@ -1478,7 +1626,7 @@ export function MediaLibraryModal() {
                   ) : null}
 
                   {/* Play actions */}
-                  <div className="flex items-center gap-3 pt-1">
+                  <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 pt-1">
                     <button
                       onClick={() => handlePlayMediaWithAutoQueue(spotlightItem)}
                       style={{
@@ -1486,7 +1634,7 @@ export function MediaLibraryModal() {
                         color: accentText,
                         boxShadow: `0 4px 18px ${accentGlow}`,
                       }}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs transition hover:brightness-110 active:scale-95 cursor-pointer shadow-lg"
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs transition hover:brightness-110 active:scale-95 cursor-pointer shadow-lg shrink-0"
                     >
                       <Play className="w-4 h-4 fill-current" />
                       <span>
@@ -1496,14 +1644,14 @@ export function MediaLibraryModal() {
 
                     <button
                       onClick={() => handleQueueItem(spotlightItem.file_path)}
-                      className="px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-xs font-semibold text-white transition cursor-pointer"
+                      className="px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-xs font-semibold text-white transition cursor-pointer shrink-0"
                     >
                       Add to Queue
                     </button>
 
                     <button
                       onClick={() => setEditingItem(spotlightItem)}
-                      className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-400 hover:text-white transition cursor-pointer"
+                      className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-400 hover:text-white transition cursor-pointer shrink-0"
                       title="Edit Details"
                     >
                       <Edit3 className="w-4 h-4" />
@@ -1514,7 +1662,7 @@ export function MediaLibraryModal() {
             )}
 
             {/* Quick Interactive Metric Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <button
                 type="button"
                 onClick={() => {

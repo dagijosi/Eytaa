@@ -4,6 +4,7 @@ import { useThemeStore } from "./stores/themeStore";
 import { TopBar } from "./components/TopBar";
 import { ControlBar } from "./components/ControlBar";
 import { CenterOSD } from "./components/CenterOSD";
+import { SkipIndicator } from "./components/SkipIndicator";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { PlaylistDrawer } from "./components/PlaylistDrawer";
 import { SettingsModal } from "./components/SettingsModal";
@@ -18,6 +19,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { playerService } from "./services/player/mpvPlayerService";
+import { toggleWindowFullscreen } from "./utils/windowControls";
 
 export default function App() {
   const {
@@ -87,6 +89,19 @@ export default function App() {
         });
     }
   }, [isInitialized, initialize, initializeTheme, openFile]);
+
+  // Show window once DOM is fully mounted to eliminate white / transparent lag on startup
+  useEffect(() => {
+    const showTimer = setTimeout(async () => {
+      try {
+        const appWindow = getCurrentWindow();
+        await appWindow.show();
+      } catch (e) {
+        console.warn("Error showing window:", e);
+      }
+    }, 60);
+    return () => clearTimeout(showTimer);
+  }, []);
 
   // Listen for file open requests forwarded from subsequent single instances
   useEffect(() => {
@@ -236,14 +251,8 @@ export default function App() {
 
   // Fullscreen toggle helper
   const handleToggleFullscreen = async () => {
-    try {
-      const appWindow = getCurrentWindow();
-      const current = await appWindow.isFullscreen();
-      await appWindow.setFullscreen(!current);
-      setIsFullscreen(!current);
-    } catch (e) {
-      console.warn("Fullscreen toggle error:", e);
-    }
+    const newFs = await toggleWindowFullscreen();
+    setIsFullscreen(newFs);
   };
 
   // Global Keyboard Shortcuts
@@ -524,8 +533,11 @@ export default function App() {
       {/* Welcome Screen when no video is loaded */}
       {!hasMedia && <WelcomeScreen />}
 
-      {/* Floating Center OSD Feedback */}
+      {/* Floating Center / Top OSD Feedback */}
       <CenterOSD />
+
+      {/* Side-Screen Skip Indicator */}
+      <SkipIndicator />
 
       {/* Sibling Season Episodes Toast Alert */}
       <SiblingPromptToast />
