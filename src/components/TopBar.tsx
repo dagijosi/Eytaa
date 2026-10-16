@@ -57,7 +57,7 @@ export function TopBar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSnapMenuOpen, setIsSnapMenuOpen] = useState(false);
   const [hoveredZone, setHoveredZone] = useState<string | null>(null);
-  const [appVersion, setAppVersion] = useState("0.1.4");
+  const [appVersion, setAppVersion] = useState("");
 
   const menuRef = useRef<HTMLDivElement>(null);
   const snapMenuRef = useRef<HTMLDivElement>(null);
@@ -493,7 +493,7 @@ export function TopBar() {
               <div className="flex items-center justify-between px-3 py-1.5 text-[10px] text-neutral-500 font-mono border-t border-white/5 mt-0.5 select-none">
                 <span>EYTAA Player</span>
                 <span style={{ color: accentColor }} className="font-bold">
-                  v{appVersion}
+                  {appVersion ? `v${appVersion}` : ""}
                   {availableUpdate ? ` • v${availableUpdate.version} ready` : ""}
                 </span>
               </div>

@@ -55,18 +55,33 @@ export function SeriesDetailView({
   const [unfilteredEpisodes, setUnfilteredEpisodes] = useState<LibraryItem[]>([]);
   const [showAllEpisodes, setShowAllEpisodes] = useState(false);
 
+  // Canonical series key for this view (prefers the stored series_key over re-normalizing)
+  const seriesKey = useMemo(() => {
+    const norm = normalizeSeriesKey(seriesName);
+    for (const i of items) {
+      if (!i.series_name) continue;
+      if (
+        i.series_key &&
+        ((i.series_name || "").toLowerCase() === seriesName.toLowerCase() ||
+          normalizeSeriesKey(i.series_name) === norm)
+      ) {
+        return i.series_key;
+      }
+    }
+    return norm;
+  }, [items, seriesName]);
+
   // Fetch full unfiltered series episodes if a search query is active
   useEffect(() => {
     let isMounted = true;
     if (searchQuery && searchQuery.trim()) {
       libraryService.getLibraryItems({ category: "series" }).then((allItems) => {
         if (isMounted) {
-          const normTarget = normalizeSeriesKey(seriesName);
           const matched = allItems
-            .filter((i) => normalizeSeriesKey(i.series_name) === normTarget)
+            .filter((i) => (i.series_key ? i.series_key === seriesKey : normalizeSeriesKey(i.series_name) === seriesKey))
             .sort((a, b) => {
-              const sA = a.season_number ?? 1;
-              const sB = b.season_number ?? 1;
+              const sA = (a.season_number ?? 1) === 0 ? Infinity : (a.season_number ?? 1);
+              const sB = (b.season_number ?? 1) === 0 ? Infinity : (b.season_number ?? 1);
               if (sA !== sB) return sA - sB;
               return (a.episode_number ?? 0) - (b.episode_number ?? 0);
             });
@@ -80,28 +95,26 @@ export function SeriesDetailView({
     return () => {
       isMounted = false;
     };
-  }, [seriesName, searchQuery]);
+  }, [seriesName, seriesKey, searchQuery]);
 
-  // All episodes belonging to this series (using normalized key for robust grouping)
+  // All episodes belonging to this series (using canonical key for robust grouping)
   const seriesEpisodes = useMemo(() => {
     if (showAllEpisodes && unfilteredEpisodes.length > 0) {
       return unfilteredEpisodes;
     }
-    const normTarget = normalizeSeriesKey(seriesName);
     return items
-      .filter((i) => {
-        const itemNorm = normalizeSeriesKey(i.series_name);
-        return itemNorm === normTarget || (i.series_name || "").toLowerCase() === seriesName.toLowerCase();
-      })
+      .filter((i) =>
+        i.series_key ? i.series_key === seriesKey : normalizeSeriesKey(i.series_name) === seriesKey,
+      )
       .sort((a, b) => {
-        const sA = a.season_number ?? 1;
-        const sB = b.season_number ?? 1;
+        const sA = (a.season_number ?? 1) === 0 ? Infinity : (a.season_number ?? 1);
+        const sB = (b.season_number ?? 1) === 0 ? Infinity : (b.season_number ?? 1);
         if (sA !== sB) return sA - sB;
         const eA = a.episode_number ?? 0;
         const eB = b.episode_number ?? 0;
         return eA - eB;
       });
-  }, [items, seriesName, showAllEpisodes, unfilteredEpisodes]);
+  }, [items, seriesKey, showAllEpisodes, unfilteredEpisodes]);
 
   // Dynamic series hero poster
   const [heroThumb, setHeroThumb] = useState<string | null>(
@@ -153,13 +166,17 @@ export function SeriesDetailView({
     onPlay(targetPath, remaining);
   };
 
-  // Extract distinct seasons
+  // Extract distinct seasons (specials/season 0 last)
   const seasons = useMemo(() => {
     const sSet = new Set<number>();
     for (const ep of seriesEpisodes) {
       sSet.add(ep.season_number ?? 1);
     }
-    return Array.from(sSet).sort((a, b) => a - b);
+    return Array.from(sSet).sort((a, b) => {
+      const sa = a === 0 ? Infinity : a;
+      const sb = b === 0 ? Infinity : b;
+      return sa - sb;
+    });
   }, [seriesEpisodes]);
 
   const [activeSeason, setActiveSeason] = useState<number | "all">(
@@ -180,10 +197,12 @@ export function SeriesDetailView({
   const seriesProgressPercent =
     totalCount > 0 ? Math.round((watchedCount / totalCount) * 100) : 0;
 
-  // Next episode up
+  // Next episode up (specials are never auto-suggested)
   const nextEpisode = useMemo(() => {
+    const playable = seriesEpisodes.filter((ep) => (ep.season_number ?? 1) !== 0);
+
     // 1. Look for partially watched episode
-    const inProgress = seriesEpisodes.find(
+    const inProgress = playable.find(
       (ep) =>
         !ep.is_watched &&
         typeof ep.resume_position === "number" &&
@@ -194,7 +213,7 @@ export function SeriesDetailView({
     if (inProgress) return inProgress;
 
     // 2. Look for first unwatched episode
-    return seriesEpisodes.find((ep) => !ep.is_watched) || seriesEpisodes[0];
+    return playable.find((ep) => !ep.is_watched) || playable[0] || seriesEpisodes[0];
   }, [seriesEpisodes]);
 
   // Toggle single episode watched
@@ -214,7 +233,7 @@ export function SeriesDetailView({
   const handleToggleSeriesWatched = async () => {
     const shouldWatch = watchedCount < totalCount;
     try {
-      await libraryService.setSeriesWatchedStatus(seriesName, shouldWatch);
+      await libraryService.setSeriesWatchedStatus(seriesKey, shouldWatch);
       await onRefreshData();
     } catch (e) {
       console.error("Series watched toggle error:", e);
@@ -230,7 +249,7 @@ export function SeriesDetailView({
     const shouldWatch = seasonWatchedCount < seasonEps.length;
     try {
       await libraryService.setSeriesWatchedStatus(
-        seriesName,
+        seriesKey,
         shouldWatch,
         season,
       );

@@ -139,14 +139,29 @@ pub fn init_db(app: &AppHandle) -> Result<DbState, String> {
     let _ = conn.execute("ALTER TABLE library_items ADD COLUMN is_watched INTEGER DEFAULT 0", []);
     let _ = conn.execute("ALTER TABLE library_items ADD COLUMN manual_override INTEGER DEFAULT 0", []);
     let _ = conn.execute("ALTER TABLE library_items ADD COLUMN custom_poster TEXT", []);
+    let _ = conn.execute("ALTER TABLE library_items ADD COLUMN series_key TEXT", []);
     let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_library_items_hash ON library_items (quick_hash)", []);
     let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_library_items_avail ON library_items (is_available)", []);
     let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_library_items_category ON library_items (category)", []);
     let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_library_items_series ON library_items (series_name COLLATE NOCASE)", []);
+    let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_library_items_series_key ON library_items (series_key)", []);
     let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_library_items_watched ON library_items (is_watched)", []);
 
+    // Re-parse the whole library only when the metadata parser version changes.
+    // This keeps startup fast while still auto-healing libraries after upgrades.
+    const PARSER_VERSION: i64 = 2;
+    let stored_parser_version: Option<i64> = conn
+        .query_row(
+            "SELECT value FROM user_preferences WHERE key = 'parserVersion'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok());
+
     // Transparently reclassify existing items in library where manual_override = 0
-    if let Ok(mut stmt) = conn.prepare("SELECT id, file_path, file_name, media_type FROM library_items WHERE COALESCE(manual_override, 0) = 0") {
+    if stored_parser_version != Some(PARSER_VERSION) {
+        if let Ok(mut stmt) = conn.prepare("SELECT id, file_path, file_name, media_type FROM library_items WHERE COALESCE(manual_override, 0) = 0") {
         let rows: Vec<(i64, String, String, String)> = stmt
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
             .map(|r| r.filter_map(Result::ok).collect())
@@ -156,6 +171,11 @@ pub fn init_db(app: &AppHandle) -> Result<DbState, String> {
             let (title, category, series_name, season_num, ep_num, ep_title, year) =
                 crate::library::parse_media_info(std::path::Path::new(&file_path), &file_name, &media_type);
 
+            let series_key: Option<String> = series_name
+                .as_deref()
+                .map(crate::library::normalize_series_key)
+                .filter(|k| !k.is_empty());
+
             let _ = conn.execute(
                 "UPDATE library_items SET
                     title = ?1,
@@ -164,8 +184,9 @@ pub fn init_db(app: &AppHandle) -> Result<DbState, String> {
                     season_number = ?4,
                     episode_number = ?5,
                     episode_title = ?6,
-                    year = ?7
-                 WHERE id = ?8",
+                    year = ?7,
+                    series_key = ?8
+                 WHERE id = ?9",
                 params![
                     title,
                     category.unwrap_or_else(|| "movie".to_string()),
@@ -174,8 +195,70 @@ pub fn init_db(app: &AppHandle) -> Result<DbState, String> {
                     ep_num,
                     ep_title,
                     year,
+                    series_key,
                     id
                 ],
+            );
+        }
+        }
+
+        let _ = conn.execute(
+            "INSERT INTO user_preferences (key, value) VALUES ('parserVersion', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![PARSER_VERSION.to_string()],
+        );
+    }
+
+    // Repair series rows with missing season/episode numbers (e.g. previously clobbered by
+    // an incomplete metadata edit). Reparse only the numeric fields so any manual
+    // series_name / title / poster customisation is preserved.
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT id, file_path, file_name, media_type FROM library_items
+         WHERE category = 'series'
+           AND (season_number IS NULL OR episode_number IS NULL)",
+    ) {
+        let rows: Vec<(i64, String, String, String)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
+            .map(|r| r.filter_map(Result::ok).collect())
+            .unwrap_or_default();
+
+        for (id, file_path, file_name, media_type) in rows {
+            let (_, _, _, season_num, ep_num, ep_title, year) =
+                crate::library::parse_media_info(std::path::Path::new(&file_path), &file_name, &media_type);
+
+            if season_num.is_none() || ep_num.is_none() {
+                continue;
+            }
+            let _ = conn.execute(
+                "UPDATE library_items SET
+                    season_number = ?1,
+                    episode_number = ?2,
+                    episode_title = COALESCE(episode_title, ?3),
+                    year = COALESCE(year, ?4)
+                 WHERE id = ?5",
+                params![season_num, ep_num, ep_title, year, id],
+            );
+        }
+    }
+
+    // Backfill series_key for manually overridden rows whose key is missing
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT id, series_name FROM library_items
+         WHERE COALESCE(manual_override, 0) = 1
+           AND COALESCE(series_key, '') = ''
+           AND series_name IS NOT NULL AND series_name != ''",
+    ) {
+        let rows: Vec<(i64, String)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map(|r| r.filter_map(Result::ok).collect())
+            .unwrap_or_default();
+
+        for (id, series_name) in rows {
+            let key = crate::library::normalize_series_key(&series_name);
+            let key_opt: Option<String> = if key.is_empty() { None } else { Some(key) };
+            let _ = conn.execute(
+                "UPDATE library_items SET series_key = ?1 WHERE id = ?2",
+                params![key_opt, id],
             );
         }
     }
@@ -404,6 +487,7 @@ pub struct LibraryItemDto {
     pub is_watched: bool,
     pub manual_override: bool,
     pub custom_poster: Option<String>,
+    pub series_key: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -535,9 +619,10 @@ pub fn db_save_library_items(
                     file_size = ?8,
                     last_modified = ?9,
                     quick_hash = ?10,
+                    series_key = ?11,
                     is_available = 1,
                     missing_since = NULL
-                 WHERE id = ?11",
+                 WHERE id = ?12",
             )
             .map_err(|e| e.to_string())?;
 
@@ -566,11 +651,12 @@ pub fn db_save_library_items(
                     episode_number = CASE WHEN manual_override = 1 THEN episode_number ELSE ?8 END,
                     episode_title = CASE WHEN manual_override = 1 THEN episode_title ELSE ?9 END,
                     year = CASE WHEN manual_override = 1 THEN year ELSE ?10 END,
-                    file_size = ?11,
-                    last_modified = ?12,
+                    series_key = CASE WHEN manual_override = 1 THEN series_key ELSE ?11 END,
+                    file_size = ?12,
+                    last_modified = ?13,
                     is_available = 1,
                     missing_since = NULL
-                 WHERE id = ?13",
+                 WHERE id = ?14",
             )
             .map_err(|e| e.to_string())?;
 
@@ -590,9 +676,9 @@ pub fn db_save_library_items(
             .prepare(
                 "INSERT INTO library_items (
                     folder_path, file_path, file_name, title, media_type, file_size, last_modified, quick_hash, is_available,
-                    category, series_name, season_number, episode_number, episode_title, year, is_watched, manual_override
+                    category, series_name, series_key, season_number, episode_number, episode_title, year, is_watched, manual_override
                 )
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, ?10, ?11, ?12, ?13, ?14, 0, 0)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, 0)",
             )
             .map_err(|e| e.to_string())?;
 
@@ -612,6 +698,14 @@ pub fn db_save_library_items(
 
             let cat_str = item.category.as_deref().unwrap_or("movie");
             let s_name = item.series_name.as_deref();
+            let s_key: Option<String> = item.series_name.as_deref().and_then(|n| {
+                let k = crate::library::normalize_series_key(n);
+                if k.is_empty() {
+                    None
+                } else {
+                    Some(k)
+                }
+            });
             let ep_title = item.episode_title.as_deref();
             let yr = item.year.as_deref();
 
@@ -640,6 +734,7 @@ pub fn db_save_library_items(
                         item.file_size as i64,
                         item.last_modified as i64,
                         item.quick_hash,
+                        s_key,
                         id
                     ]);
                 }
@@ -670,6 +765,7 @@ pub fn db_save_library_items(
                             item.episode_number,
                             ep_title,
                             yr,
+                            s_key,
                             item.file_size as i64,
                             item.last_modified as i64,
                             old_id
@@ -697,6 +793,7 @@ pub fn db_save_library_items(
                         item.quick_hash,
                         cat_str,
                         s_name,
+                        s_key,
                         item.season_number,
                         item.episode_number,
                         ep_title,
@@ -792,7 +889,8 @@ pub fn db_get_library_items(
                 li.category, li.series_name, li.season_number, li.episode_number, li.episode_title, li.year,
                 COALESCE(li.is_watched, 0) as is_watched,
                 COALESCE(li.manual_override, 0) as manual_override,
-                li.custom_poster
+                li.custom_poster,
+                li.series_key
          FROM library_items li
          LEFT JOIN library_favorites lf ON li.file_path = lf.file_path
          LEFT JOIN resume_positions rp ON li.file_path = rp.file_path
@@ -824,8 +922,14 @@ pub fn db_get_library_items(
 
     if let Some(series) = series_name {
         if !series.is_empty() {
-            sql.push_str("AND li.series_name = ? ");
-            params_vec.push(Box::new(series));
+            let key = crate::library::normalize_series_key(&series);
+            if !key.is_empty() {
+                sql.push_str("AND li.series_key = ? ");
+                params_vec.push(Box::new(key));
+            } else {
+                sql.push_str("AND li.series_name = ? ");
+                params_vec.push(Box::new(series));
+            }
         }
     }
 
@@ -847,11 +951,14 @@ pub fn db_get_library_items(
     if let Some(s) = search {
         let trimmed = s.trim();
         if !trimmed.is_empty() {
-            sql.push_str("AND (li.title LIKE ? OR li.file_name LIKE ? OR li.series_name LIKE ?) ");
+            sql.push_str("AND (li.title LIKE ? OR li.file_name LIKE ? OR li.series_name LIKE ? OR COALESCE(li.series_key, '') LIKE ?) ");
             let pattern = format!("%{}%", trimmed);
             params_vec.push(Box::new(pattern.clone()));
             params_vec.push(Box::new(pattern.clone()));
             params_vec.push(Box::new(pattern));
+            let norm = crate::library::normalize_series_key(trimmed);
+            let norm_pattern = format!("%{}%", norm);
+            params_vec.push(Box::new(norm_pattern));
         }
     }
 
@@ -863,7 +970,8 @@ pub fn db_get_library_items(
         sql.push_str("AND COALESCE(li.is_available, 1) = 1 ");
     }
 
-    sql.push_str("ORDER BY COALESCE(li.series_name, li.title) COLLATE NOCASE ASC, COALESCE(li.season_number, 0) ASC, COALESCE(li.episode_number, 0) ASC, li.title COLLATE NOCASE ASC");
+    // Specials (season 0) sort last within a series; otherwise by season then episode
+    sql.push_str("ORDER BY COALESCE(li.series_key, li.title) COLLATE NOCASE ASC, CASE WHEN COALESCE(li.season_number, 0) = 0 THEN 9999 ELSE COALESCE(li.season_number, 0) END ASC, COALESCE(li.episode_number, 0) ASC, li.title COLLATE NOCASE ASC");
 
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
 
@@ -902,6 +1010,7 @@ pub fn db_get_library_items(
                 is_watched: is_watched_i64 == 1,
                 manual_override: manual_i64 == 1,
                 custom_poster: row.get(23)?,
+                series_key: row.get(24)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -926,22 +1035,28 @@ pub fn db_update_media_metadata(
     apply_to_series: Option<bool>,
 ) -> Result<(), String> {
     let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+    let series_key: Option<String> = series_name
+        .as_deref()
+        .map(crate::library::normalize_series_key)
+        .filter(|k| !k.is_empty());
     conn.execute(
         "UPDATE library_items SET
             title = ?1,
             category = ?2,
-            series_name = ?3,
-            season_number = ?4,
-            episode_number = ?5,
-            episode_title = ?6,
-            year = ?7,
-            custom_poster = ?8,
+            series_name = COALESCE(?3, series_name),
+            series_key = COALESCE(?4, series_key),
+            season_number = COALESCE(?5, season_number),
+            episode_number = COALESCE(?6, episode_number),
+            episode_title = COALESCE(?7, episode_title),
+            year = COALESCE(?8, year),
+            custom_poster = ?9,
             manual_override = 1
-         WHERE file_path = ?9",
+         WHERE file_path = ?10",
         params![
             title,
             category.unwrap_or_else(|| "movie".to_string()),
             series_name,
+            series_key,
             season_number,
             episode_number,
             episode_title,
@@ -954,7 +1069,12 @@ pub fn db_update_media_metadata(
 
     // If requested, also apply the custom artwork to all episodes of this TV series
     if apply_to_series.unwrap_or(false) {
-        if let Some(ref s_name) = series_name {
+        if let Some(ref key) = series_key {
+            let _ = conn.execute(
+                "UPDATE library_items SET custom_poster = ?1 WHERE series_key = ?2",
+                params![custom_poster, key],
+            );
+        } else if let Some(ref s_name) = series_name {
             if !s_name.trim().is_empty() {
                 let _ = conn.execute(
                     "UPDATE library_items SET custom_poster = ?1 WHERE series_name = ?2",
@@ -1004,35 +1124,36 @@ pub fn db_set_series_watched_status(
 ) -> Result<(), String> {
     let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
     let watched_int = if is_watched { 1 } else { 0 };
+    let key = crate::library::normalize_series_key(&series_name);
 
     if let Some(season) = season_number {
         conn.execute(
-            "UPDATE library_items SET is_watched = ?1 WHERE series_name = ?2 AND season_number = ?3",
-            params![watched_int, series_name, season],
+            "UPDATE library_items SET is_watched = ?1 WHERE series_key = ?2 AND season_number = ?3",
+            params![watched_int, key, season],
         )
         .map_err(|e| e.to_string())?;
 
         if is_watched {
             let _ = conn.execute(
                 "DELETE FROM resume_positions WHERE file_path IN (
-                    SELECT file_path FROM library_items WHERE series_name = ?1 AND season_number = ?2
+                    SELECT file_path FROM library_items WHERE series_key = ?1 AND season_number = ?2
                 )",
-                params![series_name, season],
+                params![key, season],
             );
         }
     } else {
         conn.execute(
-            "UPDATE library_items SET is_watched = ?1 WHERE series_name = ?2",
-            params![watched_int, series_name],
+            "UPDATE library_items SET is_watched = ?1 WHERE series_key = ?2",
+            params![watched_int, key],
         )
         .map_err(|e| e.to_string())?;
 
         if is_watched {
             let _ = conn.execute(
                 "DELETE FROM resume_positions WHERE file_path IN (
-                    SELECT file_path FROM library_items WHERE series_name = ?1
+                    SELECT file_path FROM library_items WHERE series_key = ?1
                 )",
-                params![series_name],
+                params![key],
             );
         }
     }
@@ -1046,6 +1167,7 @@ pub fn db_get_next_episode(
     series_name: String,
 ) -> Result<Option<LibraryItemDto>, String> {
     let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+    let key = crate::library::normalize_series_key(&series_name);
     let mut stmt = conn
         .prepare(
             "SELECT li.id, li.folder_path, li.file_path, li.file_name, li.title, li.media_type,
@@ -1058,11 +1180,13 @@ pub fn db_get_next_episode(
                     li.category, li.series_name, li.season_number, li.episode_number, li.episode_title, li.year,
                     COALESCE(li.is_watched, 0) as is_watched,
                     COALESCE(li.manual_override, 0) as manual_override,
-                    li.custom_poster
+                    li.custom_poster,
+                    li.series_key
              FROM library_items li
              LEFT JOIN library_favorites lf ON li.file_path = lf.file_path
              LEFT JOIN resume_positions rp ON li.file_path = rp.file_path
-             WHERE li.series_name = ?1
+             WHERE li.series_key = ?1
+               AND COALESCE(li.season_number, 1) <> 0
                AND COALESCE(li.is_watched, 0) = 0
                AND (rp.duration IS NULL OR rp.position IS NULL OR rp.position < rp.duration * 0.9)
              ORDER BY COALESCE(li.season_number, 1) ASC, COALESCE(li.episode_number, 1) ASC
@@ -1071,7 +1195,7 @@ pub fn db_get_next_episode(
         .map_err(|e| e.to_string())?;
 
     let item = stmt
-        .query_row(params![series_name], |row| {
+        .query_row(params![key], |row| {
             let file_size_i64: i64 = row.get(6)?;
             let last_mod_i64: i64 = row.get(8)?;
             let is_avail_i64: i64 = row.get(12)?;
@@ -1102,12 +1226,127 @@ pub fn db_get_next_episode(
                 is_watched: is_watched_i64 == 1,
                 manual_override: manual_i64 == 1,
                 custom_poster: row.get(23)?,
+                series_key: row.get(24)?,
             })
         })
         .optional()
         .map_err(|e| e.to_string())?;
 
     Ok(item)
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SeriesOverviewDto {
+    pub series_key: String,
+    pub display_name: String,
+    pub episode_count: i64,
+    pub season_count: i64,
+    pub watched_count: i64,
+    pub next_season: Option<i64>,
+    pub next_episode: Option<i64>,
+    pub custom_poster: Option<String>,
+}
+
+#[tauri::command]
+pub fn db_get_series_overview(
+    state: tauri::State<'_, DbState>,
+) -> Result<Vec<SeriesOverviewDto>, String> {
+    let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT series_key,
+                    COUNT(*) as episode_count,
+                    COUNT(DISTINCT COALESCE(season_number,1)) as season_count,
+                    SUM(COALESCE(is_watched,0)) as watched_count,
+                    MAX(custom_poster) as custom_poster
+             FROM library_items
+             WHERE COALESCE(series_key,'') != ''
+             GROUP BY series_key",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows: Vec<(String, i64, i64, i64, Option<String>)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)))
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+
+    // Most common series_name variant per key becomes the display name
+    let mut dn_stmt = conn
+        .prepare(
+            "SELECT series_key, series_name, COUNT(*) as cnt
+             FROM library_items
+             WHERE COALESCE(series_key,'') != '' AND series_name IS NOT NULL AND series_name != ''
+             GROUP BY series_key, series_name",
+        )
+        .map_err(|e| e.to_string())?;
+    let dn_rows: Vec<(String, String, i64)> = dn_stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+
+    let mut best: std::collections::HashMap<String, (String, i64)> = Default::default();
+    for (k, name, cnt) in dn_rows {
+        use std::collections::hash_map::Entry;
+        match best.entry(k) {
+            Entry::Occupied(mut e) => {
+                let cur = e.get().clone();
+                if cnt > cur.1 || (cnt == cur.1 && name.len() > cur.0.len()) {
+                    e.insert((name, cnt));
+                }
+            }
+            Entry::Vacant(v) => {
+                v.insert((name, cnt));
+            }
+        }
+    }
+
+    // Next unwatched (non-specials) episode marker per key: season*10000 + episode
+    let mut nx_stmt = conn
+        .prepare(
+            "SELECT series_key,
+                    MIN(CASE WHEN COALESCE(is_watched,0)=0 AND COALESCE(season_number,1) <> 0
+                        THEN COALESCE(season_number,1)*10000 + COALESCE(episode_number,0) END)
+             FROM library_items
+             WHERE COALESCE(series_key,'') != ''
+             GROUP BY series_key",
+        )
+        .map_err(|e| e.to_string())?;
+    let nx_rows: Vec<(String, Option<i64>)> = nx_stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+    let mut next_map: std::collections::HashMap<String, i64> = Default::default();
+    for (k, m) in nx_rows {
+        if let Some(marker) = m {
+            next_map.insert(k, marker);
+        }
+    }
+
+    let out: Vec<SeriesOverviewDto> = rows
+        .into_iter()
+        .map(|(key, ep_count, s_count, w_count, poster)| {
+            let display_name = best
+                .get(&key)
+                .map(|(n, _)| n.clone())
+                .unwrap_or_else(|| key.clone());
+            let marker = next_map.get(&key).copied();
+            SeriesOverviewDto {
+                series_key: key,
+                display_name,
+                episode_count: ep_count,
+                season_count: s_count,
+                watched_count: w_count,
+                next_season: marker.map(|m| m / 10000),
+                next_episode: marker.map(|m| m % 10000),
+                custom_poster: poster,
+            }
+        })
+        .collect();
+
+    Ok(out)
 }
 
 #[tauri::command]
@@ -1258,6 +1497,11 @@ pub fn db_reclassify_all_media(state: tauri::State<'_, DbState>) -> Result<usize
         let (title, category, series_name, season_num, ep_num, ep_title, year) =
             crate::library::parse_media_info(std::path::Path::new(&file_path), &file_name, &media_type);
 
+        let series_key: Option<String> = series_name
+            .as_deref()
+            .map(crate::library::normalize_series_key)
+            .filter(|k| !k.is_empty());
+
         let res = conn.execute(
             "UPDATE library_items SET
                 title = ?1,
@@ -1266,8 +1510,9 @@ pub fn db_reclassify_all_media(state: tauri::State<'_, DbState>) -> Result<usize
                 season_number = ?4,
                 episode_number = ?5,
                 episode_title = ?6,
-                year = ?7
-             WHERE id = ?8",
+                year = ?7,
+                series_key = ?8
+             WHERE id = ?9",
             params![
                 title,
                 category.unwrap_or_else(|| "movie".to_string()),
@@ -1276,6 +1521,7 @@ pub fn db_reclassify_all_media(state: tauri::State<'_, DbState>) -> Result<usize
                 ep_num,
                 ep_title,
                 year,
+                series_key,
                 id
             ],
         );

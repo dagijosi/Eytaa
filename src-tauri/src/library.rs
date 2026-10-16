@@ -89,7 +89,7 @@ fn clean_word_delimiters(s: &str) -> String {
     let mut cleaned = String::with_capacity(s.len());
     let mut prev_is_space = false;
     for c in s.chars() {
-        if c == '.' || c == '_' || c == '+' || c.is_whitespace() {
+        if c == '.' || c == '_' || c == '+' || c == '-' || c.is_whitespace() {
             if !prev_is_space && !cleaned.is_empty() {
                 cleaned.push(' ');
                 prev_is_space = true;
@@ -103,26 +103,157 @@ fn clean_word_delimiters(s: &str) -> String {
 }
 
 fn strip_scene_noise(s: &str) -> String {
+    // Exact-token technical tags only (no prefix matching — "Dune" must not match "dv").
     let noise_tags = [
-        "2160p", "1080p", "720p", "480p", "4k", "uhd", "hdr", "hdr10", "dovi", "dv",
-        "web-dl", "webrip", "bluray", "bdrip", "brrip", "dvdrip", "hdtv", "hevc",
-        "x264", "x265", "h264", "h265", "10bit", "8bit", "aac", "ac3", "dts", "truehd",
-        "atmos", "yify", "yts", "rarbg", "eztv", "repack", "proper", "remux", "flac"
+        "2160p", "1080p", "720p", "480p", "360p", "4k", "uhd", "hdr", "hdr10", "dovi", "dv",
+        "webrip", "webdl", "bluray", "bdrip", "brrip", "dvdrip", "hdtv", "hevc",
+        "x264", "x265", "h264", "h265", "avc", "10bit", "8bit", "aac", "ac3", "dts",
+        "truehd", "atmos", "eac3", "ddp", "opus", "flac",
+        "yify", "yts", "rarbg", "eztv", "repack", "proper", "remux", "remastered",
+        "unrated", "extended", "complete", "imax", "dual", "multi", "vostfr",
+        "dsnp", "amzn", "atvp", "hmax", "hulu",
     ];
 
     let words: Vec<&str> = s.split_whitespace().collect();
     let mut clean_words = Vec::new();
+    let mut in_bracket = false;
     for word in words {
-        let lower = word.to_lowercase();
-        if noise_tags.iter().any(|&tag| lower == tag || lower.starts_with(tag)) {
-            break;
+        // Strip multi-word bracket groups like "[Some Group]" or single-token "[GRP]"
+        if in_bracket {
+            if word.ends_with(']') {
+                in_bracket = false;
+            }
+            continue;
         }
-        if word.starts_with('[') && word.ends_with(']') {
+        if word.starts_with('[') {
+            if !word.ends_with(']') {
+                in_bracket = true;
+            }
+            continue;
+        }
+        let lower = word.to_lowercase();
+        if noise_tags.contains(&lower.as_str()) {
+            continue;
+        }
+        // Tag followed by a non-alphanumeric suffix (e.g. "hdr10+", "x265.10bit" already split)
+        if noise_tags.iter().any(|&tag| {
+            lower
+                .strip_prefix(tag)
+                .map_or(false, |rest| {
+                    !rest.is_empty() && !rest.chars().next().unwrap().is_ascii_alphabetic()
+                })
+        }) {
             continue;
         }
         clean_words.push(word);
     }
     clean_words.join(" ")
+}
+
+fn is_generic_folder_name(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    let lower = lower.trim();
+    if lower.is_empty() {
+        return true;
+    }
+    let generic = [
+        "series", "seasons", "episodes", "episode", "season", "specials", "special",
+        "tv", "tv shows", "tv show", "shows", "show", "tv series", "anime", "cartoons",
+        "cartoon", "kdrama", "dramas", "drama", "media", "videos", "video", "movies",
+        "movie", "subs", "subtitles", "subtitle", "extras", "bonus", "content", "other",
+        "others", "misc", "downloads", "download", "library", "collection",
+    ];
+    if generic.contains(&lower) {
+        return true;
+    }
+    // "Season N" / "SeasonN" / "S01" / "Specials 2"
+    if extract_season_number_from_text(lower).is_some() {
+        return true;
+    }
+    false
+}
+
+/// Walk ancestors upward and return the first non-generic folder name, cleaned.
+fn folder_series_name(path: &Path) -> String {
+    let mut current = path.parent();
+    while let Some(dir) = current {
+        if let Some(name) = dir.file_name().and_then(|n| n.to_str()) {
+            if !is_generic_folder_name(name) {
+                let cleaned = strip_scene_noise(&clean_word_delimiters(name));
+                if cleaned.chars().count() >= 2 {
+                    let (title, _, _) = clean_series_name_and_extract_metadata(&cleaned);
+                    if title.chars().count() >= 2 {
+                        return title;
+                    }
+                    return cleaned;
+                }
+            }
+        }
+        current = dir.parent();
+    }
+    String::new()
+}
+
+/// Last-resort series name: cleaned file stem's leading words.
+fn stem_fallback_series_name(file_name: &str) -> String {
+    let stem = Path::new(file_name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(file_name);
+    strip_scene_noise(&clean_word_delimiters(stem))
+}
+
+/// Canonical grouping key for a series name. Case/article/year/punctuation/season
+/// insensitive so that naming variants of the same show share one key.
+pub fn normalize_series_key(name: &str) -> String {
+    let lower = name.to_lowercase();
+    let words: Vec<String> = lower
+        .split(|c: char| {
+            c == '.'
+                || c == '_'
+                || c == '-'
+                || c == ':'
+                || c == ','
+                || c == '\''
+                || c == '('
+                || c == ')'
+                || c == '['
+                || c == ']'
+                || c.is_whitespace()
+        })
+        .filter(|w| !w.is_empty())
+        .map(|w| w.to_string())
+        .collect();
+
+    let mut out: Vec<String> = Vec::new();
+    let mut skip_next_number = false;
+    for w in words {
+        if skip_next_number {
+            skip_next_number = false;
+            if w.chars().all(|c| c.is_ascii_digit()) {
+                continue;
+            }
+        }
+        if w == "season" || w == "series" {
+            skip_next_number = true;
+            continue;
+        }
+        if w.len() == 4 && w.chars().all(|c| c.is_ascii_digit()) {
+            if let Ok(year) = w.parse::<i64>() {
+                if (1900..=2099).contains(&year) {
+                    continue;
+                }
+            }
+        }
+        out.push(w);
+    }
+
+    // Drop leading articles ("the", "a", "an")
+    while matches!(out.first().map(|s| s.as_str()), Some("the") | Some("a") | Some("an")) {
+        out.remove(0);
+    }
+
+    out.join(" ")
 }
 
 fn clean_series_name_and_extract_metadata(
@@ -345,25 +476,36 @@ pub fn parse_media_info(
             String::new()
         };
 
-        // When the SxxExx tag is at the beginning (e.g. "[S1-E01] EVILIVE"),
-        // the series name is located AFTER the tag!
-        let mut show_name = if start_pos <= 2 && raw_ep_title.trim().len() >= 2 {
-            let cleaned_after = raw_ep_title.trim_start_matches(|c: char| {
-                c == ']' || c == ')' || c == '-' || c == '_' || c == '.' || c == ' '
-            });
-            strip_scene_noise(&clean_word_delimiters(cleaned_after))
+        let folder_name = folder_series_name(path);
+        let after_tag = raw_ep_title.trim_start_matches(|c: char| {
+            c == ']' || c == ')' || c == '-' || c == '_' || c == '.' || c == ' '
+        });
+
+        // Season parsed from pre-tag filename text only — a folder-derived name must
+        // never override the explicit SxxExx season.
+        let (_, _, extra_s_from_name) = clean_series_name_and_extract_metadata(&raw_show);
+        let season_from_name = if start_pos > 2 { extra_s_from_name } else { None };
+
+        // When the SxxExx tag is at the beginning of the file (e.g. "S01E01 Pilot.mkv"
+        // or "[S1-E01] EVILIVE"), prefer the folder-derived series name; only fall back
+        // to the text after the tag when no usable folder name exists.
+        let mut show_name = if start_pos <= 2 {
+            if !folder_name.is_empty() {
+                folder_name.clone()
+            } else {
+                strip_scene_noise(&clean_word_delimiters(after_tag))
+            }
         } else {
             strip_scene_noise(&clean_word_delimiters(&raw_show))
         };
 
-        if show_name.len() < 2 {
-            if let Some(parent) = path.parent() {
-                let p_name = parent.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if let Some(gp) = parent.parent() {
-                    let gp_name = gp.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                    show_name = strip_scene_noise(&clean_word_delimiters(if extract_season_number_from_text(p_name).is_some() { gp_name } else { p_name }));
-                } else {
-                    show_name = strip_scene_noise(&clean_word_delimiters(p_name));
+        if show_name.chars().count() < 2 {
+            if !folder_name.is_empty() {
+                show_name = folder_name.clone();
+            } else {
+                let stem_name = stem_fallback_series_name(file_name);
+                if stem_name.chars().count() >= 2 {
+                    show_name = stem_name;
                 }
             }
         }
@@ -371,11 +513,11 @@ pub fn parse_media_info(
             show_name = "Series".to_string();
         }
 
-        let (cleaned_show, year_opt, extra_s) = clean_series_name_and_extract_metadata(&show_name);
-        if !cleaned_show.is_empty() {
+        let (cleaned_show, year_opt, _) = clean_series_name_and_extract_metadata(&show_name);
+        if cleaned_show.chars().count() >= 2 {
             show_name = cleaned_show;
         }
-        let season = extra_s.unwrap_or(season);
+        let season = season_from_name.unwrap_or(season);
 
         let ep_title_clean = if start_pos <= 2 {
             String::new()
@@ -459,15 +601,15 @@ pub fn parse_media_info(
         };
 
         let (mut show_name, year_opt, _) = clean_series_name_and_extract_metadata(&raw_show);
-        if show_name.len() < 2 {
-            if let Some(parent) = path.parent() {
-                let p_name = parent.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                let (p_clean, _, _) = clean_series_name_and_extract_metadata(p_name);
-                show_name = p_clean;
+        if show_name.chars().count() < 2 {
+            let folder = folder_series_name(path);
+            if !folder.is_empty() {
+                show_name = folder;
             }
         }
         if show_name.is_empty() {
-            show_name = "Series".to_string();
+            let stem_name = stem_fallback_series_name(file_name);
+            show_name = if stem_name.chars().count() >= 2 { stem_name } else { "Series".to_string() };
         }
 
         let ep_title_clean = strip_scene_noise(&clean_word_delimiters(&raw_ep_title));
@@ -540,21 +682,15 @@ pub fn parse_media_info(
         };
 
         let (mut show_name, year_opt, _) = clean_series_name_and_extract_metadata(&raw_show);
-        if show_name.len() < 2 {
-            if let Some(parent) = path.parent() {
-                let p_name = parent.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if let Some(gp) = parent.parent() {
-                    let gp_name = gp.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                    let (clean_p, _, _) = clean_series_name_and_extract_metadata(if extract_season_number_from_text(p_name).is_some() { gp_name } else { p_name });
-                    show_name = clean_p;
-                } else {
-                    let (clean_p, _, _) = clean_series_name_and_extract_metadata(p_name);
-                    show_name = clean_p;
-                }
+        if show_name.chars().count() < 2 {
+            let folder = folder_series_name(path);
+            if !folder.is_empty() {
+                show_name = folder;
             }
         }
         if show_name.is_empty() {
-            show_name = "Series".to_string();
+            let stem_name = stem_fallback_series_name(file_name);
+            show_name = if stem_name.chars().count() >= 2 { stem_name } else { "Series".to_string() };
         }
 
         let ep_title_clean = strip_scene_noise(&clean_word_delimiters(&raw_ep_title));
@@ -608,14 +744,15 @@ pub fn parse_media_info(
         };
 
         let (mut show_name, year_opt, _) = clean_series_name_and_extract_metadata(&raw_show);
-        if show_name.len() < 2 {
-            if let Some(parent) = path.parent() {
-                let (clean_p, _, _) = clean_series_name_and_extract_metadata(parent.file_name().and_then(|n| n.to_str()).unwrap_or("Series"));
-                show_name = clean_p;
+        if show_name.chars().count() < 2 {
+            let folder = folder_series_name(path);
+            if !folder.is_empty() {
+                show_name = folder;
             }
         }
         if show_name.is_empty() {
-            show_name = "Series".to_string();
+            let stem_name = stem_fallback_series_name(file_name);
+            show_name = if stem_name.chars().count() >= 2 { stem_name } else { "Series".to_string() };
         }
 
         let ep_title_clean = strip_scene_noise(&clean_word_delimiters(&raw_ep_title));
@@ -690,15 +827,18 @@ pub fn parse_media_info(
                 if extra_s.is_none() {
                     season_num = s;
                 }
-                if show_name.len() < 2 {
-                    if let Some(gp) = parent.parent() {
-                        let (gp_clean, _, _) = clean_series_name_and_extract_metadata(gp.file_name().and_then(|n| n.to_str()).unwrap_or("Series"));
-                        show_name = gp_clean;
-                    }
+            }
+        }
+
+        if show_name.chars().count() < 2 {
+            let folder = folder_series_name(path);
+            if !folder.is_empty() {
+                show_name = folder;
+            } else {
+                let stem_name = stem_fallback_series_name(file_name);
+                if stem_name.chars().count() >= 2 {
+                    show_name = stem_name;
                 }
-            } else if show_name.len() < 2 {
-                let (p_clean, _, _) = clean_series_name_and_extract_metadata(p_name);
-                show_name = p_clean;
             }
         }
 
@@ -732,14 +872,37 @@ pub fn parse_media_info(
         let after_dash = base[dash_idx + 3..].trim();
         if let Some(ep_num) = extract_first_number(after_dash) {
             if ep_num < 1920 || ep_num > 2035 {
-                let show_name = strip_scene_noise(&clean_word_delimiters(raw_show));
-                if !show_name.is_empty() && show_name.len() >= 2 {
+                let mut show_name = strip_scene_noise(&clean_word_delimiters(raw_show));
+
+                // Respect a season folder (e.g. "Show/Season 2/Show - 01.mkv") instead of
+                // always defaulting to season 1.
+                let mut season_num: i64 = 1;
+                if let Some(parent) = path.parent() {
+                    let p_name = parent.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    if let Some(s) = extract_season_number_from_text(p_name) {
+                        season_num = s;
+                        if show_name.chars().count() < 2 {
+                            let folder = folder_series_name(path);
+                            if !folder.is_empty() {
+                                show_name = folder;
+                            }
+                        }
+                    }
+                }
+                if show_name.chars().count() < 2 {
+                    let folder = folder_series_name(path);
+                    if !folder.is_empty() {
+                        show_name = folder;
+                    }
+                }
+
+                if !show_name.is_empty() && show_name.chars().count() >= 2 {
                     let clean_ep_title = strip_scene_noise(&clean_word_delimiters(after_dash));
                     return (
-                        format!("{} • Ep {:02}", show_name, ep_num),
+                        format!("{} • S{:02}E{:02} - {}", show_name, season_num, ep_num, clean_ep_title),
                         Some("series".to_string()),
                         Some(show_name),
-                        Some(1),
+                        Some(season_num),
                         Some(ep_num),
                         if clean_ep_title.is_empty() { None } else { Some(clean_ep_title) },
                         None,
@@ -753,15 +916,13 @@ pub fn parse_media_info(
     if let Some(parent) = path.parent() {
         let p_name = parent.file_name().and_then(|n| n.to_str()).unwrap_or("");
         if let Some(season_num) = extract_season_number_from_text(p_name) {
-            let series_name = if let Some(gp) = parent.parent() {
-                let gp_name = gp.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if !gp_name.is_empty() {
-                    strip_scene_noise(&clean_word_delimiters(gp_name))
+            let series_name = {
+                let folder = folder_series_name(path);
+                if !folder.is_empty() {
+                    folder
                 } else {
                     strip_scene_noise(&clean_word_delimiters(p_name))
                 }
-            } else {
-                strip_scene_noise(&clean_word_delimiters(p_name))
             };
 
             let ep = extract_first_number(base).unwrap_or(1);
@@ -782,10 +943,20 @@ pub fn parse_media_info(
     if is_tv_or_series_ancestor(path) {
         if let Some(ep) = extract_first_number(base) {
             if ep < 1920 || ep > 2035 {
-                let parent_name = path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("Series");
-                let show_name = strip_scene_noise(&clean_word_delimiters(parent_name));
+                let parent_name = path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("");
+                let mut show_name = strip_scene_noise(&clean_word_delimiters(parent_name));
+                if is_generic_folder_name(parent_name) || show_name.chars().count() < 2 {
+                    let folder = folder_series_name(path);
+                    if !folder.is_empty() {
+                        show_name = folder;
+                    }
+                }
+                if show_name.chars().count() < 2 {
+                    let stem_name = stem_fallback_series_name(file_name);
+                    show_name = if stem_name.chars().count() >= 2 { stem_name } else { "Series".to_string() };
+                }
                 return (
-                    format!("{} • Ep {:02}", show_name, ep),
+                    format!("{} • S01E{:02}", show_name, ep),
                     Some("series".to_string()),
                     Some(show_name),
                     Some(1),
@@ -803,12 +974,18 @@ pub fn parse_media_info(
     if starts_with_digit {
         if let Some(ep) = extract_first_number(trimmed_base) {
             if ep < 1920 || ep > 2035 {
-                let parent_name = path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("Series");
-                let show_name = strip_scene_noise(&clean_word_delimiters(parent_name));
+                let parent_name = path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("");
+                let mut show_name = strip_scene_noise(&clean_word_delimiters(parent_name));
+                if is_generic_folder_name(parent_name) || show_name.chars().count() < 2 {
+                    let folder = folder_series_name(path);
+                    if !folder.is_empty() {
+                        show_name = folder;
+                    }
+                }
                 if !show_name.is_empty() {
                     let clean_title = strip_scene_noise(&clean_word_delimiters(trimmed_base));
                     return (
-                        format!("{} • Ep {:02}", show_name, ep),
+                        format!("{} • S01E{:02}", show_name, ep),
                         Some("series".to_string()),
                         Some(show_name),
                         Some(1),

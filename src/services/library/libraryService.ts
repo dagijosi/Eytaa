@@ -36,6 +36,18 @@ export interface LibraryItem {
   is_watched: boolean;
   manual_override: boolean;
   custom_poster?: string;
+  series_key?: string;
+}
+
+export interface SeriesOverview {
+  series_key: string;
+  display_name: string;
+  episode_count: number;
+  season_count: number;
+  watched_count: number;
+  next_season?: number;
+  next_episode?: number;
+  custom_poster?: string;
 }
 
 export interface FavoriteItem {
@@ -277,6 +289,15 @@ class LibraryService {
     } catch (e) {
       console.error("Failed to get next episode:", e);
       return null;
+    }
+  }
+
+  public async getSeriesOverview(): Promise<SeriesOverview[]> {
+    try {
+      return await invoke<SeriesOverview[]>("db_get_series_overview");
+    } catch (e) {
+      console.error("Failed to get series overview:", e);
+      return [];
     }
   }
 

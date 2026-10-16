@@ -198,6 +198,7 @@ pub fn run() {
             db::db_set_watched_status,
             db::db_set_series_watched_status,
             db::db_get_next_episode,
+            db::db_get_series_overview,
             thumbnailer::get_thumbnail,
             thumbnailer::get_thumbnail_cache_stats,
             thumbnailer::clean_thumbnail_cache,

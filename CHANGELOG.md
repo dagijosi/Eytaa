@@ -4,6 +4,38 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ---
 
+## [0.2.2] - 2026-10-16
+
+### ✨ Controls & Customization
+- **Rebindable Keyboard Shortcuts**: Full settings-based shortcut editor grouped by Playback, Seeking, Volume, View, and Tools. Every action can be rebound with a capture flow (press the new key), per-row reset, and "Restore Defaults". `Enter` now toggles fullscreen by default.
+- **Scroll-Wheel Volume**: Scroll over the video area to adjust volume in fine increments, with a toggle under Settings > Mouse Controls.
+- **Custom Right-Click Menu**: Native-feeling frosted context menu with Open File(s)…, Media Library, Toggle Fullscreen, Always on Top, Settings…, Check for Updates, and About EYTAA.
+- **Manual Update Check Toast**: New status toast for the "Check for Updates" action (checking, up-to-date, update available, or error) that reveals the Updates tab when a release is found.
+
+### 🎵 Media Center
+- **Music Tab**: Dedicated Music library view with track count, grid of media cards, All/Unplayed/Played filters, and sorting by recent, title, year, or duration.
+- **Canonical Series Grouping**: Introduced a persisted `series_key` so naming variants of the same show group together, shares one count, and keeps resume/favorite/history intact. Added `db_get_series_overview` powering accurate series stats and the next-unwatched episode.
+- **Specials-Aware Ordering**: Season 0 (specials) is sorted last and never auto-suggested by "Up Next" or series auto-queue.
+- **Instant Library Close on Play**: The library modal now closes immediately when a file is opened instead of waiting for playback to resolve.
+- **Sidebar Settings Shortcut**: Quick button at the bottom of the library sidebar to jump straight to Settings.
+
+### ⚡ Performance
+- **Lazy-Loaded Modals**: Settings and Media Library modals are code-split and idle-preloaded for a faster first paint.
+- **Parallel Startup Preferences**: Volume, recents, profiles, and window preferences now load in a single `Promise.all` batch instead of sequential IPC round-trips.
+- **Smarter Re-Parse**: Full library re-parsing now runs only when the stored parser version changes, dramatically speeding up routine startups.
+
+### 🔧 Library Scanner
+- **Robust Scene-Name Parsing**: Rewritten `strip_scene_noise` with exact-token matching (fixes truncation like "Dune" → "dv"), bracket-group stripping, and broader tag removal.
+- **Folder-Based Series Names**: Resolves show names by walking ancestor folders and skipping generic ones ("Season 1", "Movies", "TV") with file-stem fallback.
+- **Correct Season Detection**: "Show - 01" files now honor the season folder, and explicit `SxxExx` seasons are no longer overridden by folder-derived seasons.
+- **Non-Destructive Metadata Edits**: Blank fields no longer erase existing media metadata (`COALESCE`-based updates), plus a startup self-repair pass for series rows missing season/episode numbers.
+
+### 🐛 Fixes
+- **Window Now Appears on Launch**: Added `core:window:allow-show` so the hidden-at-start window is correctly revealed by the frontend (fixes "app runs but no window is visible").
+- **Accurate Version Display**: Top bar and Settings now show the real app version instead of hardcoded values.
+
+---
+
 ## [0.2.1] - 2026-10-16
 
 ### ✨ Improvements & Fixes

@@ -9,6 +9,7 @@ import {
   DEFAULT_PROFILES,
 } from "../services/player/profileTypes";
 import { globalShortcutsService } from "../services/shortcuts/globalShortcutsService";
+import { localShortcutsService } from "../services/shortcuts/localShortcutsService";
 import { formatMediaTitle } from "../utils/mediaTitle";
 import { useThemeStore } from "./themeStore";
 import { updaterService } from "../services/updater/updaterService";
@@ -52,6 +53,8 @@ interface PlayerStoreState extends PlayerState {
   triggerSkipAnimation: (deltaSeconds: number) => void;
   showSkipIndicators: boolean;
   toggleShowSkipIndicators: (enabled?: boolean) => Promise<void>;
+  scrollVolumeEnabled: boolean;
+  setScrollVolumeEnabled: (enabled: boolean) => Promise<void>;
   recentFiles: HistoryEntry[];
   playlist: PlaylistItem[];
   currentPlaylistIndex: number;
@@ -143,6 +146,13 @@ interface PlayerStoreState extends PlayerState {
   availableUpdate: { version: string; releaseNotes?: string } | null;
   showUpdateToast: boolean;
   autoCheckUpdates: boolean;
+  updateCheckToast: {
+    state: "checking" | "up-to-date" | "available" | "error";
+    version?: string;
+    message?: string;
+  } | null;
+  checkForUpdatesManually: () => Promise<void>;
+  dismissUpdateCheckToast: () => void;
   settingsInitialTab: string | null;
   dismissUpdateToast: () => Promise<void>;
   toggleAutoCheckUpdates: (enabled?: boolean) => Promise<void>;
@@ -215,6 +225,11 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
       await storageService.setPreference("showSkipIndicators", next);
       get().showOSD(next ? "Skip Badges: Enabled" : "Skip Badges: Disabled");
     },
+    scrollVolumeEnabled: true,
+    setScrollVolumeEnabled: async (enabled: boolean) => {
+      set({ scrollVolumeEnabled: enabled });
+      await storageService.setPreference("scrollVolumeEnabled", enabled);
+    },
     osdMessage: null,
     osdTimer: null,
     isControlsVisible: true,
@@ -260,6 +275,7 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
     availableUpdate: null,
     showUpdateToast: false,
     autoCheckUpdates: true,
+    updateCheckToast: null,
     settingsInitialTab: null,
 
     initialize: async () => {
@@ -279,19 +295,45 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
         });
       }
 
-      // Load saved volume
-      const savedVolume = await storageService.getPreference<number>("volume");
+      // Load all saved preferences in parallel — each getPreference is a separate
+      // IPC round-trip, so batching keeps startup snappy.
+      const [
+        savedVolume,
+        recent,
+        savedAutoPlay,
+        savedCustomProfiles,
+        savedActiveProfileId,
+        savedNightMode,
+        savedPauseOnSleep,
+        savedShortcutsEnabled,
+        savedAlwaysOnTop,
+        savedShowSkip,
+        savedScrollVolume,
+        savedAutoCheck,
+      ] = await Promise.all([
+        storageService.getPreference<number>("volume"),
+        storageService.getRecentFiles(15),
+        storageService.getPreference<boolean>("autoPlayNext"),
+        storageService.getPreference<PlaybackProfile[]>("customProfiles"),
+        storageService.getPreference<string>("activeProfileId"),
+        storageService.getPreference<boolean>("nightListening"),
+        storageService.getPreference<boolean>("pauseOnSystemSleep"),
+        storageService.getPreference<boolean>("globalShortcutsEnabled"),
+        storageService.getPreference<boolean>("alwaysOnTop"),
+        storageService.getPreference<boolean>("showSkipIndicators"),
+        storageService.getPreference<boolean>("scrollVolumeEnabled"),
+        storageService.getPreference<boolean>("autoCheckUpdates"),
+      ]);
+
+      // Apply saved volume
       if (typeof savedVolume === "number") {
         await playerService.setVolume(savedVolume);
       }
 
-      // Load recent history
-      const recent = await storageService.getRecentFiles(15);
+      // Recent history
       set({ recentFiles: recent });
 
-      // Load auto-play next setting
-      const savedAutoPlay =
-        await storageService.getPreference<boolean>("autoPlayNext");
+      // Auto-play next setting
       if (typeof savedAutoPlay === "boolean") {
         set({ autoPlayNext: savedAutoPlay });
       }
@@ -339,38 +381,27 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
         );
       });
 
-      // Load saved profiles & active profile
-      const savedCustomProfiles =
-        await storageService.getPreference<PlaybackProfile[]>("customProfiles");
+      // Profiles & active profile
       let allProfiles = [...DEFAULT_PROFILES];
       if (savedCustomProfiles && Array.isArray(savedCustomProfiles)) {
         allProfiles = [...DEFAULT_PROFILES, ...savedCustomProfiles];
       }
-
-      const savedActiveProfileId =
-        await storageService.getPreference<string>("activeProfileId");
       set({
         profiles: allProfiles,
         activeProfileId: savedActiveProfileId || "default",
       });
 
-      // Load night listening setting
-      const savedNightMode =
-        await storageService.getPreference<boolean>("nightListening");
+      // Night listening setting
       if (typeof savedNightMode === "boolean") {
         set({ isNightListening: savedNightMode });
       }
 
-      // Load pause-on-sleep setting
-      const savedPauseOnSleep =
-        await storageService.getPreference<boolean>("pauseOnSystemSleep");
+      // Pause-on-sleep setting
       if (typeof savedPauseOnSleep === "boolean") {
         set({ pauseOnSystemSleep: savedPauseOnSleep });
       }
 
       // Initialize global shortcuts
-      const savedShortcutsEnabled =
-        await storageService.getPreference<boolean>("globalShortcutsEnabled");
       const shortcutsActive = savedShortcutsEnabled !== false;
       set({ isGlobalShortcutsEnabled: shortcutsActive });
 
@@ -401,26 +432,28 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
         await globalShortcutsService.applyShortcuts();
       }
 
-      // Load saved always-on-top setting
-      const savedAlwaysOnTop =
-        (await storageService.getPreference<boolean>("alwaysOnTop")) || false;
-      if (savedAlwaysOnTop) {
+      // Always-on-top setting
+      const alwaysOnTop = savedAlwaysOnTop || false;
+      if (alwaysOnTop) {
         try {
           await getCurrentWindow().setAlwaysOnTop(true);
         } catch (e) {
           console.warn("Failed to apply initial always-on-top:", e);
         }
       }
-      set({ isAlwaysOnTop: savedAlwaysOnTop });
+      set({ isAlwaysOnTop: alwaysOnTop });
 
-      // Load skip indicator display preference (defaults to true)
-      const savedShowSkip = await storageService.getPreference<boolean>("showSkipIndicators");
+      // Skip indicator display preference (defaults to true)
       if (typeof savedShowSkip === "boolean") {
         set({ showSkipIndicators: savedShowSkip });
       }
 
-      // Load auto update check preference (defaults to true)
-      const savedAutoCheck = await storageService.getPreference<boolean>("autoCheckUpdates");
+      // Scroll-wheel volume preference (defaults to true)
+      if (typeof savedScrollVolume === "boolean") {
+        set({ scrollVolumeEnabled: savedScrollVolume });
+      }
+
+      // Auto update check preference (defaults to true)
       const autoCheck = savedAutoCheck !== false;
       set({ autoCheckUpdates: autoCheck });
 
@@ -735,6 +768,7 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
         isNightListening: false,
         isAlwaysOnTop: false,
         showSkipIndicators: true,
+        scrollVolumeEnabled: true,
         videoFitMode: "fit",
         playbackRate: 1.0,
         isGlobalShortcutsEnabled: true,
@@ -744,7 +778,9 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
       await storageService.setPreference("isNightListening", false);
       await storageService.setPreference("isAlwaysOnTop", false);
       await storageService.setPreference("showSkipIndicators", true);
+      await storageService.setPreference("scrollVolumeEnabled", true);
       await storageService.setPreference("globalShortcutsEnabled", true);
+      await localShortcutsService.resetAll();
 
       // 4. Cancel active sleep timer
       get().cancelSleepTimer();
@@ -1251,6 +1287,48 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
         await storageService.setPreference("dismissedUpdateVersion", availableUpdate.version);
       }
       set({ showUpdateToast: false });
+    },
+
+    // User-triggered update check with persistent toast feedback (context menu / settings)
+    checkForUpdatesManually: async () => {
+      set({ updateCheckToast: { state: "checking" } });
+      try {
+        const result = await updaterService.checkForUpdates();
+        if (result.state === "available" && result.latestVersion) {
+          set({
+            updateCheckToast: { state: "available", version: result.latestVersion },
+            availableUpdate: {
+              version: result.latestVersion,
+              releaseNotes: result.releaseNotes,
+            },
+          });
+          await storageService.setPreference("cachedAvailableUpdateVer", result.latestVersion);
+          await storageService.setPreference("lastUpdateCheckTimestamp", Date.now());
+        } else if (result.state === "up-to-date") {
+          set({ updateCheckToast: { state: "up-to-date" } });
+          set({ availableUpdate: null, showUpdateToast: false });
+          await storageService.setPreference("cachedAvailableUpdateVer", null);
+          await storageService.setPreference("lastUpdateCheckTimestamp", Date.now());
+        } else {
+          set({
+            updateCheckToast: {
+              state: "error",
+              message: result.errorMessage || "Could not reach the update server",
+            },
+          });
+        }
+      } catch (err: any) {
+        set({
+          updateCheckToast: {
+            state: "error",
+            message: err?.message || "Update check failed",
+          },
+        });
+      }
+    },
+
+    dismissUpdateCheckToast: () => {
+      set({ updateCheckToast: null });
     },
 
     toggleAutoCheckUpdates: async (enabled?: boolean) => {

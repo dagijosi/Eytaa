@@ -34,13 +34,14 @@ export function WelcomeScreen() {
 
       setInProgressItem(inProgress.length > 0 ? inProgress[0] : null);
 
-      // 2. Up Next episode in active TV series
+      // 2. Up Next episode in active TV series (grouped by canonical series_key)
       const seriesMap = new Map<string, LibraryItem[]>();
       for (const item of items) {
         if (item.category === "series" || item.series_name) {
           const sName = (item.series_name || "Unknown Series").trim();
-          if (!seriesMap.has(sName)) seriesMap.set(sName, []);
-          seriesMap.get(sName)!.push(item);
+          const key = item.series_key?.trim() || sName;
+          if (!seriesMap.has(key)) seriesMap.set(key, []);
+          seriesMap.get(key)!.push(item);
         }
       }
 
@@ -50,18 +51,23 @@ export function WelcomeScreen() {
         allEpisodes: LibraryItem[];
       } | null = null;
 
-      for (const [name, episodes] of seriesMap.entries()) {
+      for (const episodes of seriesMap.values()) {
         const watchedCount = episodes.filter((ep) => ep.is_watched).length;
         if (watchedCount > 0 && watchedCount < episodes.length) {
           const sorted = [...episodes].sort((a, b) => {
-            const sDiff = (a.season_number ?? 1) - (b.season_number ?? 1);
+            const sa = (a.season_number ?? 1) === 0 ? Infinity : (a.season_number ?? 1);
+            const sb = (b.season_number ?? 1) === 0 ? Infinity : (b.season_number ?? 1);
+            const sDiff = sa - sb;
             if (sDiff !== 0) return sDiff;
             return (a.episode_number ?? 0) - (b.episode_number ?? 0);
           });
-          const target = sorted.find((ep) => !ep.is_watched);
+          // Never auto-suggest specials (season 0)
+          const target = sorted.find(
+            (ep) => !ep.is_watched && (ep.season_number ?? 1) !== 0,
+          );
           if (target) {
             nextEp = {
-              seriesName: name,
+              seriesName: target.series_name || sorted[0].series_name || "Unknown Series",
               episode: target,
               allEpisodes: sorted,
             };

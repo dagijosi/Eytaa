@@ -30,6 +30,7 @@ import {
   AlertCircle,
   Pencil,
   Feather,
+  Mouse,
 } from "lucide-react";
 import { usePlayerStore } from "../stores/playerStore";
 import { useThemeStore, ACCENT_PRESETS, DEFAULT_THEME } from "../stores/themeStore";
@@ -39,6 +40,13 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { PlaybackProfile } from "../services/player/profileTypes";
 import { globalShortcutsService } from "../services/shortcuts/globalShortcutsService";
+import {
+  localShortcutsService,
+  LOCAL_ACTION_META,
+  displayKey,
+  LocalAction,
+  LocalShortcutsConfig,
+} from "../services/shortcuts/localShortcutsService";
 import { updaterService, UpdateStatus } from "../services/updater/updaterService";
 import { EytaaLogo } from "./EytaaLogo";
 
@@ -98,6 +106,8 @@ export function SettingsModal() {
     toggleAutoCheckUpdates,
     showSkipIndicators,
     toggleShowSkipIndicators,
+    scrollVolumeEnabled,
+    setScrollVolumeEnabled,
   } = usePlayerStore();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("playback");
@@ -201,10 +211,10 @@ export function SettingsModal() {
   };
 
   // In-App GitHub Releases Updater state
-  const [appVersion, setAppVersion] = useState<string>("0.1.1");
+  const [appVersion, setAppVersion] = useState<string>("");
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({
     state: "idle",
-    currentVersion: "0.1.1",
+    currentVersion: "",
   });
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
   const [installProgress, setInstallProgress] = useState<{ downloaded: number; total: number | null }>({
@@ -260,6 +270,39 @@ export function SettingsModal() {
     };
     loadPrefs();
   }, []);
+
+  // Rebindable local shortcut editor state (must live above the early return)
+  const [shortcutConfig, setShortcutConfig] = useState<LocalShortcutsConfig>(() =>
+    localShortcutsService.getConfig(),
+  );
+  const [capturingAction, setCapturingAction] = useState<LocalAction | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = localShortcutsService.subscribe(setShortcutConfig);
+    localShortcutsService.whenReady().then(() => {
+      setShortcutConfig(localShortcutsService.getConfig());
+    });
+    return unsubscribe;
+  }, []);
+
+  // Capture-mode: intercept the next pressed key and bind it to the action
+  useEffect(() => {
+    if (!capturingAction) return;
+    const onCaptureKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const key = e.key.toLowerCase();
+      // Wait for a real key; pure modifiers and Escape cancel the capture
+      if (key === "escape" || key === "control" || key === "shift" || key === "alt" || key === "meta") {
+        setCapturingAction(null);
+        return;
+      }
+      localShortcutsService.setBinding(capturingAction, [key]);
+      setCapturingAction(null);
+    };
+    window.addEventListener("keydown", onCaptureKey, true);
+    return () => window.removeEventListener("keydown", onCaptureKey, true);
+  }, [capturingAction]);
 
   if (!isSettingsOpen) return null;
 
@@ -439,25 +482,6 @@ export function SettingsModal() {
     }
   };
 
-  const shortcuts = [
-    { key: "Space / K", desc: "Play / Pause" },
-    { key: "Shift + P / I", desc: "Toggle Picture-in-Picture" },
-    { key: "F7", desc: "Cycle Playback Profile" },
-    { key: "F8", desc: "Toggle Night Listening" },
-    { key: "← / →", desc: "Seek -10s / +10s" },
-    { key: "Shift + ← / →", desc: "Seek -30s / +30s" },
-    { key: "↑ / ↓", desc: "Volume ±5%" },
-    { key: "M", desc: "Mute / Unmute" },
-    { key: "F", desc: "Toggle Fullscreen" },
-    { key: "[ / ]", desc: "Playback Speed ±0.25x" },
-    { key: "Backspace", desc: "Reset Speed to 1.0x" },
-    { key: "S", desc: "Cycle Subtitle Track" },
-    { key: "O", desc: "Open File" },
-    { key: "B", desc: "Toggle Media Library" },
-    { key: "P", desc: "Toggle Playlist" },
-    { key: "Esc", desc: "Close Menus / PiP" },
-  ];
-
   const tabMetadata: Record<
     SettingsTab,
     { title: string; description: string; icon: any }
@@ -505,8 +529,8 @@ export function SettingsModal() {
       title: "Keyboard Shortcuts",
       description:
         settingsMode === "simple"
-          ? "Quick reference of in-app player hotkeys for playback, seeking, and volume"
-          : "In-app hotkeys reference and system-wide background media key hooks",
+          ? "Rebind in-app player hotkeys, mouse scroll volume, and quick key reference"
+          : "Fully rebindable in-app hotkeys, mouse controls, and system-wide background media key hooks",
       icon: <Keyboard className="w-4 h-4" />,
     },
     history: {
@@ -667,7 +691,7 @@ export function SettingsModal() {
           <div className="pt-3 border-t border-white/5 px-2 flex items-center justify-between text-[11px] text-neutral-400 shrink-0">
             <div className="flex items-center gap-1.5 font-bold tracking-wider text-neutral-300">
               <span>EYTAA</span>
-              <span className="text-[10px] text-neutral-500 font-normal">v1.0</span>
+              <span className="text-[10px] text-neutral-500 font-normal">{appVersion ? `v${appVersion}` : ""}</span>
             </div>
             <button
               onClick={() => setShowRestoreConfirm(true)}
@@ -1857,26 +1881,143 @@ export function SettingsModal() {
                 </div>
               )}
 
-              {/* Local App Shortcuts List */}
+              {/* Rebindable Local App Shortcuts Editor */}
+              <div>
+                <div className="flex items-center justify-between mb-2.5">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+                    In-App Keyboard Shortcuts
+                  </h4>
+                  <button
+                    onClick={() => localShortcutsService.resetAll()}
+                    style={{ color: accentColor }}
+                    className="flex items-center gap-1.5 text-[11px] font-bold hover:underline cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Restore Defaults
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {(["Playback", "Seeking", "Volume", "View", "Tools"] as const).map((group) => {
+                    const actions = (
+                      Object.keys(LOCAL_ACTION_META) as LocalAction[]
+                    ).filter((a) => LOCAL_ACTION_META[a].group === group);
+                    if (actions.length === 0) return null;
+                    return (
+                      <div key={group}>
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 mb-1.5 px-0.5">
+                          {group}
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {actions.map((action) => {
+                            const meta = LOCAL_ACTION_META[action];
+                            const keys = shortcutConfig[action] || [];
+                            const isDefault =
+                              JSON.stringify([...keys].sort()) ===
+                              JSON.stringify([...meta.defaultKeys].sort());
+                            const isCapturing = capturingAction === action;
+                            return (
+                              <div
+                                key={action}
+                                className={`flex items-center justify-between gap-2 p-2.5 rounded-xl bg-white/5 border text-xs ${
+                                  isCapturing
+                                    ? "border-amber-400/50 bg-amber-400/5"
+                                    : "border-white/5"
+                                }`}
+                              >
+                                <span className="text-neutral-400 truncate">{meta.label}</span>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {isCapturing ? (
+                                    <span className="text-[11px] font-bold text-amber-400 animate-pulse">
+                                      Press a key… (Esc cancels)
+                                    </span>
+                                  ) : (
+                                    <>
+                                      {keys.length === 0 ? (
+                                        <span className="text-[10px] italic text-amber-400/70">
+                                          Unbound
+                                        </span>
+                                      ) : (
+                                        keys.map((k) => (
+                                          <kbd
+                                            key={k}
+                                            style={{ color: accentColor }}
+                                            className="px-2 py-0.5 rounded-lg bg-neutral-800 font-mono text-[11px] border border-white/10 shadow-sm font-semibold"
+                                          >
+                                            {displayKey(k)}
+                                          </kbd>
+                                        ))
+                                      )}
+                                      <button
+                                        onClick={() => setCapturingAction(action)}
+                                        style={{ color: accentColor }}
+                                        className="text-[10px] font-bold hover:underline cursor-pointer px-1"
+                                      >
+                                        Rebind
+                                      </button>
+                                      {!isDefault && (
+                                        <button
+                                          onClick={() => localShortcutsService.resetBinding(action)}
+                                          title="Reset to default"
+                                          className="text-neutral-500 hover:text-white transition cursor-pointer"
+                                        >
+                                          <RotateCcw className="w-3 h-3" />
+                                        </button>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Mouse Controls */}
               <div>
                 <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400 mb-2.5">
-                  In-App Keyboard Shortcuts
+                  Mouse Controls
                 </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {shortcuts.map((sc, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/5 text-xs"
-                    >
-                      <span className="text-neutral-400">{sc.desc}</span>
-                      <kbd
-                        style={{ color: accentColor }}
-                        className="px-2 py-0.5 rounded-lg bg-neutral-800 font-mono text-[11px] border border-white/10 shadow-sm font-semibold"
-                      >
-                        {sc.key}
-                      </kbd>
+                <div className="p-3 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <Mouse className="w-4 h-4 text-neutral-400 shrink-0" />
+                    <div>
+                      <div className="text-neutral-300 font-semibold">
+                        Scroll wheel adjusts volume
+                      </div>
+                      <div className="text-[11px] text-neutral-500">
+                        Scroll up / down while hovering the video to change volume (±3% per notch)
+                      </div>
                     </div>
-                  ))}
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={scrollVolumeEnabled}
+                    onChange={(e) => setScrollVolumeEnabled(e.target.checked)}
+                    style={{ accentColor }}
+                    className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* Static Reference for Hardcoded Modifiers */}
+              <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 space-y-1.5 text-[11px] text-neutral-500">
+                <div className="font-bold text-neutral-400 text-xs">Fixed Keys</div>
+                <div>
+                  <kbd className="px-1.5 py-0.5 rounded bg-neutral-800 font-mono border border-white/10">
+                    Esc
+                  </kbd>{" "}
+                  closes menus, drawers, and Picture-in-Picture (not rebindable)
+                </div>
+                <div>
+                  Hold{" "}
+                  <kbd className="px-1.5 py-0.5 rounded bg-neutral-800 font-mono border border-white/10">
+                    Shift
+                  </kbd>{" "}
+                  while seeking for ±30s instead of ±10s, or with Playlist to toggle PiP
                 </div>
               </div>
             </div>

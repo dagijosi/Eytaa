@@ -31,6 +31,7 @@ import {
   Menu,
   Minus,
   Square,
+  Settings,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { listen } from "@tauri-apps/api/event";
@@ -44,6 +45,7 @@ import {
   FavoriteItem,
   ScanProgressPayload,
   ThumbnailCacheStats,
+  SeriesOverview,
 } from "../services/library/libraryService";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { EytaaLogo } from "./EytaaLogo";
@@ -53,7 +55,7 @@ import { SeriesDetailView } from "./mediaCenter/SeriesDetailView";
 import { ProceduralPoster } from "./mediaCenter/ProceduralPoster";
 import { normalizeSeriesKey } from "../utils/mediaTitle";
 
-type MediaCenterTab = "hub" | "movies" | "series" | "all" | "favorites" | "duplicates" | "folders";
+type MediaCenterTab = "hub" | "movies" | "series" | "music" | "all" | "favorites" | "duplicates" | "folders";
 type WatchFilter = "all" | "in_progress" | "unwatched" | "watched";
 type SortOption = "recent" | "title" | "year" | "duration";
 
@@ -102,6 +104,7 @@ function formatRelativeTime(dateStr?: string): string | undefined {
 }
 
 interface SeriesGroupItem {
+  seriesKey: string;
   seriesName: string;
   sampleItem: LibraryItem;
   seasonsCount: number;
@@ -273,7 +276,7 @@ function SeriesCard({
 }
 
 export function MediaLibraryModal() {
-  const { isLibraryOpen, toggleLibraryModal, openFile, addToPlaylist, showOSD } = usePlayerStore();
+  const { isLibraryOpen, toggleLibraryModal, toggleSettingsModal, openFile, addToPlaylist, showOSD } = usePlayerStore();
   const { accentColor, accentGlow, accentText } = useThemeStore();
 
   const [activeTab, setActiveTab] = useState<MediaCenterTab>("hub");
@@ -298,6 +301,7 @@ export function MediaLibraryModal() {
 
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
   const [items, setItems] = useState<LibraryItem[]>([]);
+  const [seriesOverview, setSeriesOverview] = useState<SeriesOverview[]>([]);
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
   const [cacheStats, setCacheStats] = useState<ThumbnailCacheStats>({
     count: 0,
@@ -318,7 +322,6 @@ export function MediaLibraryModal() {
   // Pagination / infinite scrolling states for butter-smooth 60fps rendering
   const [visibleCount, setVisibleCount] = useState(48);
   const sentinelRef = useRef<HTMLButtonElement | null>(null);
-  const hasInitialReclassified = useRef(false);
 
   // Selected series for drill-down view
   const [inspectingSeriesName, setInspectingSeriesName] = useState<string | null>(null);
@@ -479,21 +482,11 @@ export function MediaLibraryModal() {
       setFavorites(favList);
       setCacheStats(cStats);
 
-      // Transparent one-time background reclassification to ensure all TV series are detected
-      if (!hasInitialReclassified.current && iList.length > 0) {
-        hasInitialReclassified.current = true;
-        libraryService.reclassifyAllMedia().then((cnt) => {
-          if (cnt > 0) {
-            libraryService
-              .getLibraryItems({
-                search: debouncedSearchQuery.trim() || undefined,
-              })
-              .then((reloaded) => {
-                setItems(reloaded);
-              });
-          }
-        });
-      }
+      // Series overview (accurate per-series counts independent of search filtering)
+      libraryService
+        .getSeriesOverview()
+        .then(setSeriesOverview)
+        .catch(() => setSeriesOverview([]));
     } catch (e) {
       console.error("Load library data error:", e);
     }
@@ -531,34 +524,95 @@ export function MediaLibraryModal() {
     );
   }, [items]);
 
-  // Group TV series (using normalizeSeriesKey for robust grouping)
+  // Music / audio tracks
+  const music = useMemo(() => {
+    return items.filter((i) => i.category === "music" || i.media_type === "audio");
+  }, [items]);
+
+  // Filtering & sorting for Music tab
+  const filteredMusic = useMemo(() => {
+    let result = [...music];
+    if (watchFilter === "unwatched") {
+      result = result.filter((i) => !i.is_watched);
+    } else if (watchFilter === "watched") {
+      result = result.filter((i) => i.is_watched);
+    }
+    if (sortBy === "recent") {
+      result.sort((a, b) => new Date(b.added_at).getTime() - new Date(a.added_at).getTime());
+    } else if (sortBy === "title") {
+      result.sort((a, b) => a.title.localeCompare(b.title));
+    } else if (sortBy === "year") {
+      result.sort((a, b) => (b.year || "").localeCompare(a.year || ""));
+    } else if (sortBy === "duration") {
+      result.sort((a, b) => (b.duration || 0) - (a.duration || 0));
+    }
+    return result;
+  }, [music, watchFilter, sortBy]);
+
+  // Overview keyed by canonical series_key (accurate counts regardless of search)
+  const overviewByKey = useMemo(() => {
+    const m = new Map<string, SeriesOverview>();
+    for (const o of seriesOverview) {
+      if (o.series_key) m.set(o.series_key, o);
+    }
+    return m;
+  }, [seriesOverview]);
+
+  // Group TV series using the canonical series_key (falls back to normalizeSeriesKey)
   const seriesGroups = useMemo(() => {
     const map = new Map<string, { displayName: string; episodes: LibraryItem[] }>();
+    const nameCounts = new Map<string, Map<string, number>>();
     for (const item of items) {
       if (item.category === "series" || item.series_name) {
         const rawName = (item.series_name || "Unknown Series").trim();
-        const normKey = normalizeSeriesKey(rawName);
+        const normKey = item.series_key?.trim() || normalizeSeriesKey(rawName);
         if (!map.has(normKey)) {
           map.set(normKey, { displayName: rawName, episodes: [] });
+          nameCounts.set(normKey, new Map());
         }
         const entry = map.get(normKey)!;
-        if (rawName.toLowerCase().startsWith("the ") && !entry.displayName.toLowerCase().startsWith("the ")) {
-          entry.displayName = rawName;
-        } else if (rawName.length > entry.displayName.length && !entry.displayName.toLowerCase().startsWith("the ")) {
-          entry.displayName = rawName;
-        }
+        const counts = nameCounts.get(normKey)!;
+        counts.set(rawName, (counts.get(rawName) || 0) + 1);
         entry.episodes.push(item);
       }
     }
 
-    const groups = Array.from(map.values()).map(({ displayName, episodes }) => {
+    const groups = Array.from(map.entries()).map(([key, { episodes }]) => {
+      // Display name = most common variant in the group (tie → longer)
+      const counts = nameCounts.get(key)!;
+      let displayName = "";
+      let bestCount = -1;
+      for (const [name, count] of counts) {
+        if (count > bestCount || (count === bestCount && name.length > displayName.length)) {
+          displayName = name;
+          bestCount = count;
+        }
+      }
       const seasonsSet = new Set<number>();
       let watchedCount = 0;
       for (const ep of episodes) {
         seasonsSet.add(ep.season_number ?? 1);
         if (ep.is_watched) watchedCount++;
       }
+      // Prefer authoritative overview counts so search never fragments a series
+      const overview = overviewByKey.get(key);
+      if (overview) {
+        if (overview.display_name) displayName = overview.display_name;
+        const total = overview.episode_count;
+        const watched = overview.watched_count;
+        return {
+          seriesKey: key,
+          seriesName: displayName,
+          episodes,
+          seasonsCount: overview.season_count,
+          episodesCount: total,
+          watchedCount: watched,
+          progressPercent: total > 0 ? Math.round((watched / total) * 100) : 0,
+          sampleItem: episodes[0],
+        };
+      }
       return {
+        seriesKey: key,
         seriesName: displayName,
         episodes,
         seasonsCount: seasonsSet.size,
@@ -570,7 +624,10 @@ export function MediaLibraryModal() {
     });
 
     return groups.sort((a, b) => a.seriesName.localeCompare(b.seriesName));
-  }, [items]);
+  }, [items, overviewByKey]);
+
+  // Authoritative total series count (independent of active search filtering)
+  const seriesCount = seriesOverview.length > 0 ? seriesOverview.length : seriesGroups.length;
 
   // All existing series names for autocomplete
   const existingSeriesNames = useMemo(() => {
@@ -596,15 +653,17 @@ export function MediaLibraryModal() {
     const list: Array<{ seriesName: string; episode: LibraryItem }> = [];
 
     for (const group of seriesGroups) {
-      // Sort episodes in chronological order
+      // Sort episodes in chronological order, with specials (season 0) last
       const sorted = [...group.episodes].sort((a, b) => {
-        const sDiff = (a.season_number ?? 1) - (b.season_number ?? 1);
+        const sa = (a.season_number ?? 1) === 0 ? Infinity : (a.season_number ?? 1);
+        const sb = (b.season_number ?? 1) === 0 ? Infinity : (b.season_number ?? 1);
+        const sDiff = sa - sb;
         if (sDiff !== 0) return sDiff;
         return (a.episode_number ?? 0) - (b.episode_number ?? 0);
       });
 
-      // Find first episode that is unwatched or partially watched
-      const target = sorted.find((ep) => !ep.is_watched);
+      // Find first episode that is unwatched (never suggest specials)
+      const target = sorted.find((ep) => !ep.is_watched && (ep.season_number ?? 1) !== 0);
       if (target && group.watchedCount > 0 && group.watchedCount < group.episodesCount) {
         list.push({ seriesName: group.seriesName, episode: target });
       }
@@ -927,13 +986,15 @@ export function MediaLibraryModal() {
   };
 
   const handlePlayItem = async (filePath: string, queueEpisodes?: string[]) => {
+    // Close the library immediately so the player is revealed without waiting
+    // for file resolution / mpv startup (otherwise the modal appears to hang).
+    toggleLibraryModal(false);
     try {
       await openFile(filePath);
       if (queueEpisodes && queueEpisodes.length > 0) {
         addToPlaylist(queueEpisodes);
         showOSD(`Playing • ${queueEpisodes.length} more episodes queued in playlist`);
       }
-      toggleLibraryModal(false);
     } catch (e) {
       console.error("Play item error:", e);
     }
@@ -941,11 +1002,15 @@ export function MediaLibraryModal() {
 
   const handlePlayMediaWithAutoQueue = (item: LibraryItem) => {
     if (item.series_name) {
+      const itemKey = item.series_key || normalizeSeriesKey(item.series_name);
       const eps = items
-        .filter((i) => (i.series_name || "").toLowerCase() === item.series_name!.toLowerCase())
+        .filter(
+          (i) =>
+            (i.series_key || normalizeSeriesKey(i.series_name || "")) === itemKey,
+        )
         .sort((a, b) => {
-          const sA = a.season_number ?? 1;
-          const sB = b.season_number ?? 1;
+          const sA = (a.season_number ?? 1) === 0 ? Infinity : (a.season_number ?? 1);
+          const sB = (b.season_number ?? 1) === 0 ? Infinity : (b.season_number ?? 1);
           if (sA !== sB) return sA - sB;
           return (a.episode_number ?? 0) - (b.episode_number ?? 0);
         });
@@ -1217,7 +1282,8 @@ export function MediaLibraryModal() {
                 {[
                   { id: "hub", label: "Media Hub", icon: LayoutDashboard, count: undefined },
                   { id: "movies", label: "Movies", icon: Film, count: movies.length },
-                  { id: "series", label: "TV Shows", icon: Tv, count: seriesGroups.length },
+                  { id: "series", label: "TV Shows", icon: Tv, count: seriesCount },
+                  { id: "music", label: "Music", icon: Music, count: music.length },
                   { id: "all", label: "All Media", icon: Database, count: items.length },
                   { id: "favorites", label: "Favorites", icon: Heart, count: favorites.length },
                 ].map((tab) => {
@@ -1367,6 +1433,33 @@ export function MediaLibraryModal() {
                 })}
               </div>
             </div>
+
+            {/* Preferences shortcut */}
+            <div className="w-full pt-1">
+              {!isSidebarCollapsed && (
+                <p className="px-2.5 pb-1.5 text-[10px] font-mono font-bold tracking-wider uppercase text-neutral-500 overflow-hidden select-none whitespace-nowrap">
+                  Preferences
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  toggleLibraryModal(false);
+                  toggleSettingsModal(true);
+                }}
+                title={isSidebarCollapsed ? "Settings" : undefined}
+                className="relative flex items-center h-10 w-full rounded-xl transition-colors cursor-pointer select-none px-2.5 overflow-hidden text-neutral-400 hover:text-white hover:bg-white/5"
+              >
+                <div className="w-5 h-5 flex items-center justify-center shrink-0">
+                  <Settings className="w-4 h-4 shrink-0" />
+                </div>
+                {!isSidebarCollapsed && (
+                  <span className="truncate whitespace-nowrap overflow-hidden text-xs font-bold ml-2.5 flex-1 text-left">
+                    Settings
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Sidebar Footer Info */}
@@ -1401,6 +1494,8 @@ export function MediaLibraryModal() {
                     ? "Movies"
                     : activeTab === "series"
                     ? "TV Series"
+                    : activeTab === "music"
+                    ? "Music"
                     : activeTab === "all"
                     ? "All Media"
                     : activeTab === "favorites"
@@ -1413,7 +1508,9 @@ export function MediaLibraryModal() {
                   {activeTab === "movies"
                     ? `• ${filteredMovies.length} titles`
                     : activeTab === "series"
-                    ? `• ${seriesGroups.length} series`
+                    ? `• ${seriesCount} series`
+                    : activeTab === "music"
+                    ? `• ${filteredMusic.length} tracks`
                     : activeTab === "all"
                     ? `• ${items.length} items`
                     : activeTab === "favorites"
@@ -1432,6 +1529,7 @@ export function MediaLibraryModal() {
                   (activeTab === "hub" ||
                     activeTab === "movies" ||
                     activeTab === "series" ||
+                    activeTab === "music" ||
                     activeTab === "all" ||
                     activeTab === "favorites" ||
                     activeTab === "duplicates") && (
@@ -1697,7 +1795,7 @@ export function MediaLibraryModal() {
                 </div>
                 <div className="mt-2 flex items-baseline justify-between">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-black text-white">{seriesGroups.length}</span>
+                    <span className="text-2xl font-black text-white">{seriesCount}</span>
                     <span className="text-xs text-neutral-500 font-mono">shows</span>
                   </div>
                   <span className="text-[10px] text-neutral-500 group-hover:text-neutral-300 font-mono transition">Browse →</span>
@@ -1821,7 +1919,7 @@ export function MediaLibraryModal() {
                     <Tv className="w-4 h-4" style={{ color: accentColor }} />
                     <h2 className="text-sm font-bold tracking-wide uppercase">Your TV Series</h2>
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-white/10 text-neutral-300">
-                      {seriesGroups.length}
+                      {seriesCount}
                     </span>
                   </div>
                   <button
@@ -1974,6 +2072,96 @@ export function MediaLibraryModal() {
                     ))}
                 </div>
               </section>
+            )}
+          </div>
+        ) : activeTab === "music" ? (
+          /* TAB: MUSIC */
+          <div onScroll={handleScroll} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-white/5">
+              <div className="flex items-center gap-1.5">
+                {[
+                  { id: "all", label: "All Tracks" },
+                  { id: "unwatched", label: "Unplayed" },
+                  { id: "watched", label: "Played" },
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => setWatchFilter(f.id as WatchFilter)}
+                    style={
+                      watchFilter === f.id
+                        ? { backgroundColor: `${accentColor}25`, borderColor: accentColor, color: accentColor }
+                        : {}
+                    }
+                    className={`px-3 py-1 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+                      watchFilter === f.id
+                        ? "shadow-sm font-bold"
+                        : "bg-white/5 border-transparent text-neutral-400 hover:text-white"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-neutral-400">
+                <span>Sort by:</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as SortOption)}
+                  className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-neutral-200 text-xs focus:outline-none"
+                >
+                  <option value="recent">Recently Added</option>
+                  <option value="title">Title (A-Z)</option>
+                  <option value="year">Release Year</option>
+                  <option value="duration">Duration</option>
+                </select>
+              </div>
+            </div>
+
+            {filteredMusic.length === 0 ? (
+              <div className="py-20 flex flex-col items-center justify-center text-center space-y-2">
+                <Music className="w-10 h-10 text-neutral-600" />
+                <p className="text-sm font-bold text-neutral-300">No music found</p>
+                <p className="text-xs text-neutral-500">
+                  Add a folder containing audio files (mp3, flac, wav, m4a) to see them here.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div
+                  className={`grid gap-3.5 ${
+                    cardFormat === "widescreen"
+                      ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
+                      : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6"
+                  }`}
+                >
+                  {filteredMusic.slice(0, visibleCount).map((track) => (
+                    <MediaCard
+                      key={track.file_path}
+                      item={track}
+                      viewFormat={cardFormat}
+                      onPlay={() => handlePlayItem(track.file_path)}
+                      onQueue={handleQueueItem}
+                      onEdit={(it) => setEditingItem(it)}
+                      onToggleFavorite={handleToggleFavorite}
+                      onToggleWatched={handleToggleWatched}
+                    />
+                  ))}
+                </div>
+                {visibleCount < filteredMusic.length && (
+                  <button
+                    ref={sentinelRef}
+                    type="button"
+                    onClick={() => setVisibleCount((prev) => prev + 48)}
+                    className="w-full py-5 my-4 flex flex-col items-center justify-center gap-1 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.08] hover:border-white/10 transition cursor-pointer text-neutral-400 hover:text-white group"
+                  >
+                    <span className="text-xs font-semibold group-hover:underline">
+                      Showing {Math.min(visibleCount, filteredMusic.length)} of {filteredMusic.length} tracks • Click or scroll to load more
+                    </span>
+                    <span className="text-[11px] text-neutral-500">Loads next 48 tracks</span>
+                  </button>
+                )}
+              </>
             )}
           </div>
         ) : activeTab === "movies" ? (

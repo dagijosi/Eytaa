@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, lazy, Suspense } from "react";
 import { usePlayerStore } from "./stores/playerStore";
 import { useThemeStore } from "./stores/themeStore";
 import { TopBar } from "./components/TopBar";
@@ -7,18 +7,27 @@ import { CenterOSD } from "./components/CenterOSD";
 import { SkipIndicator } from "./components/SkipIndicator";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { PlaylistDrawer } from "./components/PlaylistDrawer";
-import { SettingsModal } from "./components/SettingsModal";
 import { SleepTimerModal } from "./components/SleepTimerModal";
 import { SiblingPromptToast } from "./components/SiblingPromptToast";
 import { DragDropOverlay } from "./components/DragDropOverlay";
 import { PiPOverlay } from "./components/PiPOverlay";
-import { MediaLibraryModal } from "./components/MediaLibraryModal";
 import { UpdateNotificationToast } from "./components/UpdateNotificationToast";
+
+// Heavy overlays are code-split so the initial window paints immediately.
+const SettingsModal = lazy(() =>
+  import("./components/SettingsModal").then((m) => ({ default: m.SettingsModal })),
+);
+const MediaLibraryModal = lazy(() =>
+  import("./components/MediaLibraryModal").then((m) => ({ default: m.MediaLibraryModal })),
+);
+import { UpdateCheckToast } from "./components/UpdateCheckToast";
+import { ContextMenu } from "./components/ContextMenu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { playerService } from "./services/player/mpvPlayerService";
+import { localShortcutsService } from "./services/shortcuts/localShortcutsService";
 import { toggleWindowFullscreen } from "./utils/windowControls";
 
 export default function App() {
@@ -56,6 +65,7 @@ export default function App() {
     toggleNightListening,
     pauseOnSystemSleep,
     showOSD,
+    scrollVolumeEnabled,
   } = usePlayerStore();
 
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -63,9 +73,12 @@ export default function App() {
   const [isMouseActive, setIsMouseActive] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
   const [activeDropZone, setActiveDropZone] = useState<"play" | "playlist">("play");
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   const hideControlsTimerRef = useRef<number | null>(null);
   const clickTimerRef = useRef<number | null>(null);
+  const videoCanvasRef = useRef<HTMLDivElement | null>(null);
+  const wheelAccumRef = useRef(0);
 
   const { initializeTheme } = useThemeStore();
 
@@ -101,6 +114,24 @@ export default function App() {
       }
     }, 60);
     return () => clearTimeout(showTimer);
+  }, []);
+
+  // Warm up the code-split overlays once the app is idle so opening them feels instant.
+  useEffect(() => {
+    const preload = () => {
+      import("./components/MediaLibraryModal");
+      import("./components/SettingsModal");
+    };
+    const w = window as typeof window & {
+      requestIdleCallback?: (cb: () => void) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof w.requestIdleCallback === "function") {
+      const id = w.requestIdleCallback(preload);
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const timer = window.setTimeout(preload, 1500);
+    return () => window.clearTimeout(timer);
   }, []);
 
   // Listen for file open requests forwarded from subsequent single instances
@@ -255,61 +286,75 @@ export default function App() {
     setIsFullscreen(newFs);
   };
 
-  // Global Keyboard Shortcuts
+  // Global Keyboard Shortcuts (rebindable via localShortcutsService)
   useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
       if (
         e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target instanceof HTMLElement && e.target.isContentEditable)
       ) {
         return;
       }
 
       resetHideTimer();
 
-      switch (e.key.toLowerCase()) {
-        case " ":
-        case "k":
+      // Escape stays hardcoded: closes overlays/menus, never rebindable
+      if (e.key === "escape") {
+        setContextMenu(null);
+        if (isPiP) togglePiP();
+        if (isSleepTimerOpen) toggleSleepTimer(false);
+        if (isLibraryOpen) toggleLibraryModal(false);
+        if (isPlaylistOpen) togglePlaylistDrawer();
+        if (isSettingsOpen) toggleSettingsModal();
+        return;
+      }
+
+      const action = localShortcutsService.resolveAction(e);
+      if (!action) return;
+
+      switch (action) {
+        case "toggle-playback":
           e.preventDefault();
           await togglePlayback();
           break;
-        case "arrowleft":
+        case "seek-backward":
           e.preventDefault();
           await seekRelative(e.shiftKey ? -30 : -10);
           break;
-        case "arrowright":
+        case "seek-forward":
           e.preventDefault();
           await seekRelative(e.shiftKey ? 30 : 10);
           break;
-        case "arrowup":
+        case "volume-up":
           e.preventDefault();
           await changeVolume(5);
           break;
-        case "arrowdown":
+        case "volume-down":
           e.preventDefault();
           await changeVolume(-5);
           break;
-        case "m":
+        case "mute":
           e.preventDefault();
           await toggleMute();
           break;
-        case "f":
+        case "toggle-fullscreen":
           e.preventDefault();
           await handleToggleFullscreen();
           break;
-        case "[":
+        case "speed-down":
           e.preventDefault();
           await changePlaybackRate(-0.25);
           break;
-        case "]":
+        case "speed-up":
           e.preventDefault();
           await changePlaybackRate(0.25);
           break;
-        case "backspace":
+        case "reset-speed":
           e.preventDefault();
           await setPlaybackRate(1.0);
           break;
-        case "s": {
+        case "cycle-subtitle": {
           e.preventDefault();
           if (subtitleTracks.length > 0) {
             const trackIds = [0, ...subtitleTracks.map((t) => t.id)];
@@ -319,7 +364,7 @@ export default function App() {
           }
           break;
         }
-        case "o": {
+        case "open-file": {
           e.preventDefault();
           try {
             const selected = await openDialog({
@@ -352,7 +397,7 @@ export default function App() {
           }
           break;
         }
-        case "p":
+        case "toggle-playlist":
           e.preventDefault();
           if (e.shiftKey) {
             togglePiP();
@@ -360,28 +405,21 @@ export default function App() {
             togglePlaylistDrawer();
           }
           break;
-        case "i":
+        case "picture-in-picture":
           e.preventDefault();
           togglePiP();
           break;
-        case "b":
+        case "toggle-library":
           e.preventDefault();
           toggleLibraryModal();
           break;
-        case "f7":
+        case "cycle-profile":
           e.preventDefault();
           cycleProfile();
           break;
-        case "f8":
+        case "toggle-night-listening":
           e.preventDefault();
           toggleNightListening();
-          break;
-        case "escape":
-          if (isPiP) togglePiP();
-          if (isSleepTimerOpen) toggleSleepTimer(false);
-          if (isLibraryOpen) toggleLibraryModal(false);
-          if (isPlaylistOpen) togglePlaylistDrawer();
-          if (isSettingsOpen) toggleSettingsModal();
           break;
       }
     };
@@ -413,6 +451,44 @@ export default function App() {
     cycleProfile,
     toggleNightListening,
   ]);
+
+  // Scroll wheel volume control over the video surface
+  useEffect(() => {
+    const el = videoCanvasRef.current;
+    if (!el) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (!scrollVolumeEnabled) return;
+      if (status !== "playing" && status !== "paused") return;
+
+      // Normalize line-based delta modes (deltaMode 1 = lines, 2 = pages)
+      const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY;
+      wheelAccumRef.current += delta;
+
+      const NOTCH_PX = 100;
+      const VOLUME_PER_NOTCH = 3;
+      if (Math.abs(wheelAccumRef.current) >= NOTCH_PX) {
+        const notches = Math.trunc(wheelAccumRef.current / NOTCH_PX);
+        wheelAccumRef.current -= notches * NOTCH_PX;
+        changeVolume(notches * VOLUME_PER_NOTCH);
+      }
+    };
+
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, [scrollVolumeEnabled, status, changeVolume]);
+
+  // Custom right-click context menu (replaces the Chromium default menu)
+  const handleContextMenu = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement | null;
+    // Preserve native edit menus inside text inputs
+    if (target && target.closest("input, textarea, [contenteditable='true']")) {
+      return;
+    }
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  };
 
   // Click & Double-click on video canvas
   const handleVideoCanvasClick = (e: React.MouseEvent) => {
@@ -516,6 +592,7 @@ export default function App() {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      onContextMenu={handleContextMenu}
       className={`relative h-screen w-screen overflow-hidden flex flex-col font-sans select-none transition-cursor ${
         showCursor ? "cursor-default" : "cursor-none"
       }`}
@@ -526,6 +603,7 @@ export default function App() {
         100% transparent so the underlying HWND MPV renderer shows through with zero occlusion.
       */}
       <div
+        ref={videoCanvasRef}
         onClick={handleVideoCanvasClick}
         className="absolute inset-0 z-0 bg-transparent"
       />
@@ -580,11 +658,13 @@ export default function App() {
       {/* Slide-in Playlist Drawer */}
       <PlaylistDrawer />
 
-      {/* Settings / Shortcuts Modal */}
-      <SettingsModal />
+      {/* Settings / Shortcuts Modal (code-split) */}
+      <Suspense fallback={null}>
+        <SettingsModal />
 
-      {/* Local Media Library Modal */}
-      <MediaLibraryModal />
+        {/* Local Media Library Modal (code-split) */}
+        <MediaLibraryModal />
+      </Suspense>
 
       {/* Night Listening & Sleep Timer Modal */}
       <SleepTimerModal
@@ -594,6 +674,18 @@ export default function App() {
 
       {/* Discreet Update Alert Toast */}
       <UpdateNotificationToast />
+
+      {/* Manual Update Check Result Toast */}
+      <UpdateCheckToast />
+
+      {/* Custom Right-Click Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }
