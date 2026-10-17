@@ -11,9 +11,40 @@ export interface UpdateStatus {
   errorMessage?: string;
 }
 
+export function isNewerVersion(remoteVer?: string, currentVer?: string): boolean {
+  if (!remoteVer || !currentVer) return false;
+  const cleanRemote = remoteVer.replace(/^v/, "").trim();
+  const cleanCurrent = currentVer.replace(/^v/, "").trim();
+  if (cleanRemote === cleanCurrent) return false;
+
+  const rParts = cleanRemote.split(".").map((n) => parseInt(n, 10) || 0);
+  const cParts = cleanCurrent.split(".").map((n) => parseInt(n, 10) || 0);
+
+  for (let i = 0; i < Math.max(rParts.length, cParts.length); i++) {
+    const r = rParts[i] || 0;
+    const c = cParts[i] || 0;
+    if (r > c) return true;
+    if (r < c) return false;
+  }
+  return false;
+}
+
 class UpdaterService {
   private activeUpdate: Update | null = null;
   private cachedVersion: string | null = null;
+  private lastStatus: UpdateStatus | null = null;
+
+  getLastStatus(): UpdateStatus | null {
+    return this.lastStatus;
+  }
+
+  setLastStatus(status: UpdateStatus): void {
+    this.lastStatus = status;
+  }
+
+  hasActiveUpdate(): boolean {
+    return this.activeUpdate !== null;
+  }
 
   async getAppVersion(): Promise<string> {
     if (this.cachedVersion) return this.cachedVersion;
@@ -31,14 +62,17 @@ class UpdaterService {
   ): Promise<UpdateStatus> {
     const currentVersion = await this.getAppVersion();
     try {
-      onProgress?.({
+      const checkingStatus: UpdateStatus = {
         state: "checking",
         currentVersion,
-      });
+      };
+      this.lastStatus = checkingStatus;
+      onProgress?.(checkingStatus);
 
       const update = await check();
 
-      if (update?.available) {
+      // Only treat as available if remote version is strictly newer than running version
+      if (update?.available && update.version && isNewerVersion(update.version, currentVersion)) {
         this.activeUpdate = update;
         const status: UpdateStatus = {
           state: "available",
@@ -46,6 +80,7 @@ class UpdaterService {
           latestVersion: update.version,
           releaseNotes: update.body,
         };
+        this.lastStatus = status;
         onProgress?.(status);
         return status;
       } else {
@@ -54,6 +89,7 @@ class UpdaterService {
           state: "up-to-date",
           currentVersion: update?.currentVersion || currentVersion,
         };
+        this.lastStatus = status;
         onProgress?.(status);
         return status;
       }
@@ -64,6 +100,7 @@ class UpdaterService {
         currentVersion,
         errorMessage: err?.message || String(err),
       };
+      this.lastStatus = status;
       onProgress?.(status);
       return status;
     }
@@ -73,7 +110,13 @@ class UpdaterService {
     onProgress?: (downloaded: number, total: number | null) => void
   ): Promise<void> {
     if (!this.activeUpdate) {
-      throw new Error("No update pending to install.");
+      // If activeUpdate was lost across component mounts, check again to acquire the handle
+      const fresh = await check();
+      if (fresh?.available) {
+        this.activeUpdate = fresh;
+      } else {
+        throw new Error("No update pending to install.");
+      }
     }
 
     let downloadedBytes = 0;

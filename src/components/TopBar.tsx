@@ -18,7 +18,8 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow, currentMonitor } from "@tauri-apps/api/window";
 import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
 import { formatMediaTitle } from "../utils/mediaTitle";
-import { updaterService } from "../services/updater/updaterService";
+import { updaterService, isNewerVersion } from "../services/updater/updaterService";
+import { storageService } from "../services/storage/storageService";
 
 import { EytaaLogo } from "./EytaaLogo";
 
@@ -65,8 +66,21 @@ export function TopBar() {
   const snapCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    updaterService.getAppVersion().then(setAppVersion);
+    updaterService.getAppVersion().then((v) => {
+      setAppVersion(v);
+      const currentAvail = usePlayerStore.getState().availableUpdate;
+      if (currentAvail?.version && !isNewerVersion(currentAvail.version, v)) {
+        usePlayerStore.setState({ availableUpdate: null, showUpdateToast: false });
+        storageService.setPreference("cachedAvailableUpdateVer", null);
+      }
+    });
   }, []);
+
+  const hasRealUpdate = Boolean(
+    availableUpdate?.version &&
+      appVersion &&
+      isNewerVersion(availableUpdate.version, appVersion)
+  );
 
   useEffect(() => {
     const checkMaximized = async () => {
@@ -403,11 +417,11 @@ export function TopBar() {
           <button
             onClick={() => setIsMenuOpen(!isMenuOpen)}
             className="flex items-center gap-1.5 px-2 py-1 rounded-md text-neutral-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all text-xs font-semibold relative"
-            title={availableUpdate ? `EYTAA (Update v${availableUpdate.version} Available)` : "Application Menu"}
+            title={hasRealUpdate && availableUpdate ? `EYTAA (Update v${availableUpdate.version} Available)` : "Application Menu"}
           >
             <div className="relative">
               <EytaaLogo className="w-4 h-4" variant="color" />
-              {availableUpdate && (
+              {hasRealUpdate && (
                 <span
                   style={{ backgroundColor: accentColor }}
                   className="absolute -top-1 -right-1 w-2 h-2 rounded-full animate-pulse shadow-sm"
@@ -461,7 +475,7 @@ export function TopBar() {
               <button
                 onClick={() => {
                   setIsMenuOpen(false);
-                  toggleSettingsModal(true, availableUpdate ? "updates" : undefined);
+                  toggleSettingsModal(true, hasRealUpdate ? "updates" : undefined);
                 }}
                 className="flex items-center justify-between px-3 py-2 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 text-left transition cursor-pointer"
               >
@@ -469,7 +483,7 @@ export function TopBar() {
                   <Sliders className="w-3.5 h-3.5" />
                   <span>Settings & History</span>
                 </div>
-                {availableUpdate && (
+                {hasRealUpdate && availableUpdate && (
                   <span
                     style={{ backgroundColor: `${accentColor}25`, color: accentColor }}
                     className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold"
@@ -494,7 +508,7 @@ export function TopBar() {
                 <span>EYTAA Player</span>
                 <span style={{ color: accentColor }} className="font-bold">
                   {appVersion ? `v${appVersion}` : ""}
-                  {availableUpdate ? ` • v${availableUpdate.version} ready` : ""}
+                  {hasRealUpdate && availableUpdate ? ` • v${availableUpdate.version} ready` : ""}
                 </span>
               </div>
             </div>

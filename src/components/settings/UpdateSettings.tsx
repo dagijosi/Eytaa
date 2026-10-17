@@ -7,7 +7,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { updaterService, UpdateStatus } from "../../services/updater/updaterService";
+import { updaterService, UpdateStatus, isNewerVersion } from "../../services/updater/updaterService";
+import { usePlayerStore } from "../../stores/playerStore";
 import { EytaaLogo } from "../EytaaLogo";
 
 interface UpdateSettingsProps {
@@ -27,10 +28,36 @@ export function UpdateSettings({
   autoCheckUpdates,
   toggleAutoCheckUpdates,
 }: UpdateSettingsProps) {
-  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({
-    state: "idle",
-    currentVersion: "",
+  const availableUpdate = usePlayerStore((s) => s.availableUpdate);
+
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>(() => {
+    const last = updaterService.getLastStatus();
+    if (
+      last &&
+      last.state === "available" &&
+      last.latestVersion &&
+      isNewerVersion(last.latestVersion, appVersion)
+    ) {
+      return last;
+    }
+    if (last && last.state === "up-to-date") {
+      return last;
+    }
+    const storeAvail = usePlayerStore.getState().availableUpdate;
+    if (storeAvail?.version && isNewerVersion(storeAvail.version, appVersion)) {
+      return {
+        state: "available",
+        currentVersion: appVersion,
+        latestVersion: storeAvail.version,
+        releaseNotes: storeAvail.releaseNotes,
+      };
+    }
+    return {
+      state: "idle",
+      currentVersion: appVersion,
+    };
   });
+
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
   const [installProgress, setInstallProgress] = useState<{ downloaded: number; total: number | null }>({
     downloaded: 0,
@@ -40,6 +67,16 @@ export function UpdateSettings({
   const handleCheckUpdate = async () => {
     await updaterService.checkForUpdates((status) => {
       setUpdateStatus(status);
+      if (status.state === "available" && status.latestVersion) {
+        usePlayerStore.setState({
+          availableUpdate: {
+            version: status.latestVersion,
+            releaseNotes: status.releaseNotes,
+          },
+        });
+      } else if (status.state === "up-to-date") {
+        usePlayerStore.setState({ availableUpdate: null, showUpdateToast: false });
+      }
     });
   };
 
@@ -59,12 +96,37 @@ export function UpdateSettings({
     }
   };
 
-  // Load the dynamic app version for the updater card
+  // Synchronize with updaterService cached status or store's availableUpdate on mount/change
   useEffect(() => {
-    updaterService.getAppVersion().then((v) => {
-      setUpdateStatus((prev) => ({ ...prev, currentVersion: v }));
-    });
-  }, []);
+    const last = updaterService.getLastStatus();
+    if (
+      last &&
+      last.state === "available" &&
+      last.latestVersion &&
+      isNewerVersion(last.latestVersion, appVersion)
+    ) {
+      setUpdateStatus(last);
+    } else if (last && last.state === "up-to-date") {
+      setUpdateStatus(last);
+    } else if (availableUpdate?.version && isNewerVersion(availableUpdate.version, appVersion)) {
+      setUpdateStatus({
+        state: "available",
+        currentVersion: appVersion,
+        latestVersion: availableUpdate.version,
+        releaseNotes: availableUpdate.releaseNotes,
+      });
+    } else if (appVersion && availableUpdate?.version && !isNewerVersion(availableUpdate.version, appVersion)) {
+      setUpdateStatus({
+        state: "up-to-date",
+        currentVersion: appVersion,
+      });
+      usePlayerStore.setState({ availableUpdate: null, showUpdateToast: false });
+    } else if (!appVersion) {
+      updaterService.getAppVersion().then((v) => {
+        setUpdateStatus((prev) => ({ ...prev, currentVersion: v }));
+      });
+    }
+  }, [availableUpdate, appVersion]);
 
   return (
     <div className="space-y-5">

@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand";
 import { storageService } from "../../services/storage/storageService";
-import { updaterService } from "../../services/updater/updaterService";
+import { updaterService, isNewerVersion } from "../../services/updater/updaterService";
 import type { PlayerStore, UpdatesSlice } from "./types";
 
 export const createUpdatesSlice: StateCreator<
@@ -18,14 +18,19 @@ export const createUpdatesSlice: StateCreator<
     const { autoCheckUpdates } = get();
     if (!autoCheckUpdates) return;
 
+    const currentVer = await updaterService.getAppVersion();
+
     // Rate limit check: at most once every 24 hours (86,400,000 ms)
     const lastCheck = (await storageService.getPreference<number>("lastUpdateCheckTimestamp")) || 0;
     const now = Date.now();
     if (now - lastCheck < 24 * 60 * 60 * 1000) {
-      // Restore cached available update so the subtle indicator in TopBar can show
+      // Restore cached available update ONLY if it is strictly newer than current running version!
       const cachedVer = await storageService.getPreference<string>("cachedAvailableUpdateVer");
-      if (cachedVer) {
+      if (cachedVer && isNewerVersion(cachedVer, currentVer)) {
         set({ availableUpdate: { version: cachedVer } });
+      } else {
+        await storageService.setPreference("cachedAvailableUpdateVer", null);
+        set({ availableUpdate: null, showUpdateToast: false });
       }
       return;
     }
@@ -34,7 +39,7 @@ export const createUpdatesSlice: StateCreator<
 
     try {
       const update = await updaterService.checkForUpdates();
-      if (update.state === "available" && update.latestVersion) {
+      if (update.state === "available" && update.latestVersion && isNewerVersion(update.latestVersion, currentVer)) {
         const dismissedVer = await storageService.getPreference<string>("dismissedUpdateVersion");
         const updateInfo = {
           version: update.latestVersion,
@@ -49,7 +54,7 @@ export const createUpdatesSlice: StateCreator<
         if (!isCurrentlyPlaying && dismissedVer !== update.latestVersion) {
           set({ showUpdateToast: true });
         }
-      } else if (update.state === "up-to-date") {
+      } else {
         set({ availableUpdate: null, showUpdateToast: false });
         await storageService.setPreference("cachedAvailableUpdateVer", null);
       }
@@ -70,8 +75,9 @@ export const createUpdatesSlice: StateCreator<
   checkForUpdatesManually: async () => {
     set({ updateCheckToast: { state: "checking" } });
     try {
+      const currentVer = await updaterService.getAppVersion();
       const result = await updaterService.checkForUpdates();
-      if (result.state === "available" && result.latestVersion) {
+      if (result.state === "available" && result.latestVersion && isNewerVersion(result.latestVersion, currentVer)) {
         set({
           updateCheckToast: { state: "available", version: result.latestVersion },
           availableUpdate: {
@@ -81,7 +87,7 @@ export const createUpdatesSlice: StateCreator<
         });
         await storageService.setPreference("cachedAvailableUpdateVer", result.latestVersion);
         await storageService.setPreference("lastUpdateCheckTimestamp", Date.now());
-      } else if (result.state === "up-to-date") {
+      } else if (result.state === "up-to-date" || (result.state === "available" && !isNewerVersion(result.latestVersion, currentVer))) {
         set({ updateCheckToast: { state: "up-to-date" } });
         set({ availableUpdate: null, showUpdateToast: false });
         await storageService.setPreference("cachedAvailableUpdateVer", null);
