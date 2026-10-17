@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, lazy, Suspense } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { usePlayerStore } from "./stores/playerStore";
 import { useThemeStore } from "./stores/themeStore";
 import { TopBar } from "./components/TopBar";
@@ -22,6 +23,9 @@ const MediaLibraryModal = lazy(() =>
 );
 import { UpdateCheckToast } from "./components/UpdateCheckToast";
 import { ContextMenu } from "./components/ContextMenu";
+import { TooltipLayer } from "./components/TooltipLayer";
+import { StatsOverlay } from "./components/StatsOverlay";
+import { OpenUrlModal } from "./components/OpenUrlModal";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
@@ -53,6 +57,9 @@ export default function App() {
     loadSubtitle,
     selectSubtitleTrack,
     subtitleTracks,
+    audioTracks,
+    currentAudioTrackId,
+    selectAudioTrack,
     currentSubtitleTrackId,
     togglePlaylistDrawer,
     toggleSettingsModal,
@@ -62,11 +69,59 @@ export default function App() {
     isPiP,
     togglePiP,
     cycleProfile,
+    cycleRepeatMode,
     toggleNightListening,
     pauseOnSystemSleep,
     showOSD,
     scrollVolumeEnabled,
-  } = usePlayerStore();
+    toggleUrlModal,
+    takeScreenshot,
+    toggleStats,
+  } = usePlayerStore(
+    useShallow((s) => ({
+      isInitialized: s.isInitialized,
+      status: s.status,
+      mediaMetadata: s.mediaMetadata,
+      isControlsVisible: s.isControlsVisible,
+      isPlaylistOpen: s.isPlaylistOpen,
+      isSettingsOpen: s.isSettingsOpen,
+      isSleepTimerOpen: s.isSleepTimerOpen,
+      toggleSleepTimer: s.toggleSleepTimer,
+      initialize: s.initialize,
+      openFile: s.openFile,
+      addToPlaylist: s.addToPlaylist,
+      togglePlayback: s.togglePlayback,
+      pause: s.pause,
+      seekRelative: s.seekRelative,
+      changeVolume: s.changeVolume,
+      toggleMute: s.toggleMute,
+      changePlaybackRate: s.changePlaybackRate,
+      setPlaybackRate: s.setPlaybackRate,
+      loadSubtitle: s.loadSubtitle,
+      selectSubtitleTrack: s.selectSubtitleTrack,
+      subtitleTracks: s.subtitleTracks,
+      audioTracks: s.audioTracks,
+      currentAudioTrackId: s.currentAudioTrackId,
+      selectAudioTrack: s.selectAudioTrack,
+      currentSubtitleTrackId: s.currentSubtitleTrackId,
+      togglePlaylistDrawer: s.togglePlaylistDrawer,
+      toggleSettingsModal: s.toggleSettingsModal,
+      isLibraryOpen: s.isLibraryOpen,
+      toggleLibraryModal: s.toggleLibraryModal,
+      setControlsVisible: s.setControlsVisible,
+      isPiP: s.isPiP,
+      togglePiP: s.togglePiP,
+      cycleProfile: s.cycleProfile,
+      cycleRepeatMode: s.cycleRepeatMode,
+      toggleNightListening: s.toggleNightListening,
+      pauseOnSystemSleep: s.pauseOnSystemSleep,
+      showOSD: s.showOSD,
+      scrollVolumeEnabled: s.scrollVolumeEnabled,
+      toggleUrlModal: s.toggleUrlModal,
+      takeScreenshot: s.takeScreenshot,
+      toggleStats: s.toggleStats,
+    })),
+  );
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [mouseY, setMouseY] = useState(window.innerHeight / 2);
@@ -103,18 +158,24 @@ export default function App() {
     }
   }, [isInitialized, initialize, initializeTheme, openFile]);
 
-  // Show window once DOM is fully mounted to eliminate white / transparent lag on startup
+  // Fade out the startup splash once the app is initialized (fallback timeout in case init stalls).
   useEffect(() => {
-    const showTimer = setTimeout(async () => {
-      try {
-        const appWindow = getCurrentWindow();
-        await appWindow.show();
-      } catch (e) {
-        console.warn("Error showing window:", e);
-      }
-    }, 60);
-    return () => clearTimeout(showTimer);
-  }, []);
+    const splash = document.getElementById("startup-splash");
+    if (!splash) return;
+
+    const hideSplash = () => {
+      splash.classList.add("splash-hidden");
+      window.setTimeout(() => splash.remove(), 360);
+    };
+
+    if (isInitialized) {
+      hideSplash();
+      return;
+    }
+
+    const fallback = window.setTimeout(hideSplash, 6000);
+    return () => window.clearTimeout(fallback);
+  }, [isInitialized]);
 
   // Warm up the code-split overlays once the app is idle so opening them feels instant.
   useEffect(() => {
@@ -292,7 +353,17 @@ export default function App() {
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement ||
         (e.target instanceof HTMLElement && e.target.isContentEditable)
+      ) {
+        return;
+      }
+
+      // Don't let Space/Enter double-fire on a focused button or control
+      if (
+        (e.key === " " || e.key === "enter") &&
+        e.target instanceof HTMLElement &&
+        (e.target.tagName === "BUTTON" || e.target.tagName === "A")
       ) {
         return;
       }
@@ -307,6 +378,7 @@ export default function App() {
         if (isLibraryOpen) toggleLibraryModal(false);
         if (isPlaylistOpen) togglePlaylistDrawer();
         if (isSettingsOpen) toggleSettingsModal();
+        if (usePlayerStore.getState().isUrlModalOpen) toggleUrlModal(false);
         return;
       }
 
@@ -417,6 +489,36 @@ export default function App() {
           e.preventDefault();
           cycleProfile();
           break;
+        case "cycle-audio": {
+          e.preventDefault();
+          if (audioTracks.length > 1) {
+            const ids = audioTracks.map((t) => t.id);
+            const currentIdx = ids.indexOf(currentAudioTrackId ?? ids[0]);
+            const nextId = ids[(currentIdx + 1) % ids.length];
+            await selectAudioTrack(nextId);
+          } else if (audioTracks.length === 1) {
+            await selectAudioTrack(audioTracks[0].id);
+          } else {
+            showOSD("No alternate audio tracks");
+          }
+          break;
+        }
+        case "cycle-repeat":
+          e.preventDefault();
+          await cycleRepeatMode();
+          break;
+        case "open-url":
+          e.preventDefault();
+          toggleUrlModal(true);
+          break;
+        case "screenshot":
+          e.preventDefault();
+          await takeScreenshot();
+          break;
+        case "toggle-stats":
+          e.preventDefault();
+          toggleStats();
+          break;
         case "toggle-night-listening":
           e.preventDefault();
           toggleNightListening();
@@ -436,6 +538,9 @@ export default function App() {
     setPlaybackRate,
     subtitleTracks,
     currentSubtitleTrackId,
+    audioTracks,
+    currentAudioTrackId,
+    selectAudioTrack,
     selectSubtitleTrack,
     openFile,
     isPlaylistOpen,
@@ -449,7 +554,12 @@ export default function App() {
     isPiP,
     togglePiP,
     cycleProfile,
+    cycleRepeatMode,
     toggleNightListening,
+    toggleUrlModal,
+    takeScreenshot,
+    toggleStats,
+    showOSD,
   ]);
 
   // Scroll wheel volume control over the video surface
@@ -614,6 +724,9 @@ export default function App() {
       {/* Floating Center / Top OSD Feedback */}
       <CenterOSD />
 
+      {/* Playback Stats Overlay (F9) */}
+      <StatsOverlay />
+
       {/* Side-Screen Skip Indicator */}
       <SkipIndicator />
 
@@ -678,6 +791,9 @@ export default function App() {
       {/* Manual Update Check Result Toast */}
       <UpdateCheckToast />
 
+      {/* Network Stream / URL Opener */}
+      <OpenUrlModal />
+
       {/* Custom Right-Click Context Menu */}
       {contextMenu && (
         <ContextMenu
@@ -686,6 +802,9 @@ export default function App() {
           onClose={() => setContextMenu(null)}
         />
       )}
+
+      {/* Consistent, app-wide hover tooltips (replaces the native title tooltip) */}
+      <TooltipLayer />
     </div>
   );
 }

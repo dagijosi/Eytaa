@@ -16,6 +16,12 @@ export interface TrackInfo {
   external?: boolean;
 }
 
+export interface ChapterInfo {
+  index: number;
+  title: string;
+  time: number;
+}
+
 export interface MediaMetadata {
   title?: string;
   artist?: string;
@@ -37,6 +43,8 @@ export interface PlayerState {
   subtitleTracks: TrackInfo[];
   currentAudioTrackId?: number;
   currentSubtitleTrackId?: number;
+  chapters: ChapterInfo[];
+  currentChapterIndex: number;
   mediaMetadata: MediaMetadata | null;
   error: PlayerError | null;
   isInitialized: boolean;

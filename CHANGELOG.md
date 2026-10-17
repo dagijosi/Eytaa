@@ -4,6 +4,28 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ---
 
+## [0.2.3] - 2026-10-17
+
+### ✨ New Features
+- **Open Network Stream**: New "Open URL" dialog (`U`) that plays direct media and streaming links (HTTPS, HLS/m3u8, RTSP, RTMP, SRT, UDP, …) with inline validation and sane protocol handling.
+- **Playback Stats Overlay**: Toggleable (`F9`) diagnostics panel showing resolution, container/render FPS, video & audio codecs, hardware-decode mode, dropped frames, and current speed.
+- **Screenshots**: Save the current frame to disk with `E`, with an on-screen confirmation and graceful handling of streams.
+- **Chapters**: The libmpv chapter list is now read and exposed, enabling chapter-aware navigation.
+- **OS "Now Playing" Integration**: Media Session support surfaces title, artwork, and transport controls to the operating system — the Windows SMTC flyout, taskbar media preview, lock screen, and hardware media keys — with play/pause/next/previous/seek handlers.
+- **Saved Playlists**: Create, load, and delete named playlists, backed by four new database commands.
+
+### 🎛️ Controls & UX
+- **Separate Auto-Play Next & Repeat**: These are now distinct controls — a dedicated Auto-Play Next toggle alongside a direct-select Repeat dropdown (Off / Repeat Playlist / Repeat One), with quick actions in the More menu. Their combined state stays in sync and is always reflected in the UI.
+- **Consistent Tooltips**: A single app-wide tooltip layer replaces the browser's slow and unreliable native `title` tooltips, giving every icon button a fast, uniform, viewport-clamped hint.
+- **New Shortcuts**: Cycle Audio Track (`A`), Cycle Repeat Mode (`R`), Open Network Stream (`U`), Save Screenshot (`E`), and Toggle Playback Stats (`F9`). Bare-key shortcuts no longer fire through Ctrl/Alt/Meta, so browser and OS combinations are left untouched.
+- **Instant Window**: The window is now revealed as soon as the new startup splash (logo + spinner) paints, eliminating the blank window during boot.
+
+### 🔧 Internals
+- **Playlist Drawer Rework**: Reworked the playlist drawer's pointer-drag handling and layout for smoother reordering and interaction.
+- **Player Service**: Added chapter, screenshot, and enhanced repeat-mode support to the mpv service layer.
+
+---
+
 ## [0.2.2] - 2026-10-16
 
 ### ✨ Controls & Customization

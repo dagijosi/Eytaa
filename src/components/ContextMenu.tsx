@@ -10,6 +10,8 @@ import {
   Settings,
   RefreshCw,
   Info,
+  Link2,
+  ListPlus,
 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -35,6 +37,9 @@ export function ContextMenu({ x, y, onClose }: ContextMenuProps) {
     toggleAlwaysOnTop,
     showOSD,
     checkForUpdatesManually,
+    toggleUrlModal,
+    addAllEpisodesFromFolder,
+    mediaMetadata,
   } = usePlayerStore();
 
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -149,6 +154,17 @@ export function ContextMenu({ x, y, onClose }: ContextMenuProps) {
       <button
         className={itemClass}
         onClick={() => {
+          toggleUrlModal(true);
+          onClose();
+        }}
+      >
+        <Link2 className="w-4 h-4 text-neutral-500 shrink-0" />
+        <span>Open URL / Stream…</span>
+      </button>
+
+      <button
+        className={itemClass}
+        onClick={() => {
           toggleLibraryModal(true);
           onClose();
         }}
@@ -156,6 +172,19 @@ export function ContextMenu({ x, y, onClose }: ContextMenuProps) {
         <Library className="w-4 h-4 text-neutral-500 shrink-0" />
         <span>Media Library</span>
       </button>
+
+      {mediaMetadata?.filePath && (
+        <button
+          className={itemClass}
+          onClick={() => {
+            addAllEpisodesFromFolder();
+            onClose();
+          }}
+        >
+          <ListPlus className="w-4 h-4 text-neutral-500 shrink-0" />
+          <span>Add Episodes from Folder</span>
+        </button>
+      )}
 
       <div className="my-1 border-t border-white/10" />
 

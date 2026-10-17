@@ -3,13 +3,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { playerService } from "../services/player/mpvPlayerService";
 import { storageService, HistoryEntry } from "../services/storage/storageService";
-import { PlayerState } from "../services/player/types";
+import { PlayerState, ChapterInfo } from "../services/player/types";
 import {
   PlaybackProfile,
   DEFAULT_PROFILES,
 } from "../services/player/profileTypes";
 import { globalShortcutsService } from "../services/shortcuts/globalShortcutsService";
 import { localShortcutsService } from "../services/shortcuts/localShortcutsService";
+import { initializeMediaSession } from "../services/system/mediaSessionService";
 import { formatMediaTitle } from "../utils/mediaTitle";
 import { useThemeStore } from "./themeStore";
 import { updaterService } from "../services/updater/updaterService";
@@ -42,11 +43,69 @@ export interface SkipAnimationState {
   timestamp: number;
 }
 
+export type RepeatMode = "off" | "all" | "one";
+
+export interface SavedPlaylistMeta {
+  id: number;
+  name: string;
+  itemCount: number;
+  createdAt: string;
+}
+
 let sleepTimerInterval: number | null = null;
 let savedPreFadeVolume: number | null = null;
 let activeLoadSequence = 0;
 let skipAnimationTimer: number | null = null;
 const promptedDirectories = new Set<string>();
+
+// Natural sort for file paths so "Episode 2" comes before "Episode 10".
+function naturalPathCompare(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
+// Merge a folder's ordered episode list into the playlist, keeping the currently
+// playing episode as the anchor so "previous"/"next" continue in the right order.
+function mergeEpisodesIntoPlaylist(
+  playlist: PlaylistItem[],
+  orderedEpisodes: string[],
+  currentPath: string,
+): { playlist: PlaylistItem[]; currentPlaylistIndex: number } {
+  const makeItem = (filePath: string): PlaylistItem => ({
+    id: `${Date.now()}-${Math.random()}`,
+    filePath,
+    title: formatMediaTitle(filePath.split(/[/\\]/).pop() || filePath, filePath),
+  });
+
+  const existingPaths = new Set(playlist.map((item) => item.filePath));
+  const currentIndex = playlist.findIndex((item) => item.filePath === currentPath);
+  const anchorPos = orderedEpisodes.indexOf(currentPath);
+
+  // Playlist holds nothing but the currently playing file (or is empty), or the
+  // current file isn't part of the folder listing: rebuild from the folder order.
+  if (playlist.length <= 1 || currentIndex === -1 || anchorPos === -1) {
+    const ordered = orderedEpisodes.map(makeItem);
+    const activeIdx = ordered.findIndex((item) => item.filePath === currentPath);
+    return { playlist: ordered, currentPlaylistIndex: activeIdx };
+  }
+
+  const before = orderedEpisodes
+    .slice(0, anchorPos)
+    .filter((p) => !existingPaths.has(p))
+    .map(makeItem);
+  const after = orderedEpisodes
+    .slice(anchorPos + 1)
+    .filter((p) => !existingPaths.has(p))
+    .map(makeItem);
+
+  const updated = [...playlist];
+  updated.splice(currentIndex + 1, 0, ...after);
+  updated.splice(currentIndex, 0, ...before);
+
+  return {
+    playlist: updated,
+    currentPlaylistIndex: updated.findIndex((item) => item.filePath === currentPath),
+  };
+}
 
 interface PlayerStoreState extends PlayerState {
   skipAnimation: SkipAnimationState | null;
@@ -142,6 +201,33 @@ interface PlayerStoreState extends PlayerState {
   playNext: () => Promise<void>;
   playPrevious: () => Promise<void>;
 
+  // Repeat / Loop Mode
+  repeatMode: RepeatMode;
+  setRepeatMode: (mode: RepeatMode) => Promise<void>;
+  cycleRepeatMode: () => Promise<void>;
+
+  // Chapters
+  chapters: ChapterInfo[];
+  currentChapterIndex: number;
+  seekToChapter: (index: number) => Promise<void>;
+
+  // Tools
+  takeScreenshot: () => Promise<void>;
+  showStats: boolean;
+  toggleStats: (enabled?: boolean) => void;
+
+  // Network / URL streaming
+  openUrl: (url: string) => Promise<void>;
+  isUrlModalOpen: boolean;
+  toggleUrlModal: (open?: boolean) => void;
+
+  // Saved (named) playlists
+  savedPlaylists: SavedPlaylistMeta[];
+  refreshSavedPlaylists: () => Promise<void>;
+  saveCurrentPlaylist: (name: string, playlistId?: number) => Promise<void>;
+  loadSavedPlaylist: (playlistId: number) => Promise<void>;
+  deleteSavedPlaylist: (playlistId: number) => Promise<void>;
+
   // Update Notification
   availableUpdate: { version: string; releaseNotes?: string } | null;
   showUpdateToast: boolean;
@@ -163,6 +249,7 @@ interface PlayerStoreState extends PlayerState {
   setVideoFitMode: (mode: "fit" | "fill" | "stretch") => Promise<void>;
   cycleVideoFitMode: () => Promise<void>;
   addSiblingsToPlaylist: () => void;
+  addAllEpisodesFromFolder: () => Promise<void>;
   dismissSiblingPrompt: () => void;
   showOSD: (text: string) => void;
   setControlsVisible: (visible: boolean) => void;
@@ -213,8 +300,19 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
     autoPlayNext: true,
     toggleAutoPlayNext: async (enabled?: boolean) => {
       const next = enabled !== undefined ? enabled : !get().autoPlayNext;
-      set({ autoPlayNext: next });
+      const prevRepeat = get().repeatMode;
+      // Keep Auto-Play Next and Repeat coherent:
+      //  - Repeat "all" loops the playlist, which requires advancing => Auto-Play Next ON.
+      //  - Repeat "one" loops the current file, which forbids advancing => Auto-Play Next OFF.
+      let repeat = prevRepeat;
+      if (next && repeat === "one") repeat = "off";
+      if (!next && repeat === "all") repeat = "off";
+      set({ autoPlayNext: next, repeatMode: repeat });
       await storageService.setPreference("autoPlayNext", next);
+      if (repeat !== prevRepeat) {
+        await storageService.setPreference("repeatMode", repeat);
+        await playerService.setRepeatMode(repeat);
+      }
       get().showOSD(next ? "Auto-Play Next: On" : "Auto-Play Next: Off");
     },
     skipAnimation: null,
@@ -239,6 +337,12 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
     videoFitMode: "fit",
     detectedSiblings: null,
     showSiblingPrompt: false,
+        chapters: [],
+        currentChapterIndex: -1,
+        showStats: false,
+        isUrlModalOpen: false,
+        savedPlaylists: [],
+        repeatMode: "off",
 
     // Window & TopNav Quick Controls
     isAlwaysOnTop: false,
@@ -310,6 +414,8 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
         savedShowSkip,
         savedScrollVolume,
         savedAutoCheck,
+        savedRepeatMode,
+        savedSession,
       ] = await Promise.all([
         storageService.getPreference<number>("volume"),
         storageService.getRecentFiles(15),
@@ -323,7 +429,44 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
         storageService.getPreference<boolean>("showSkipIndicators"),
         storageService.getPreference<boolean>("scrollVolumeEnabled"),
         storageService.getPreference<boolean>("autoCheckUpdates"),
+        storageService.getPreference<RepeatMode>("repeatMode"),
+        storageService.getPreference<{
+          items: Array<{ filePath: string; title: string }>;
+          index: number;
+        }>("sessionPlaylist"),
       ]);
+
+      // Restore repeat / loop mode
+      if (savedRepeatMode === "off" || savedRepeatMode === "all" || savedRepeatMode === "one") {
+        set({ repeatMode: savedRepeatMode });
+        playerService.setRepeatMode(savedRepeatMode).catch(() => {});
+      }
+
+      // Restore the previous session's playback queue (without auto-playing)
+      if (savedSession && Array.isArray(savedSession.items) && savedSession.items.length > 0) {
+        const restored: PlaylistItem[] = savedSession.items
+          .filter((item) => item && typeof item.filePath === "string")
+          .map((item) => ({
+            id: `${Date.now()}-${Math.random()}`,
+            filePath: item.filePath,
+            title: item.title || formatMediaTitle(item.filePath.split(/[/\\]/).pop() || item.filePath, item.filePath),
+          }));
+        if (restored.length > 0) {
+          const idx =
+            typeof savedSession.index === "number" &&
+            savedSession.index >= 0 &&
+            savedSession.index < restored.length
+              ? savedSession.index
+              : -1;
+          set({ playlist: restored, currentPlaylistIndex: idx });
+        }
+      }
+
+      // Publish Now Playing info to the Windows shell (SMTC / lock screen)
+      initializeMediaSession({
+        getState: get,
+        subscribe: usePlayerStore.subscribe,
+      });
 
       // Apply saved volume
       if (typeof savedVolume === "number") {
@@ -353,11 +496,18 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
             }
           }
 
-          const { autoPlayNext, playlist, currentPlaylistIndex } = get();
+          const { autoPlayNext, playlist, currentPlaylistIndex, repeatMode } =
+            get();
+          if (repeatMode === "one" && currentPlaylistIndex >= 0) {
+            await get().playPlaylistItem(currentPlaylistIndex);
+            return;
+          }
           if (autoPlayNext && playlist.length > 1) {
             const nextIdx = currentPlaylistIndex >= 0 ? currentPlaylistIndex + 1 : 1;
             if (nextIdx < playlist.length) {
               await get().playPlaylistItem(nextIdx);
+            } else if (repeatMode === "all") {
+              await get().playPlaylistItem(0);
             } else {
               get().showOSD("End of playlist reached");
             }
@@ -772,14 +922,24 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
         videoFitMode: "fit",
         playbackRate: 1.0,
         isGlobalShortcutsEnabled: true,
+        pauseOnSystemSleep: true,
+        repeatMode: "off",
+        muted: false,
       });
 
       await storageService.setPreference("autoPlayNext", true);
-      await storageService.setPreference("isNightListening", false);
-      await storageService.setPreference("isAlwaysOnTop", false);
+      // Note: these keys must match the names read back in initialize()
+      await storageService.setPreference("nightListening", false);
+      await storageService.setPreference("alwaysOnTop", false);
+      await storageService.setPreference("pauseOnSystemSleep", true);
       await storageService.setPreference("showSkipIndicators", true);
       await storageService.setPreference("scrollVolumeEnabled", true);
       await storageService.setPreference("globalShortcutsEnabled", true);
+      await storageService.setPreference("autoCheckUpdates", true);
+      await storageService.setPreference("repeatMode", "off");
+      await storageService.setPreference("volume", 100);
+      await storageService.setPreference("muted", false);
+      set({ autoCheckUpdates: true });
       await localShortcutsService.resetAll();
 
       // 4. Cancel active sleep timer
@@ -787,6 +947,9 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
 
       // 5. Reset audio/video parameters in MPV engine
       try {
+        await playerService.setVolume(100);
+        await playerService.setMuted(false);
+        await playerService.setRepeatMode("off");
         await playerService.setMpvProperty("contrast", 0);
         await playerService.setMpvProperty("brightness", 0);
         await playerService.setMpvProperty("saturation", 0);
@@ -799,6 +962,8 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
         await playerService.setMpvProperty("sub-font-size", 55);
         await playerService.setMpvProperty("af", "");
       } catch {}
+
+      await globalShortcutsService.updateConfig({ enabled: true });
 
       get().showOSD("All settings restored to factory defaults");
     },
@@ -827,7 +992,15 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
       }
       if (seq !== activeLoadSequence) return;
 
-      await playerService.openFile(path);
+      try {
+        await playerService.openFile(path);
+      } catch (err) {
+        if (seq === activeLoadSequence) {
+          console.warn("Failed to open media file:", err);
+          get().showOSD("Failed to open file (damaged or unsupported)");
+        }
+        return;
+      }
       if (seq !== activeLoadSequence) return;
 
       const resumePos = await storageService.getResumePosition(path);
@@ -882,9 +1055,10 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
           });
           if (seq !== activeLoadSequence) return;
 
-          const unadded = (siblings || []).filter((s) => !existingPaths.has(s));
-          if (unadded.length > 0) {
-            set({ detectedSiblings: unadded, showSiblingPrompt: true });
+          const ordered = (siblings || []).sort(naturalPathCompare);
+          const unadded = ordered.filter((s) => !existingPaths.has(s));
+          if (ordered.length > 1 && unadded.length > 0) {
+            set({ detectedSiblings: ordered, showSiblingPrompt: true });
           } else {
             set({ detectedSiblings: null, showSiblingPrompt: false });
           }
@@ -1066,16 +1240,70 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
     },
 
     addSiblingsToPlaylist: () => {
-      const siblings = get().detectedSiblings;
-      if (siblings && siblings.length > 0) {
-        get().addToPlaylist(siblings);
-      }
       const currentPath = get().mediaMetadata?.filePath;
+      const siblings = get().detectedSiblings;
+
+      if (currentPath && siblings && siblings.length > 1) {
+        const { playlist, currentPlaylistIndex } = mergeEpisodesIntoPlaylist(
+          get().playlist,
+          siblings,
+          currentPath,
+        );
+        const added = playlist.length - get().playlist.length;
+        set({ playlist, currentPlaylistIndex });
+        if (added > 0) {
+          get().showOSD(`Added ${added} episode${added === 1 ? "" : "s"} to playlist`);
+        }
+      }
+
       if (currentPath) {
         const dir = currentPath.replace(/[/\\][^/\\]+$/, "");
         promptedDirectories.add(dir);
       }
       set({ showSiblingPrompt: false, detectedSiblings: null });
+    },
+
+    // Manually add every episode from the current file's folder — usable even after
+    // the auto-prompt has been dismissed or timed out.
+    addAllEpisodesFromFolder: async () => {
+      const currentPath = get().mediaMetadata?.filePath;
+      if (!currentPath) {
+        get().showOSD("No media loaded");
+        return;
+      }
+
+      try {
+        const siblings = await invoke<string[]>("find_sibling_episodes", {
+          filePath: currentPath,
+        });
+        const ordered = (siblings || []).sort(naturalPathCompare);
+
+        if (ordered.length <= 1) {
+          get().showOSD("No other episodes found in this folder");
+          return;
+        }
+
+        const existingPaths = new Set(get().playlist.map((item) => item.filePath));
+        const missing = ordered.filter((p) => !existingPaths.has(p));
+        if (missing.length === 0) {
+          get().showOSD("All episodes from this folder are already in the playlist");
+          return;
+        }
+
+        const { playlist, currentPlaylistIndex } = mergeEpisodesIntoPlaylist(
+          get().playlist,
+          ordered,
+          currentPath,
+        );
+        set({ playlist, currentPlaylistIndex });
+        promptedDirectories.add(currentPath.replace(/[/\\][^/\\]+$/, ""));
+        get().showOSD(
+          `Added ${missing.length} episode${missing.length === 1 ? "" : "s"} to playlist`,
+        );
+      } catch (err) {
+        console.warn("Failed to add episodes from folder:", err);
+        get().showOSD("Could not scan folder for episodes");
+      }
     },
 
     dismissSiblingPrompt: () => {
@@ -1139,7 +1367,12 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
       if (playlist.length <= 1) return;
       const currentItem =
         currentPlaylistIndex >= 0 ? playlist[currentPlaylistIndex] : null;
-      const shuffled = [...playlist].sort(() => Math.random() - 0.5);
+      // Fisher–Yates: unbiased in-place shuffle
+      const shuffled = [...playlist];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
       const newIdx = currentItem
         ? shuffled.findIndex((item) => item.id === currentItem.id)
         : 0;
@@ -1191,7 +1424,7 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
       }
 
       const newIdx = currentItem
-        ? sorted.findIndex((item) => item.filePath === currentItem.filePath)
+        ? sorted.findIndex((item) => item.id === currentItem.id)
         : -1;
 
       set({ playlist: sorted, currentPlaylistIndex: newIdx });
@@ -1223,6 +1456,178 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
       const prevIndex =
         (currentPlaylistIndex - 1 + playlist.length) % playlist.length;
       await get().playPlaylistItem(prevIndex);
+    },
+
+    setRepeatMode: async (mode: RepeatMode) => {
+      // Connected behavior:
+      //  - "all" loops the playlist, which requires advancing => Auto-Play Next ON.
+      //  - "one" loops the current file, which forbids advancing => Auto-Play Next OFF.
+      //  - "off" leaves Auto-Play Next exactly where the user set it.
+      const autoPlayNext =
+        mode === "all" ? true : mode === "one" ? false : get().autoPlayNext;
+      set({ repeatMode: mode, autoPlayNext });
+      await storageService.setPreference("repeatMode", mode);
+      await storageService.setPreference("autoPlayNext", autoPlayNext);
+      await playerService.setRepeatMode(mode);
+      get().showOSD(
+        mode === "off"
+          ? "Repeat: Off"
+          : mode === "all"
+          ? "Repeat: Entire Playlist"
+          : "Repeat: Current File",
+      );
+    },
+
+    cycleRepeatMode: async () => {
+      const order: RepeatMode[] = ["off", "all", "one"];
+      const next = order[(order.indexOf(get().repeatMode) + 1) % order.length];
+      await get().setRepeatMode(next);
+    },
+
+    seekToChapter: async (index: number) => {
+      const chapters = get().chapters;
+      if (index < 0 || index >= chapters.length) return;
+      const chapter = chapters[index];
+      if (chapter) {
+        await playerService.seek(chapter.time);
+        set({ currentChapterIndex: index });
+        get().showOSD(`Chapter: ${chapter.title || `Chapter ${index + 1}`}`);
+      }
+    },
+
+    takeScreenshot: async () => {
+      try {
+        const path = await playerService.takeScreenshot();
+        if (path) {
+          get().showOSD(`Screenshot: ${path.split(/[/\\]/).pop()}`);
+        } else {
+          get().showOSD("Screenshots unavailable for streams");
+        }
+      } catch (err) {
+        console.warn("Screenshot failed:", err);
+        get().showOSD("Screenshot failed");
+      }
+    },
+
+    toggleStats: (enabled?: boolean) => {
+      const next = enabled !== undefined ? enabled : !get().showStats;
+      set({ showStats: next });
+      get().showOSD(next ? "Playback Stats: On" : "Playback Stats: Off");
+    },
+
+    toggleUrlModal: (open?: boolean) => {
+      set((s) => ({
+        isUrlModalOpen: open !== undefined ? open : !s.isUrlModalOpen,
+      }));
+    },
+
+    openUrl: async (url: string) => {
+      const trimmed = url.trim();
+      if (!trimmed) return;
+      const target = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)
+        ? trimmed
+        : `https://${trimmed}`;
+      try {
+        await playerService.openStream(target);
+        const currentPlaylist = get().playlist;
+        const existingIdx = currentPlaylist.findIndex(
+          (item) => item.filePath === target,
+        );
+        if (existingIdx === -1) {
+          const newItem: PlaylistItem = {
+            id: `${Date.now()}-${Math.random()}`,
+            filePath: target,
+            title: target,
+          };
+          set({
+            playlist: [...currentPlaylist, newItem],
+            currentPlaylistIndex: currentPlaylist.length,
+          });
+        } else {
+          set({ currentPlaylistIndex: existingIdx });
+        }
+        get().showOSD(`Streaming: ${target}`);
+      } catch (err) {
+        console.warn("Failed to open stream:", err);
+        get().showOSD("Failed to open network stream");
+      }
+    },
+
+    refreshSavedPlaylists: async () => {
+      try {
+        const rows = await invoke<
+          Array<{ id: number; name: string; item_count: number; created_at: string }>
+        >("db_get_playlists");
+        set({
+          savedPlaylists: rows.map((r) => ({
+            id: r.id,
+            name: r.name,
+            itemCount: r.item_count,
+            createdAt: r.created_at,
+          })),
+        });
+      } catch (err) {
+        console.warn("Failed to load saved playlists:", err);
+      }
+    },
+
+    saveCurrentPlaylist: async (name: string, playlistId?: number) => {
+      const { playlist } = get();
+      if (playlist.length === 0) {
+        get().showOSD("Playlist is empty");
+        return;
+      }
+      try {
+        await invoke<number>("db_save_playlist", {
+          name,
+          playlistId: playlistId ?? null,
+          items: playlist.map((item) => ({
+            file_path: item.filePath,
+            title: item.title,
+          })),
+        });
+        await get().refreshSavedPlaylists();
+        get().showOSD(`Playlist saved: ${name || "Untitled"}`);
+      } catch (err) {
+        console.warn("Failed to save playlist:", err);
+        get().showOSD("Failed to save playlist");
+      }
+    },
+
+    loadSavedPlaylist: async (playlistId: number) => {
+      try {
+        const items = await invoke<
+          Array<{ id: number; file_path: string; title: string | null; item_order: number }>
+        >("db_get_playlist_items", { playlistId });
+        if (items.length === 0) {
+          get().showOSD("Saved playlist is empty");
+          return;
+        }
+        const newItems: PlaylistItem[] = items.map((row) => ({
+          id: `${Date.now()}-${Math.random()}`,
+          filePath: row.file_path,
+          title: row.title || formatMediaTitle(row.file_path.split(/[/\\]/).pop() || row.file_path, row.file_path),
+        }));
+        set({ playlist: newItems, currentPlaylistIndex: 0 });
+        await get().playPlaylistItem(0);
+        get().showOSD(`Loaded playlist (${newItems.length} items)`);
+      } catch (err) {
+        console.warn("Failed to load saved playlist:", err);
+        get().showOSD("Failed to load playlist");
+      }
+    },
+
+    deleteSavedPlaylist: async (playlistId: number) => {
+      try {
+        await invoke("db_delete_playlist", { playlistId });
+        set((s) => ({
+          savedPlaylists: s.savedPlaylists.filter((p) => p.id !== playlistId),
+        }));
+        get().showOSD("Saved playlist deleted");
+      } catch (err) {
+        console.warn("Failed to delete saved playlist:", err);
+        get().showOSD("Failed to delete playlist");
+      }
     },
 
     togglePlaylistDrawer: () => {
@@ -1436,4 +1841,28 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => {
       await playerService.dispose();
     },
   };
+});
+
+// Debounced persistence of the in-session queue so a restart preserves it.
+let sessionSaveTimer: number | null = null;
+usePlayerStore.subscribe((state, prev) => {
+  if (
+    state.playlist === prev.playlist &&
+    state.currentPlaylistIndex === prev.currentPlaylistIndex
+  ) {
+    return;
+  }
+  if (sessionSaveTimer) window.clearTimeout(sessionSaveTimer);
+  sessionSaveTimer = window.setTimeout(() => {
+    const current = usePlayerStore.getState();
+    storageService
+      .setPreference("sessionPlaylist", {
+        items: current.playlist.map((item) => ({
+          filePath: item.filePath,
+          title: item.title,
+        })),
+        index: current.currentPlaylistIndex,
+      })
+      .catch(() => {});
+  }, 500);
 });

@@ -859,7 +859,7 @@ export function SettingsModal() {
                     Auto-Play Next Episode / Track
                   </span>
                   <p className="text-xs text-neutral-500">
-                    Automatically advance to the next item in playlist when current media ends
+                    Advance to the next item in the playlist when the current media ends. Linked to Repeat: choosing "All" turns this on, choosing "One" turns it off.
                   </p>
                 </div>
                 <input

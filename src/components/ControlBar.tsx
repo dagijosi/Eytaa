@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useShallow } from "zustand/react/shallow";
 import {
   Play,
   Pause,
@@ -26,6 +27,9 @@ import {
   Headphones,
   Mic,
   Repeat,
+  Repeat1,
+  ListEnd,
+  Camera,
 } from "lucide-react";
 import { usePlayerStore } from "../stores/playerStore";
 import { useThemeStore } from "../stores/themeStore";
@@ -55,6 +59,9 @@ export function ControlBar() {
     muted,
     playbackRate,
     subtitleTracks,
+    audioTracks,
+    currentAudioTrackId,
+    selectAudioTrack,
     currentSubtitleTrackId,
     playlist,
     togglePlayback,
@@ -80,9 +87,62 @@ export function ControlBar() {
     profiles,
     activeProfileId,
     applyProfile,
+    repeatMode,
+    setRepeatMode,
     autoPlayNext,
     toggleAutoPlayNext,
-  } = usePlayerStore();
+    takeScreenshot,
+    showStats,
+    toggleStats,
+  } = usePlayerStore(
+    useShallow((s) => ({
+      status: s.status,
+      currentTime: s.currentTime,
+      duration: s.duration,
+      volume: s.volume,
+      muted: s.muted,
+      playbackRate: s.playbackRate,
+      subtitleTracks: s.subtitleTracks,
+      audioTracks: s.audioTracks,
+      currentAudioTrackId: s.currentAudioTrackId,
+      selectAudioTrack: s.selectAudioTrack,
+      currentSubtitleTrackId: s.currentSubtitleTrackId,
+      playlist: s.playlist,
+      togglePlayback: s.togglePlayback,
+      seek: s.seek,
+      seekRelative: s.seekRelative,
+      setVolume: s.setVolume,
+      toggleMute: s.toggleMute,
+      setPlaybackRate: s.setPlaybackRate,
+      selectSubtitleTrack: s.selectSubtitleTrack,
+      toggleSubtitleTrack: s.toggleSubtitleTrack,
+      loadSubtitle: s.loadSubtitle,
+      playNext: s.playNext,
+      playPrevious: s.playPrevious,
+      togglePlaylistDrawer: s.togglePlaylistDrawer,
+      toggleSettingsModal: s.toggleSettingsModal,
+      videoFitMode: s.videoFitMode,
+      cycleVideoFitMode: s.cycleVideoFitMode,
+      isPiP: s.isPiP,
+      togglePiP: s.togglePiP,
+      sleepTimer: s.sleepTimer,
+      toggleSleepTimer: s.toggleSleepTimer,
+      isNightListening: s.isNightListening,
+      profiles: s.profiles,
+      activeProfileId: s.activeProfileId,
+      applyProfile: s.applyProfile,
+      repeatMode: s.repeatMode,
+      setRepeatMode: s.setRepeatMode,
+      autoPlayNext: s.autoPlayNext,
+      toggleAutoPlayNext: s.toggleAutoPlayNext,
+      chapters: s.chapters,
+      currentChapterIndex: s.currentChapterIndex,
+      seekToChapter: s.seekToChapter,
+      takeScreenshot: s.takeScreenshot,
+      showStats: s.showStats,
+      toggleStats: s.toggleStats,
+    })),
+  );
 
   const {
     accentColor,
@@ -99,6 +159,9 @@ export function ControlBar() {
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showSubMenu, setShowSubMenu] = useState(false);
+  const [showAudioMenu, setShowAudioMenu] = useState(false);
+  const [showChapterMenu, setShowChapterMenu] = useState(false);
+  const [showRepeatMenu, setShowRepeatMenu] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -106,7 +169,12 @@ export function ControlBar() {
   const speedMenuRef = useRef<HTMLDivElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const subMenuRef = useRef<HTMLDivElement>(null);
+  const audioMenuRef = useRef<HTMLDivElement>(null);
+  const chapterMenuRef = useRef<HTMLDivElement>(null);
+  const repeatMenuRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+  const pendingSeekRef = useRef<number | null>(null);
+  const seekRafRef = useRef<number | null>(null);
 
   const isPlaying = status === "playing";
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -136,20 +204,56 @@ export function ControlBar() {
       if (subMenuRef.current && !subMenuRef.current.contains(target)) {
         setShowSubMenu(false);
       }
+      if (audioMenuRef.current && !audioMenuRef.current.contains(target)) {
+        setShowAudioMenu(false);
+      }
+      if (chapterMenuRef.current && !chapterMenuRef.current.contains(target)) {
+        setShowChapterMenu(false);
+      }
+      if (repeatMenuRef.current && !repeatMenuRef.current.contains(target)) {
+        setShowRepeatMenu(false);
+      }
       if (moreMenuRef.current && !moreMenuRef.current.contains(target)) {
         setShowMoreMenu(false);
       }
     };
-    if (showSpeedMenu || showProfileMenu || showSubMenu || showMoreMenu) {
+    if (showSpeedMenu || showProfileMenu || showSubMenu || showAudioMenu || showChapterMenu || showRepeatMenu || showMoreMenu) {
       window.addEventListener("mousedown", handleOutsideClick);
     }
     return () => window.removeEventListener("mousedown", handleOutsideClick);
-  }, [showSpeedMenu, showProfileMenu, showSubMenu, showMoreMenu]);
+  }, [showSpeedMenu, showProfileMenu, showSubMenu, showAudioMenu, showChapterMenu, showRepeatMenu, showMoreMenu]);
 
   const handleToggleFullscreen = async () => {
     const newFs = await toggleWindowFullscreen();
     setIsFullscreen(newFs);
   };
+
+  // Coalesce rapid scrub seeks into a single IPC call per animation frame so
+  // dragging the scrubber doesn't flood the mpv command queue.
+  const flushPendingSeek = () => {
+    if (pendingSeekRef.current !== null) {
+      seek(pendingSeekRef.current);
+      pendingSeekRef.current = null;
+    }
+  };
+
+  const scheduleSeek = (seconds: number) => {
+    pendingSeekRef.current = seconds;
+    if (seekRafRef.current === null) {
+      seekRafRef.current = window.requestAnimationFrame(() => {
+        seekRafRef.current = null;
+        flushPendingSeek();
+      });
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (seekRafRef.current !== null) {
+        window.cancelAnimationFrame(seekRafRef.current);
+      }
+    };
+  }, []);
 
   const handleScrubberMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!scrubberRef.current || duration <= 0) return;
@@ -160,7 +264,7 @@ export function ControlBar() {
     setHoverTime(ratio * duration);
 
     if (isScrubbing) {
-      seek(ratio * duration);
+      scheduleSeek(ratio * duration);
     }
   };
 
@@ -175,12 +279,14 @@ export function ControlBar() {
 
   useEffect(() => {
     const handleMouseUp = () => {
-      if (isScrubbing) setIsScrubbing(false);
+      if (isScrubbing) {
+        setIsScrubbing(false);
+        flushPendingSeek();
+      }
     };
     window.addEventListener("mouseup", handleMouseUp);
     return () => window.removeEventListener("mouseup", handleMouseUp);
   }, [isScrubbing]);
-
 
   const speedOptions = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
@@ -529,6 +635,53 @@ export function ControlBar() {
               )}
             </div>
 
+            {/* Audio Track Picker */}
+            {audioTracks.length > 1 && (
+              <div className="relative" ref={audioMenuRef}>
+                <button
+                  onClick={() => setShowAudioMenu((prev) => !prev)}
+                  style={activeBtnStyle(Boolean(currentAudioTrackId))}
+                  className={`hidden xl:flex p-2 rounded-lg border transition ${
+                    !currentAudioTrackId
+                      ? "bg-white/5 text-neutral-300 border-white/10 hover:bg-white/10"
+                      : ""
+                  }`}
+                  title="Audio Track (A)"
+                >
+                  <Headphones className="w-4 h-4" />
+                </button>
+
+                {showAudioMenu && (
+                  <div className="absolute bottom-full mb-2 right-0 bg-neutral-900/98 backdrop-blur-xl border border-white/15 rounded-xl p-1.5 shadow-2xl flex flex-col gap-1 min-w-[160px] z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+                    <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 border-b border-white/5 mb-1">
+                      Audio Tracks
+                    </div>
+                    {audioTracks.map((track) => {
+                      const selected = currentAudioTrackId === track.id;
+                      return (
+                        <button
+                          key={track.id}
+                          onClick={() => {
+                            selectAudioTrack(track.id);
+                            setShowAudioMenu(false);
+                          }}
+                          style={selected ? { backgroundColor: accentGlow, color: accentColor } : undefined}
+                          className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition ${
+                            selected ? "font-bold" : "text-neutral-300 hover:bg-white/10"
+                          }`}
+                        >
+                          <span className="truncate">
+                            {track.title || track.lang || `Track ${track.id}`}
+                          </span>
+                          {selected && <Check className="w-3.5 h-3.5 shrink-0" style={{ color: accentColor }} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Subtitles Quick Toggle & Track Picker */}
             <div className="relative" ref={subMenuRef}>
               <button
@@ -636,15 +789,87 @@ export function ControlBar() {
               onClick={() => toggleAutoPlayNext()}
               style={activeBtnStyle(autoPlayNext)}
               className={`hidden lg:flex items-center gap-1 px-2 py-1.5 rounded-lg border transition text-xs font-semibold ${
-                !autoPlayNext
-                  ? "bg-white/5 text-neutral-400 border-white/10 hover:bg-white/10"
-                  : ""
+                autoPlayNext
+                  ? ""
+                  : "bg-white/5 text-neutral-400 border-white/10 hover:bg-white/10"
               }`}
-              title={autoPlayNext ? "Auto-Play Next: ON (Click to disable)" : "Auto-Play Next: OFF (Click to enable)"}
+              title={
+                autoPlayNext
+                  ? "Auto-Play Next: On — advances to the next item when this one ends (click to stop at the end)"
+                  : "Auto-Play Next: Off — playback stops at the end of each item (click to advance to the next)"
+              }
             >
-              <Repeat className="w-3.5 h-3.5" />
-              <span className="text-[10px] hidden 2xl:inline">Auto Next</span>
+              <ListEnd className="w-3.5 h-3.5" />
+              <span className="text-[10px] hidden 2xl:inline uppercase">
+                {autoPlayNext ? "Auto" : "Off"}
+              </span>
             </button>
+
+            {/* Repeat Mode Dropdown (Visible on lg+ screens) — direct selection, no cycling */}
+            <div className="relative hidden lg:block" ref={repeatMenuRef}>
+              <button
+                onClick={() => setShowRepeatMenu(!showRepeatMenu)}
+                style={activeBtnStyle(repeatMode !== "off")}
+                className={`flex items-center gap-1 px-2 py-1.5 rounded-lg border transition text-xs font-semibold ${
+                  repeatMode === "off"
+                    ? "bg-white/5 text-neutral-400 border-white/10 hover:bg-white/10"
+                    : ""
+                }`}
+                title={
+                  repeatMode === "off"
+                    ? "Repeat: Off — click to choose"
+                    : repeatMode === "all"
+                    ? "Repeat: Entire Playlist — click to change"
+                    : "Repeat: Current File — click to change"
+                }
+              >
+                {repeatMode === "one" ? (
+                  <Repeat1 className="w-3.5 h-3.5" />
+                ) : (
+                  <Repeat className="w-3.5 h-3.5" />
+                )}
+                <span className="text-[10px] hidden 2xl:inline uppercase">
+                  {repeatMode === "off" ? "Off" : repeatMode === "all" ? "All" : "One"}
+                </span>
+              </button>
+
+              {showRepeatMenu && (
+                <div className="absolute bottom-full mb-2 right-0 bg-neutral-900/98 backdrop-blur-2xl border border-white/15 rounded-2xl p-2 shadow-2xl flex flex-col gap-1 w-56 z-50 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 border-b border-white/5 mb-1">
+                    Repeat Mode
+                  </div>
+                  {([
+                    { mode: "off", label: "Off", desc: "Stop at the end", icon: <Repeat className="w-3.5 h-3.5" /> },
+                    { mode: "all", label: "Repeat Playlist", desc: "Loop the whole queue", icon: <Repeat className="w-3.5 h-3.5" /> },
+                    { mode: "one", label: "Repeat One", desc: "Loop the current file", icon: <Repeat1 className="w-3.5 h-3.5" /> },
+                  ] as const).map((opt) => {
+                    const isSelected = repeatMode === opt.mode;
+                    return (
+                      <button
+                        key={opt.mode}
+                        onClick={() => {
+                          setRepeatMode(opt.mode);
+                          setShowRepeatMenu(false);
+                        }}
+                        style={isSelected ? { backgroundColor: accentGlow, color: accentColor, borderColor: accentColor } : undefined}
+                        className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs transition text-left ${
+                          isSelected ? "font-bold border" : "text-neutral-200 hover:bg-white/10"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          {opt.icon}
+                          <div className="flex flex-col">
+                            <span>{opt.label}</span>
+                            <span className="text-[10px] font-normal text-neutral-500">{opt.desc}</span>
+                          </div>
+                        </div>
+                        {isSelected && <Check style={{ color: accentColor }} className="w-3.5 h-3.5 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
             {/* Playback Profile Menu (Visible on xl+ screens; 1-click selection menu, NO cycle on click) */}
             <div className="relative hidden xl:block" ref={profileMenuRef}>
@@ -811,20 +1036,51 @@ export function ControlBar() {
                     className="flex items-center justify-between px-2.5 py-2 rounded-xl text-neutral-200 hover:bg-white/10 text-left transition"
                   >
                     <div className="flex items-center gap-2">
-                      <Repeat style={{ color: accentColor }} className="w-3.5 h-3.5" />
+                      <ListEnd style={{ color: accentColor }} className="w-3.5 h-3.5" />
                       <span>Auto-Play Next</span>
                     </div>
                     <span
                       style={autoPlayNext ? { backgroundColor: accentGlow, color: accentColor, borderColor: `${accentColor}66` } : undefined}
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                         autoPlayNext
-                          ? "border"
-                          : "bg-white/5 text-neutral-500"
+                          ? "border uppercase"
+                          : "bg-white/5 text-neutral-500 uppercase"
                       }`}
                     >
-                      {autoPlayNext ? "ON" : "OFF"}
+                      {autoPlayNext ? "On" : "Off"}
                     </span>
                   </button>
+
+                  {/* Repeat Mode selector (direct selection, no cycling) */}
+                  <div className="px-2.5 py-1.5 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-neutral-300">
+                      {repeatMode === "one" ? (
+                        <Repeat1 style={{ color: accentColor }} className="w-3.5 h-3.5" />
+                      ) : (
+                        <Repeat style={{ color: accentColor }} className="w-3.5 h-3.5" />
+                      )}
+                      <span>Repeat</span>
+                    </div>
+                    <div className="flex items-center gap-1 text-[11px]">
+                      {(["off", "all", "one"] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          onClick={() => setRepeatMode(mode)}
+                          style={{
+                            backgroundColor: repeatMode === mode ? accentColor : undefined,
+                            color: repeatMode === mode ? accentText : undefined,
+                          }}
+                          className={`px-1.5 py-0.5 rounded transition uppercase ${
+                            repeatMode === mode
+                              ? "font-bold shadow"
+                              : "bg-white/5 text-neutral-300 hover:bg-white/15"
+                          }`}
+                        >
+                          {mode === "off" ? "Off" : mode === "all" ? "All" : "One"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
                   {/* Video Aspect Mode */}
                   <button
@@ -863,6 +1119,40 @@ export function ControlBar() {
                       ))}
                     </div>
                   </div>
+
+                  {/* Screenshot */}
+                  <button
+                    onClick={() => {
+                      takeScreenshot();
+                      setShowMoreMenu(false);
+                    }}
+                    className="flex items-center gap-2 px-2.5 py-2 rounded-xl text-neutral-200 hover:bg-white/10 text-left transition"
+                  >
+                    <Camera className="w-3.5 h-3.5 text-neutral-400" />
+                    <span>Take Screenshot</span>
+                  </button>
+
+                  {/* Playback Stats */}
+                  <button
+                    onClick={() => {
+                      toggleStats(!showStats);
+                      setShowMoreMenu(false);
+                    }}
+                    className="flex items-center justify-between px-2.5 py-2 rounded-xl text-neutral-200 hover:bg-white/10 text-left transition"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Gauge className="w-3.5 h-3.5 text-neutral-400" />
+                      <span>Playback Stats</span>
+                    </div>
+                    <span
+                      style={showStats ? { backgroundColor: accentGlow, color: accentColor, borderColor: `${accentColor}66` } : undefined}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        showStats ? "border" : "bg-white/5 text-neutral-500"
+                      }`}
+                    >
+                      {showStats ? "ON" : "OFF"}
+                    </span>
+                  </button>
 
                   {/* Night Listening / Sleep Timer */}
                   <button

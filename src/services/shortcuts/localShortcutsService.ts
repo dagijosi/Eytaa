@@ -17,6 +17,11 @@ export type LocalAction =
   | "picture-in-picture"
   | "toggle-library"
   | "cycle-profile"
+  | "cycle-audio"
+  | "cycle-repeat"
+  | "open-url"
+  | "screenshot"
+  | "toggle-stats"
   | "toggle-night-listening";
 
 export interface LocalActionMeta {
@@ -40,7 +45,12 @@ export const LOCAL_ACTION_META: Record<LocalAction, LocalActionMeta> = {
   "toggle-playlist": { label: "Toggle Playlist (Shift+P = PiP)", group: "View", defaultKeys: ["p"] },
   "toggle-library": { label: "Toggle Media Library", group: "View", defaultKeys: ["b"] },
   "cycle-subtitle": { label: "Cycle Subtitle Track", group: "Tools", defaultKeys: ["s"] },
+  "cycle-audio": { label: "Cycle Audio Track", group: "Tools", defaultKeys: ["a"] },
+  "cycle-repeat": { label: "Cycle Repeat Mode", group: "Tools", defaultKeys: ["r"] },
   "open-file": { label: "Open File", group: "Tools", defaultKeys: ["o"] },
+  "open-url": { label: "Open Network Stream (URL)", group: "Tools", defaultKeys: ["u"] },
+  "screenshot": { label: "Save Screenshot", group: "Tools", defaultKeys: ["e"] },
+  "toggle-stats": { label: "Toggle Playback Stats", group: "Tools", defaultKeys: ["f9"] },
   "cycle-profile": { label: "Cycle Playback Profile", group: "Tools", defaultKeys: ["f7"] },
   "toggle-night-listening": { label: "Toggle Night Listening", group: "Tools", defaultKeys: ["f8"] },
 };
@@ -83,6 +93,8 @@ export function displayKey(key: string): string {
       return "F7";
     case "f8":
       return "F8";
+    case "f9":
+      return "F9";
     default:
       return key.length === 1 ? key.toUpperCase() : key.charAt(0).toUpperCase() + key.slice(1);
   }
@@ -141,6 +153,11 @@ class LocalShortcutsService {
   }
 
   public resolveAction(e: KeyboardEvent): LocalAction | null {
+    // Bindings are stored as bare keys. Never fire them through modifier
+    // combinations, otherwise Ctrl+F (browser find) would toggle fullscreen and
+    // system shortcuts would double-trigger. Shift is allowed because it is
+    // used as a seek multiplier.
+    if (e.ctrlKey || e.altKey || e.metaKey) return null;
     const key = e.key.toLowerCase();
     for (const action of ALL_ACTIONS) {
       if (this.config[action].includes(key)) return action;

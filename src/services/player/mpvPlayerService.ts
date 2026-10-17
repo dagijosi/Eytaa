@@ -16,6 +16,7 @@ import {
   PlayerError,
   TrackInfo,
   MediaMetadata,
+  ChapterInfo,
 } from "./types";
 import { formatMediaTitle } from "../../utils/mediaTitle";
 
@@ -35,6 +36,8 @@ const OBSERVED_PROPERTIES = [
   ["aid", "string", "none"],
   ["sid", "string", "none"],
   ["hwdec-current", "string", "none"],
+  ["chapter-list", "node", "none"],
+  ["chapter", "double", "none"],
 ] as const satisfies MpvObservableProperty[];
 
 const PREFERRED_SUBTITLE_LANGS: Array<{ code: string; label: string }> = [
@@ -54,6 +57,8 @@ export class MpvPlayerService implements MediaPlayerService {
     subtitleTracks: [],
     currentAudioTrackId: undefined,
     currentSubtitleTrackId: undefined,
+    chapters: [],
+    currentChapterIndex: -1,
     mediaMetadata: null,
     error: null,
     isInitialized: false,
@@ -221,6 +226,28 @@ export class MpvPlayerService implements MediaPlayerService {
       case "sid": {
         const sid = Number(data);
         this.updateState({ currentSubtitleTrackId: isNaN(sid) ? undefined : sid });
+        break;
+      }
+      case "chapter-list": {
+        if (Array.isArray(data)) {
+          const chapters: ChapterInfo[] = (data as Array<Record<string, unknown>>)
+            .map((item, index) => ({
+              index,
+              title: (item.title as string) || `Chapter ${index + 1}`,
+              time:
+                typeof item.time === "number"
+                  ? (item.time as number)
+                  : Number(item.time) || 0,
+            }));
+          this.updateState({ chapters });
+        }
+        break;
+      }
+      case "chapter": {
+        const chapter = Number(data);
+        this.updateState({
+          currentChapterIndex: isNaN(chapter) ? -1 : chapter,
+        });
         break;
       }
     }
@@ -412,6 +439,8 @@ export class MpvPlayerService implements MediaPlayerService {
         subtitleTracks: [],
         currentAudioTrackId: undefined,
         currentSubtitleTrackId: undefined,
+        chapters: [],
+        currentChapterIndex: -1,
         mediaMetadata: {
           filePath,
           duration: 0,
@@ -599,6 +628,44 @@ export class MpvPlayerService implements MediaPlayerService {
     } catch (err) {
       console.warn("Failed to set sub-margin-y:", err);
     }
+  }
+
+  /**
+   * Applies the playlist/file repeat mode to the engine.
+   * - "off": stop at end of queue
+   * - "all": loop the playlist forever
+   * - "one": loop the current file forever
+   */
+  public async setRepeatMode(mode: "off" | "all" | "one"): Promise<void> {
+    await this.ensureInitialized();
+    try {
+      await setProperty("loop-file", mode === "one" ? "inf" : "no");
+      await setProperty("loop-playlist", mode === "all" ? "inf" : "no");
+    } catch (err) {
+      console.warn("Failed to apply repeat mode:", err);
+    }
+  }
+
+  /**
+   * Captures a screenshot next to the current media file (or into the given
+   * directory). Returns the written path, or null when no local file is loaded.
+   */
+  public async takeScreenshot(directory?: string): Promise<string | null> {
+    await this.ensureInitialized();
+    const source = this.lastLoadedPath;
+    if (!source || /^[a-z][a-z0-9+.-]*:\/\//i.test(source)) {
+      return null;
+    }
+    const dir = directory || source.replace(/[/\\][^/\\]+$/, "");
+    const base = (source.split(/[/\\]/).pop() || "frame").replace(/\.[^.]+$/, "");
+    const stamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .slice(0, 19);
+    const sep = dir.includes("\\") ? "\\" : "/";
+    const target = `${dir}${sep}${base} - ${stamp}.png`;
+    await command("screenshot-to-file", [target, "subtitles"]);
+    return target;
   }
 
   public async getMpvProperty<T = unknown>(name: string): Promise<T> {
