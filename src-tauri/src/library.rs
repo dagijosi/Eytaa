@@ -85,6 +85,51 @@ pub fn compute_quick_hash(path: &Path, file_size: u64) -> Option<String> {
     Some(format!("{:016x}", hasher))
 }
 
+/// Builds a single [`ScannedMediaItem`] for one file, or `None` if the extension
+/// is not a supported media type. Shared by the full folder scan and the live
+/// filesystem watcher so both classify files identically.
+pub fn build_media_item(path: &Path, folder_root: &str) -> Option<ScannedMediaItem> {
+    let ext = path.extension().and_then(|e| e.to_str())?;
+    let ext_lower = ext.to_lowercase();
+    let media_type = is_supported_media(&ext_lower)?;
+
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
+
+    let (title, category, series_name, season_number, episode_number, episode_title, year) =
+        parse_media_info(path, &file_name, media_type);
+
+    let metadata = fs::metadata(path).ok();
+    let file_size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+    let last_modified = metadata
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let quick_hash = compute_quick_hash(path, file_size);
+
+    Some(ScannedMediaItem {
+        file_path: path.to_string_lossy().to_string(),
+        file_name,
+        title,
+        folder_path: folder_root.to_string(),
+        media_type: media_type.to_string(),
+        file_size,
+        last_modified,
+        quick_hash,
+        category,
+        series_name,
+        season_number,
+        episode_number,
+        episode_title,
+        year,
+    })
+}
+
 fn clean_word_delimiters(s: &str) -> String {
     let mut cleaned = String::with_capacity(s.len());
     let mut prev_is_space = false;
@@ -1103,60 +1148,23 @@ fn scan_directory_recursive(
             } else if file_type.is_file() {
                 *files_checked += 1;
 
-                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    let ext_lower = ext.to_lowercase();
-                    if let Some(media_type) = is_supported_media(&ext_lower) {
-                        let file_name = path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("")
-                            .to_string();
+                if let Some(item) = build_media_item(&path, folder_root) {
+                    results.push(item);
 
-                        let (title, category, series_name, season_number, episode_number, episode_title, year) =
-                            parse_media_info(&path, &file_name, media_type);
-
-                        let metadata = fs::metadata(&path).ok();
-                        let file_size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
-                        let last_modified = metadata
-                            .and_then(|m| m.modified().ok())
-                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            .map(|d| d.as_secs())
-                            .unwrap_or(0);
-
-                        let quick_hash = compute_quick_hash(&path, file_size);
-
-                        results.push(ScannedMediaItem {
-                            file_path: path.to_string_lossy().to_string(),
-                            file_name,
-                            title,
-                            folder_path: folder_root.to_string(),
-                            media_type: media_type.to_string(),
-                            file_size,
-                            last_modified,
-                            quick_hash,
-                            category,
-                            series_name,
-                            season_number,
-                            episode_number,
-                            episode_title,
-                            year,
-                        });
-
-                        // Report progress periodically every 25 files
-                        if results.len() % 25 == 0 {
-                            if let Some(a) = app {
-                                let _ = a.emit(
-                                    "library_scan_progress",
-                                    ScanProgressPayload {
-                                        folder_path: folder_root.to_string(),
-                                        current_directory: dir.to_string_lossy().to_string(),
-                                        files_scanned: *files_checked,
-                                        total_found: results.len(),
-                                        is_cancelled: false,
-                                        is_finished: false,
-                                    },
-                                );
-                            }
+                    // Report progress periodically every 25 files
+                    if results.len() % 25 == 0 {
+                        if let Some(a) = app {
+                            let _ = a.emit(
+                                "library_scan_progress",
+                                ScanProgressPayload {
+                                    folder_path: folder_root.to_string(),
+                                    current_directory: dir.to_string_lossy().to_string(),
+                                    files_scanned: *files_checked,
+                                    total_found: results.len(),
+                                    is_cancelled: false,
+                                    is_finished: false,
+                                },
+                            );
                         }
                     }
                 }

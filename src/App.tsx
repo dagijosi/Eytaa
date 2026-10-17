@@ -33,6 +33,7 @@ import { listen } from "@tauri-apps/api/event";
 import { playerService } from "./services/player/mpvPlayerService";
 import { localShortcutsService } from "./services/shortcuts/localShortcutsService";
 import { toggleWindowFullscreen } from "./utils/windowControls";
+import { libraryService } from "./services/library/libraryService";
 
 export default function App() {
   const {
@@ -210,6 +211,21 @@ export default function App() {
       if (unlisten) unlisten();
     };
   }, [openFile]);
+
+  // Live library watcher: refresh any open library view when files are added,
+  // changed, or removed in a watched folder (no manual rescan required).
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    listen<{ saved: number; removed: number }>("library_changed", () => {
+      libraryService.notifyLibraryChanged();
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
 
   // Sync fullscreen state
   useEffect(() => {

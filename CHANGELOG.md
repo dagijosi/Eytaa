@@ -4,6 +4,21 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ---
 
+## [0.2.4] - 2026-10-17
+
+### ✨ New Features & Performance
+- **Live Media Watcher**: Background filesystem watcher (`notify` crate) actively monitors indexed library folders, automatically updating the library and UI on file additions, deletions, or renames without requiring manual rescans.
+- **Virtualized Media Grid**: Integrated `@tanstack/react-virtual` in the Media Center for lightning-fast scrolling and rendering of large media libraries without DOM overload.
+- **Window Geometry Persistence**: Automatically persists and restores window position, size, and maximized state across app launches without display flash or misalignment.
+- **Application Error Boundary**: Safe React Error Boundary wrapping the entire interface to catch runtime errors gracefully with instant reload/recovery options.
+- **Library Pagination**: Added database-level limit and offset query support for responsive browsing.
+
+### 🔧 Architecture & Refactoring
+- **Modular Database Engine**: Decomposed the monolithic `db.rs` into clear submodules (`schema`, `library`, `playback`, `playlists`, `preferences`).
+- **Modular Frontend Architecture**: Refactored monolithic components into maintainable sub-modules for `ControlBar`, `SettingsModal`, and `playerStore`.
+
+---
+
 ## [0.2.3] - 2026-10-17
 
 ### ✨ New Features

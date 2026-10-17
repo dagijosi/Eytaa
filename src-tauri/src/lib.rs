@@ -4,6 +4,7 @@ mod db;
 mod media;
 mod library;
 mod thumbnailer;
+mod watcher;
 
 #[cfg(windows)]
 fn setup_dll_environment() {
@@ -164,7 +165,19 @@ pub fn run() {
             }
             let db_state = db::init_db(app.handle())
                 .map_err(|e| Box::<dyn std::error::Error>::from(e))?;
+
+            // Collect the registered library roots before moving the DB state so
+            // the live watcher can start observing them immediately.
+            let library_roots = match db_state.conn.lock() {
+                Ok(conn) => db::list_library_folder_paths(&conn),
+                Err(_) => Vec::new(),
+            };
             app.manage(db_state);
+
+            // Start the live folder watcher so newly added files appear without a rescan.
+            let watcher = watcher::LibraryWatcher::start(app.handle().clone(), library_roots);
+            app.manage(watcher);
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

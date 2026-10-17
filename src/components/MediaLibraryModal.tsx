@@ -50,6 +50,7 @@ import {
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { EytaaLogo } from "./EytaaLogo";
 import { MediaCard } from "./mediaCenter/MediaCard";
+import { VirtualizedMediaGrid, VirtualizedMediaList } from "./mediaCenter/VirtualizedMediaGrid";
 import { EditMetadataModal } from "./mediaCenter/EditMetadataModal";
 import { SeriesDetailView } from "./mediaCenter/SeriesDetailView";
 import { ProceduralPoster } from "./mediaCenter/ProceduralPoster";
@@ -319,9 +320,8 @@ export function MediaLibraryModal() {
   const [isCleaningCache, setIsCleaningCache] = useState(false);
   const [isReclassifying, setIsReclassifying] = useState(false);
 
-  // Pagination / infinite scrolling states for butter-smooth 60fps rendering
-  const [visibleCount, setVisibleCount] = useState(48);
-  const sentinelRef = useRef<HTMLButtonElement | null>(null);
+  // Refs for virtualized scrolling
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   // Selected series for drill-down view
   const [inspectingSeriesName, setInspectingSeriesName] = useState<string | null>(null);
@@ -420,36 +420,7 @@ export function MediaLibraryModal() {
     });
   };
 
-  // Reset pagination count on tab or filter change
-  useEffect(() => {
-    setVisibleCount(48);
-  }, [activeTab, watchFilter, sortBy, debouncedSearchQuery]);
-
-  // High performance scroll listener to load next batch as user approaches bottom
-  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    const target = e.currentTarget;
-    if (target.scrollHeight - target.scrollTop - target.clientHeight < 600) {
-      setVisibleCount((prev) => prev + 48);
-    }
-  }, []);
-
-  // IntersectionObserver to auto-load when sentinel button nears the viewport
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          setVisibleCount((prev) => prev + 48);
-        }
-      },
-      { rootMargin: "400px" }
-    );
-
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [visibleCount, activeTab]);
+  // No client-side pagination: virtualization bounds rendered DOM
 
   // Debounced search
   useEffect(() => {
@@ -496,6 +467,15 @@ export function MediaLibraryModal() {
     if (isLibraryOpen) {
       loadData();
     }
+  }, [isLibraryOpen, loadData]);
+
+  // Auto-refresh while the modal is open when the library changes on disk
+  // (live folder watcher) or anywhere else that calls notifyLibraryChanged().
+  useEffect(() => {
+    const unsubscribe = libraryService.onLibraryChange(() => {
+      if (isLibraryOpen) loadData();
+    });
+    return unsubscribe;
   }, [isLibraryOpen, loadData]);
 
   // Keyboard shortcut: close with Esc
@@ -2076,7 +2056,7 @@ export function MediaLibraryModal() {
           </div>
         ) : activeTab === "music" ? (
           /* TAB: MUSIC */
-          <div onScroll={handleScroll} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4 relative">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-white/5">
               <div className="flex items-center gap-1.5">
                 {[
@@ -2127,46 +2107,29 @@ export function MediaLibraryModal() {
                 </p>
               </div>
             ) : (
-              <>
-                <div
-                  className={`grid gap-3.5 ${
-                    cardFormat === "widescreen"
-                      ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
-                      : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6"
-                  }`}
-                >
-                  {filteredMusic.slice(0, visibleCount).map((track) => (
-                    <MediaCard
-                      key={track.file_path}
-                      item={track}
-                      viewFormat={cardFormat}
-                      onPlay={() => handlePlayItem(track.file_path)}
-                      onQueue={handleQueueItem}
-                      onEdit={(it) => setEditingItem(it)}
-                      onToggleFavorite={handleToggleFavorite}
-                      onToggleWatched={handleToggleWatched}
-                    />
-                  ))}
-                </div>
-                {visibleCount < filteredMusic.length && (
-                  <button
-                    ref={sentinelRef}
-                    type="button"
-                    onClick={() => setVisibleCount((prev) => prev + 48)}
-                    className="w-full py-5 my-4 flex flex-col items-center justify-center gap-1 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.08] hover:border-white/10 transition cursor-pointer text-neutral-400 hover:text-white group"
-                  >
-                    <span className="text-xs font-semibold group-hover:underline">
-                      Showing {Math.min(visibleCount, filteredMusic.length)} of {filteredMusic.length} tracks • Click or scroll to load more
-                    </span>
-                    <span className="text-[11px] text-neutral-500">Loads next 48 tracks</span>
-                  </button>
+              <VirtualizedMediaGrid
+                items={filteredMusic}
+                scrollRef={scrollRef}
+                getKey={(track) => track.file_path}
+                cardFormat={cardFormat}
+                rowEstimate={180}
+                renderItem={(track) => (
+                  <MediaCard
+                    item={track}
+                    viewFormat={cardFormat}
+                    onPlay={() => handlePlayItem(track.file_path)}
+                    onQueue={handleQueueItem}
+                    onEdit={(it) => setEditingItem(it)}
+                    onToggleFavorite={handleToggleFavorite}
+                    onToggleWatched={handleToggleWatched}
+                  />
                 )}
-              </>
+              />
             )}
           </div>
         ) : activeTab === "movies" ? (
           /* TAB 2: MOVIES */
-          <div onScroll={handleScroll} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4 relative">
             {/* Filter and Sort Toolbar */}
             <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-white/5">
               {/* Watch Status Filter Pills */}
@@ -2226,46 +2189,29 @@ export function MediaLibraryModal() {
                 </p>
               </div>
             ) : (
-              <>
-                <div
-                  className={`grid gap-3.5 ${
-                    cardFormat === "widescreen"
-                      ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
-                      : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6"
-                  }`}
-                >
-                  {filteredMovies.slice(0, visibleCount).map((movie) => (
-                    <MediaCard
-                      key={movie.file_path}
-                      item={movie}
-                      viewFormat={cardFormat}
-                      onPlay={() => handlePlayMediaWithAutoQueue(movie)}
-                      onQueue={handleQueueItem}
-                      onEdit={(it) => setEditingItem(it)}
-                      onToggleFavorite={handleToggleFavorite}
-                      onToggleWatched={handleToggleWatched}
-                    />
-                  ))}
-                </div>
-                {visibleCount < filteredMovies.length && (
-                  <button
-                    ref={sentinelRef}
-                    type="button"
-                    onClick={() => setVisibleCount((prev) => prev + 48)}
-                    className="w-full py-5 my-4 flex flex-col items-center justify-center gap-1 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.08] hover:border-white/10 transition cursor-pointer text-neutral-400 hover:text-white group"
-                  >
-                    <span className="text-xs font-semibold group-hover:underline">
-                      Showing {Math.min(visibleCount, filteredMovies.length)} of {filteredMovies.length} movies • Click or scroll to load more
-                    </span>
-                    <span className="text-[11px] text-neutral-500">Loads next 48 titles</span>
-                  </button>
+              <VirtualizedMediaGrid
+                items={filteredMovies}
+                scrollRef={scrollRef}
+                getKey={(movie) => movie.file_path}
+                cardFormat={cardFormat}
+                rowEstimate={280}
+                renderItem={(movie) => (
+                  <MediaCard
+                    item={movie}
+                    viewFormat={cardFormat}
+                    onPlay={() => handlePlayMediaWithAutoQueue(movie)}
+                    onQueue={handleQueueItem}
+                    onEdit={(it) => setEditingItem(it)}
+                    onToggleFavorite={handleToggleFavorite}
+                    onToggleWatched={handleToggleWatched}
+                  />
                 )}
-              </>
+              />
             )}
           </div>
         ) : activeTab === "series" ? (
           /* TAB 3: TV SHOWS */
-          <div onScroll={handleScroll} className="flex-1 overflow-y-auto px-6 py-6">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6 relative">
             {seriesGroups.length === 0 ? (
               <div className="py-20 flex flex-col items-center justify-center text-center space-y-2">
                 <Tv className="w-10 h-10 text-neutral-600" />
@@ -2276,44 +2222,30 @@ export function MediaLibraryModal() {
                 </p>
               </div>
             ) : (
-              <>
-                <div
-                  className={`grid gap-4 ${
-                    cardFormat === "widescreen"
-                      ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
-                      : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
-                  }`}
-                >
-                  {seriesGroups.slice(0, visibleCount).map((group) => (
-                    <SeriesCard
-                      key={group.seriesName}
-                      group={group}
-                      viewFormat={cardFormat}
-                      onClick={() => setInspectingSeriesName(group.seriesName)}
-                      onCoverChange={handlePickSeriesCover}
-                      onEdit={() => setEditingItem(group.sampleItem)}
-                    />
-                  ))}
-                </div>
-                {visibleCount < seriesGroups.length && (
-                  <button
-                    ref={sentinelRef}
-                    type="button"
-                    onClick={() => setVisibleCount((prev) => prev + 48)}
-                    className="w-full py-5 my-4 flex flex-col items-center justify-center gap-1 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.08] hover:border-white/10 transition cursor-pointer text-neutral-400 hover:text-white group"
-                  >
-                    <span className="text-xs font-semibold group-hover:underline">
-                      Showing {Math.min(visibleCount, seriesGroups.length)} of {seriesGroups.length} TV series • Click or scroll to load more
-                    </span>
-                    <span className="text-[11px] text-neutral-500">Loads next 48 series</span>
-                  </button>
+              <VirtualizedMediaGrid
+                items={seriesGroups}
+                scrollRef={scrollRef}
+                getKey={(group) => group.seriesName}
+                cardFormat={cardFormat}
+                gap={16}
+                posterColumns={[2, 3, 4, 5]}
+                widescreenColumns={[1, 2, 3, 4]}
+                rowEstimate={260}
+                renderItem={(group) => (
+                  <SeriesCard
+                    group={group}
+                    viewFormat={cardFormat}
+                    onClick={() => setInspectingSeriesName(group.seriesName)}
+                    onCoverChange={handlePickSeriesCover}
+                    onEdit={() => setEditingItem(group.sampleItem)}
+                  />
                 )}
-              </>
+              />
             )}
           </div>
         ) : activeTab === "all" ? (
           /* TAB 4: ALL MEDIA & FILES */
-          <div onScroll={handleScroll} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4 relative">
             {items.length === 0 ? (
               <div className="py-20 flex flex-col items-center justify-center text-center space-y-2">
                 <Database className="w-10 h-10 text-neutral-600" />
@@ -2323,103 +2255,74 @@ export function MediaLibraryModal() {
                 </p>
               </div>
             ) : viewMode === "grid" ? (
-              <>
-                <div
-                  className={`grid gap-3.5 ${
-                    cardFormat === "widescreen"
-                      ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
-                      : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6"
-                  }`}
-                >
-                  {items.slice(0, visibleCount).map((item) => (
-                    <MediaCard
-                      key={item.file_path}
-                      item={item}
-                      viewFormat={cardFormat}
-                      onPlay={() => handlePlayMediaWithAutoQueue(item)}
-                      onQueue={handleQueueItem}
-                      onEdit={(it) => setEditingItem(it)}
-                      onToggleFavorite={handleToggleFavorite}
-                      onToggleWatched={handleToggleWatched}
-                    />
-                  ))}
-                </div>
-                {visibleCount < items.length && (
-                  <button
-                    ref={sentinelRef}
-                    type="button"
-                    onClick={() => setVisibleCount((prev) => prev + 48)}
-                    className="w-full py-5 my-4 flex flex-col items-center justify-center gap-1 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.08] hover:border-white/10 transition cursor-pointer text-neutral-400 hover:text-white group"
-                  >
-                    <span className="text-xs font-semibold group-hover:underline">
-                      Showing {Math.min(visibleCount, items.length)} of {items.length} files • Click or scroll to load more
-                    </span>
-                    <span className="text-[11px] text-neutral-500">Loads next 48 files</span>
-                  </button>
+              <VirtualizedMediaGrid
+                items={items}
+                scrollRef={scrollRef}
+                getKey={(item) => item.file_path}
+                cardFormat={cardFormat}
+                rowEstimate={280}
+                renderItem={(item) => (
+                  <MediaCard
+                    item={item}
+                    viewFormat={cardFormat}
+                    onPlay={() => handlePlayMediaWithAutoQueue(item)}
+                    onQueue={handleQueueItem}
+                    onEdit={(it) => setEditingItem(it)}
+                    onToggleFavorite={handleToggleFavorite}
+                    onToggleWatched={handleToggleWatched}
+                  />
                 )}
-              </>
+              />
             ) : (
-              <>
-                <div className="divide-y divide-white/5">
-                  {items.slice(0, visibleCount).map((item) => (
-                    <div
-                      key={item.file_path}
-                      onClick={() => handlePlayMediaWithAutoQueue(item)}
-                      className="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition cursor-pointer group"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-neutral-400 shrink-0">
-                          {item.media_type === "audio" ? (
-                            <Music className="w-4 h-4" />
-                          ) : item.category === "series" ? (
-                            <Tv className="w-4 h-4" />
-                          ) : (
-                            <Film className="w-4 h-4" />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <h4 className="text-xs font-bold text-white truncate">{item.title}</h4>
-                          <p className="text-[11px] text-neutral-500 font-mono truncate max-w-md">
-                            {item.file_name} • {formatDuration(item.duration)} • {formatBytes(item.file_size)}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {item.is_watched && (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <VirtualizedMediaList
+                items={items}
+                scrollRef={scrollRef}
+                getKey={(item) => item.file_path}
+                rowHeight={64}
+                renderItem={(item) => (
+                  <div
+                    onClick={() => handlePlayMediaWithAutoQueue(item)}
+                    className="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition cursor-pointer group border-b border-white/5 last:border-b-0"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-neutral-400 shrink-0">
+                        {item.media_type === "audio" ? (
+                          <Music className="w-4 h-4" />
+                        ) : item.category === "series" ? (
+                          <Tv className="w-4 h-4" />
+                        ) : (
+                          <Film className="w-4 h-4" />
                         )}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingItem(item);
-                          }}
-                          className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-xs font-bold text-white truncate">{item.title}</h4>
+                        <p className="text-[11px] text-neutral-500 font-mono truncate max-w-md">
+                          {item.file_name} • {formatDuration(item.duration)} • {formatBytes(item.file_size)}
+                        </p>
                       </div>
                     </div>
-                  ))}
-                </div>
-                {visibleCount < items.length && (
-                  <button
-                    ref={sentinelRef}
-                    type="button"
-                    onClick={() => setVisibleCount((prev) => prev + 48)}
-                    className="w-full py-5 my-4 flex flex-col items-center justify-center gap-1 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.08] hover:border-white/10 transition cursor-pointer text-neutral-400 hover:text-white group"
-                  >
-                    <span className="text-xs font-semibold group-hover:underline">
-                      Showing {Math.min(visibleCount, items.length)} of {items.length} files • Click or scroll to load more
-                    </span>
-                    <span className="text-[11px] text-neutral-500">Loads next 48 files</span>
-                  </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {item.is_watched && (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingItem(item);
+                        }}
+                        className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 )}
-              </>
+              />
             )}
           </div>
         ) : activeTab === "favorites" ? (
           /* TAB 5: FAVORITES */
-          <div onScroll={handleScroll} className="flex-1 overflow-y-auto px-6 py-4">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 relative">
             {favorites.length === 0 ? (
               <div className="py-20 flex flex-col items-center justify-center text-center space-y-2">
                 <Heart className="w-10 h-10 text-neutral-600" />
@@ -2429,49 +2332,29 @@ export function MediaLibraryModal() {
                 </p>
               </div>
             ) : (
-              <>
-                <div
-                  className={`grid gap-3.5 ${
-                    cardFormat === "widescreen"
-                      ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
-                      : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6"
-                  }`}
-                >
-                  {items
-                    .filter((i) => i.is_favorite)
-                    .slice(0, visibleCount)
-                    .map((item) => (
-                      <MediaCard
-                        key={item.file_path}
-                        item={item}
-                        viewFormat={cardFormat}
-                        onPlay={() => handlePlayMediaWithAutoQueue(item)}
-                        onQueue={handleQueueItem}
-                        onEdit={(it) => setEditingItem(it)}
-                        onToggleFavorite={handleToggleFavorite}
-                        onToggleWatched={handleToggleWatched}
-                      />
-                    ))}
-                </div>
-                {visibleCount < items.filter((i) => i.is_favorite).length && (
-                  <button
-                    ref={sentinelRef}
-                    type="button"
-                    onClick={() => setVisibleCount((prev) => prev + 48)}
-                    className="w-full py-5 my-4 flex flex-col items-center justify-center gap-1 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.08] hover:border-white/10 transition cursor-pointer text-neutral-400 hover:text-white group"
-                  >
-                    <span className="text-xs font-semibold group-hover:underline">
-                      Showing {Math.min(visibleCount, items.filter((i) => i.is_favorite).length)} of {items.filter((i) => i.is_favorite).length} favorites • Click or scroll to load more
-                    </span>
-                    <span className="text-[11px] text-neutral-500">Loads next 48 favorites</span>
-                  </button>
+              <VirtualizedMediaGrid
+                items={items.filter((i) => i.is_favorite)}
+                scrollRef={scrollRef}
+                getKey={(item) => item.file_path}
+                cardFormat={cardFormat}
+                rowEstimate={280}
+                renderItem={(item) => (
+                  <MediaCard
+                    item={item}
+                    viewFormat={cardFormat}
+                    onPlay={() => handlePlayMediaWithAutoQueue(item)}
+                    onQueue={handleQueueItem}
+                    onEdit={(it) => setEditingItem(it)}
+                    onToggleFavorite={handleToggleFavorite}
+                    onToggleWatched={handleToggleWatched}
+                  />
                 )}
-              </>
+              />
             )}
           </div>
         ) : activeTab === "duplicates" ? (
           /* TAB 6: DUPLICATES */
-          <div onScroll={handleScroll} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4 relative">
             {duplicateCount === 0 ? (
               <div className="py-20 flex flex-col items-center justify-center text-center space-y-2">
                 <Copy className="w-10 h-10 text-neutral-600" />
@@ -2481,45 +2364,25 @@ export function MediaLibraryModal() {
                 </p>
               </div>
             ) : (
-              <>
-                <div
-                  className={`grid gap-3.5 ${
-                    cardFormat === "widescreen"
-                      ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
-                      : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6"
-                  }`}
-                >
-                  {items
-                    .filter((i) => i.is_duplicate)
-                    .slice(0, visibleCount)
-                    .map((item) => (
-                      <MediaCard
-                        key={item.file_path}
-                        item={item}
-                        viewFormat={cardFormat}
-                        badge="DUPLICATE"
-                        onPlay={() => handlePlayMediaWithAutoQueue(item)}
-                        onQueue={handleQueueItem}
-                        onEdit={(it) => setEditingItem(it)}
-                        onToggleFavorite={handleToggleFavorite}
-                        onToggleWatched={handleToggleWatched}
-                      />
-                    ))}
-                </div>
-                {visibleCount < duplicateCount && (
-                  <button
-                    ref={sentinelRef}
-                    type="button"
-                    onClick={() => setVisibleCount((prev) => prev + 48)}
-                    className="w-full py-5 my-4 flex flex-col items-center justify-center gap-1 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.08] hover:border-white/10 transition cursor-pointer text-neutral-400 hover:text-white group"
-                  >
-                    <span className="text-xs font-semibold group-hover:underline">
-                      Showing {Math.min(visibleCount, duplicateCount)} of {duplicateCount} duplicates • Click or scroll to load more
-                    </span>
-                    <span className="text-[11px] text-neutral-500">Loads next 48 items</span>
-                  </button>
+              <VirtualizedMediaGrid
+                items={items.filter((i) => i.is_duplicate)}
+                scrollRef={scrollRef}
+                getKey={(item) => item.file_path}
+                cardFormat={cardFormat}
+                rowEstimate={280}
+                renderItem={(item) => (
+                  <MediaCard
+                    item={item}
+                    viewFormat={cardFormat}
+                    badge="DUPLICATE"
+                    onPlay={() => handlePlayMediaWithAutoQueue(item)}
+                    onQueue={handleQueueItem}
+                    onEdit={(it) => setEditingItem(it)}
+                    onToggleFavorite={handleToggleFavorite}
+                    onToggleWatched={handleToggleWatched}
+                  />
                 )}
-              </>
+              />
             )}
           </div>
         ) : (
