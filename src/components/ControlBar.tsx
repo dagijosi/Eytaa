@@ -1,5 +1,6 @@
 import { useShallow } from "zustand/react/shallow";
 import { usePlayerStore } from "../stores/playerStore";
+import { useThemeStore } from "../stores/themeStore";
 import { ProgressScrubber } from "./controlBar/ProgressScrubber";
 import { TransportControls } from "./controlBar/TransportControls";
 import { VolumeControl } from "./controlBar/VolumeControl";
@@ -111,11 +112,22 @@ export function ControlBar() {
     })),
   );
 
+  const { controlBarStyle } = useThemeStore();
   const isPlaying = status === "playing";
+  const isFloating = controlBarStyle === "floating";
+  const isMinimal = controlBarStyle === "minimal";
 
   return (
-    <div className="relative px-2 sm:px-4 pb-3 sm:pb-4 pt-1.5 bg-gradient-to-t from-black/95 via-black/75 to-transparent backdrop-blur-md select-none transition-all duration-300 z-30">
-      <div className="w-full px-1 sm:px-4 md:px-6 flex flex-col gap-2">
+    <div
+      className={`relative select-none transition-all duration-300 z-30 ${
+        isFloating
+          ? "mx-2 sm:mx-6 md:mx-10 mb-2 sm:mb-4 px-3 sm:px-6 py-2 sm:py-3 ui-glass-panel shadow-2xl"
+          : isMinimal
+          ? "mx-3 sm:mx-8 mb-2 px-3 sm:px-5 py-1.5 ui-glass-panel shadow-xl"
+          : "w-full px-2 sm:px-6 pb-3 sm:pb-4 pt-1.5 ui-glass-bar border-t border-white/10"
+      }`}
+    >
+      <div className="w-full flex flex-col gap-1.5 sm:gap-2">
         {/* Progress Scrubber */}
         <ProgressScrubber currentTime={currentTime} duration={duration} seek={seek} />
 

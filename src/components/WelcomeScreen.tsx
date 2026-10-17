@@ -279,7 +279,7 @@ export function WelcomeScreen() {
               className="group flex flex-col p-3.5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-white/20 transition cursor-pointer w-full text-left shadow-xl overflow-hidden"
             >
               <div className="flex items-center justify-between text-[10px] font-mono mb-2">
-                <span className="flex items-center gap-1.5 font-bold text-amber-400">
+                <span className="flex items-center gap-1.5 font-bold" style={{ color: accentColor }}>
                   <Flame className="w-3 h-3" />
                   <span>UP NEXT IN SHOW</span>
                 </span>
@@ -295,8 +295,12 @@ export function WelcomeScreen() {
               <div className="flex items-center gap-3">
                 <div className="relative w-10 h-10 rounded-xl bg-neutral-900/90 border border-white/20 flex items-center justify-center shrink-0 shadow-lg group-hover:scale-105 group-hover:border-white/40 transition">
                   <div
-                    style={{ backgroundColor: `${accentColor}25`, color: accentColor }}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center border border-white/10"
+                    style={{
+                      backgroundColor: accentColor,
+                      color: accentText,
+                      boxShadow: `0 2px 10px ${accentGlow}`,
+                    }}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center shadow-sm"
                   >
                     <Play className="w-3.5 h-3.5 fill-current translate-x-0.5" />
                   </div>

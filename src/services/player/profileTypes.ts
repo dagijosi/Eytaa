@@ -16,7 +16,7 @@ export interface ProfileSettings {
 export interface PlaybackProfile {
   id: string;
   name: string;
-  icon: "tv" | "layers" | "film" | "headphones" | "mic" | "sliders" | "sparkles";
+  icon: "tv" | "layers" | "film" | "headphones" | "mic" | "sliders" | "sparkles" | "moon" | "flame";
   description: string;
   isBuiltIn?: boolean;
   settings: ProfileSettings;
@@ -126,6 +126,90 @@ export const DEFAULT_PROFILES: PlaybackProfile[] = [
       subColor: "#FFFFFF",
       subDelay: 0,
       playbackRate: 1.25,
+    },
+  },
+  {
+    id: "latenight",
+    name: "Late Night (Night Shift)",
+    icon: "moon",
+    description: "Subdued brightness, gentle warm gamma, quiet night loudnorm EQ, and soft amber subtitles for dark rooms.",
+    isBuiltIn: true,
+    settings: {
+      contrast: 0,
+      brightness: -8,
+      saturation: -4,
+      gamma: 3,
+      deinterlace: false,
+      audioFilter: "lavfi=[loudnorm=I=-19:TP=-2.0:LRA=6]",
+      audioNormalize: true,
+      audioDelay: 0,
+      subFontSize: 50,
+      subColor: "#FFE082", // Eye-friendly warm amber
+      subDelay: 0,
+      playbackRate: 1.0,
+    },
+  },
+  {
+    id: "vivid-hdr",
+    name: "HDR Vivid Pop",
+    icon: "sparkles",
+    description: "Punchy contrast, deep blacks, and vibrant dynamic color saturation to make standard video pop.",
+    isBuiltIn: true,
+    settings: {
+      contrast: 8,
+      brightness: -3,
+      saturation: 16,
+      gamma: -2,
+      deinterlace: false,
+      audioFilter: "",
+      audioNormalize: false,
+      audioDelay: 0,
+      subFontSize: 54,
+      subColor: "#FFFFFF",
+      subDelay: 0,
+      playbackRate: 1.0,
+    },
+  },
+  {
+    id: "action",
+    name: "Action & Blockbuster",
+    icon: "flame",
+    description: "Enhanced edge contrast and dynamic loudnorm compression to balance explosions against dialogue.",
+    isBuiltIn: true,
+    settings: {
+      contrast: 7,
+      brightness: 1,
+      saturation: 6,
+      gamma: 0,
+      deinterlace: false,
+      audioFilter: "lavfi=[loudnorm=I=-15:TP=-1.0:LRA=8]",
+      audioNormalize: true,
+      audioDelay: 0,
+      subFontSize: 54,
+      subColor: "#F5F5F5",
+      subDelay: 0,
+      playbackRate: 1.0,
+    },
+  },
+  {
+    id: "vintage",
+    name: "Vintage Cinema (Analog)",
+    icon: "film",
+    description: "Nostalgic warm sepia atmosphere with gentle muted tones and classic cinema typography.",
+    isBuiltIn: true,
+    settings: {
+      contrast: 3,
+      brightness: 2,
+      saturation: -8,
+      gamma: 4,
+      deinterlace: false,
+      audioFilter: "",
+      audioNormalize: false,
+      audioDelay: 0,
+      subFontSize: 52,
+      subColor: "#FFF8E7", // Classic warm cream
+      subDelay: 0,
+      playbackRate: 1.0,
     },
   },
 ];

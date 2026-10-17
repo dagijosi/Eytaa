@@ -4,6 +4,28 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ---
 
+## [0.2.5] - 2026-10-17
+
+### 🎨 Deep Theming & Aesthetic Customization
+- **12 Curated Design Skins**: Expanded full-theme presets to 12 production-ready aesthetic skins, introducing *Nord Arctic* (polar cyan minimalism), *Gruvbox Earth* (retro analog sepia), *OLED Cinema* (true black + emerald contrast), *Forest Night* (deep nocturnal mist), *Synthwave 84* (neon cyberpunk magenta), and *Mocha Latte* (warm coffee tones).
+- **Active Theme Sync Banner**: Added a status indicator in Appearance Settings clarifying when accent colors are linked to a full design skin, with seamless one-click unlocking for standalone custom colors.
+- **Advanced Subtitle Engine**: Deep subtitle typography controls including custom font family selection, full-spectrum custom font colors (with quick swatches and hex wheel), outline stroke thickness, shadow depth, cinema box backgrounds, and vertical margins.
+- **Clean Borderless TopBar**: Removed distracting divider lines beneath the main TopNav for a completely unified, edge-to-edge frosted glass aesthetic.
+
+### 🎛️ Playback Profiles System Overhaul
+- **Expanded Built-in Profiles (9 Total)**: Added 4 new genre-tuned playback profiles:
+  - *Late Night (Night Shift)*: Subdued brightness, warm gamma, quiet night loudnorm EQ, and soft amber subtitles for dark rooms.
+  - *HDR Vivid Pop*: Deep blacks, boosted contrast, and rich saturation to make flat SDR content pop.
+  - *Action & Blockbuster*: Punchy contrast and dynamic loudness compression to balance explosion audio against dialogue.
+  - *Vintage Cinema (Analog)*: Muted saturation and warm sepia tones with classic cinema typography.
+- **In-Place Interactive Profile Customizer**: Full visual editor to calibrate video picture (contrast, brightness, saturation, gamma), audio processing (Studio Flat, Night Mode Loudnorm, Vocal Clarity Boost), default speed, and subtitle typography presets.
+- **Universal Profile Duplication**: One-click "Clone" button to duplicate any built-in or custom profile and tailor it into a personal preset.
+- **Live Player Preview**: "Test in Player Now" button pushes calibrated profile settings to MPV immediately for zero-friction auditioning before saving.
+- **Profile Categories & Search**: Category filtering (All, Cinema & Video, Audio & Voice, Night & Ambient, Custom) and instant search by keyword.
+- **Profile JSON Backup & Sharing**: Import and export custom playback profiles via JSON with clipboard feedback.
+
+---
+
 ## [0.2.4] - 2026-10-17
 
 ### ✨ New Features & Performance

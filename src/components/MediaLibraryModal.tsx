@@ -1829,7 +1829,7 @@ export function MediaLibraryModal() {
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Flame className="w-4 h-4 text-amber-400" />
+                    <Flame className="w-4 h-4" style={{ color: accentColor }} />
                     <h2 className="text-sm font-bold tracking-wide uppercase">Up Next in Your Shows</h2>
                   </div>
                   <button

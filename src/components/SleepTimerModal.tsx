@@ -60,7 +60,7 @@ export function SleepTimerModal({ isOpen, onClose }: SleepTimerModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-      <div className="bg-neutral-900/98 border border-white/10 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+      <div className="ui-glass-panel w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0 bg-white/[0.02]">
           <div className="flex items-center gap-2.5">

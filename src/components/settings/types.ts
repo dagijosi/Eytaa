@@ -18,4 +18,6 @@ export type ProfileIconName =
   | "headphones"
   | "mic"
   | "sliders"
-  | "sparkles";
+  | "sparkles"
+  | "moon"
+  | "flame";

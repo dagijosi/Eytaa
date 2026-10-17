@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { Tv, Layers, Film, Headphones, Mic, Sliders } from "lucide-react";
+import { Tv, Layers, Film, Headphones, Mic, Sliders, Moon, Flame, Sparkles } from "lucide-react";
 
 export function formatSeconds(seconds: number): string {
   if (isNaN(seconds) || seconds < 0) return "00:00";
@@ -33,8 +33,13 @@ export function activeBtnStyle(
 export function getProfileIcon(icon: string, accentColor: string): ReactElement {
   switch (icon) {
     case "tv":
-    case "sparkles":
       return <Tv style={{ color: accentColor }} className="w-3.5 h-3.5" />;
+    case "sparkles":
+      return <Sparkles className="w-3.5 h-3.5 text-amber-300" />;
+    case "moon":
+      return <Moon className="w-3.5 h-3.5 text-indigo-400" />;
+    case "flame":
+      return <Flame className="w-3.5 h-3.5 text-rose-500" />;
     case "layers":
       return <Layers style={{ color: accentColor }} className="w-3.5 h-3.5" />;
     case "film":

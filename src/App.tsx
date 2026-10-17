@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, lazy, Suspense } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { usePlayerStore } from "./stores/playerStore";
-import { useThemeStore } from "./stores/themeStore";
+import { useThemeStore, syncSubtitlesToMpv } from "./stores/themeStore";
 import { TopBar } from "./components/TopBar";
 import { ControlBar } from "./components/ControlBar";
 import { CenterOSD } from "./components/CenterOSD";
@@ -136,7 +136,7 @@ export default function App() {
   const videoCanvasRef = useRef<HTMLDivElement | null>(null);
   const wheelAccumRef = useRef(0);
 
-  const { initializeTheme } = useThemeStore();
+  const { initializeTheme, subMarginY } = useThemeStore();
 
   // Initialize theme, MPV, and check for launch media file
   useEffect(() => {
@@ -158,6 +158,14 @@ export default function App() {
         });
     }
   }, [isInitialized, initialize, initializeTheme, openFile]);
+
+  // Whenever a new file is loaded or subtitle track changes, re-sync subtitle settings so MPV applies user styling
+  useEffect(() => {
+    if (mediaMetadata?.filePath && isInitialized) {
+      const theme = useThemeStore.getState();
+      syncSubtitlesToMpv(theme);
+    }
+  }, [mediaMetadata?.filePath, currentSubtitleTrackId, isInitialized]);
 
   // Fade out the startup splash once the app is initialized (fallback timeout in case init stalls).
   useEffect(() => {
@@ -702,16 +710,15 @@ export default function App() {
     isPlaylistOpen ||
     isSettingsOpen;
 
-  // Elevate subtitles above the bottom control bar so they are never obscured
+  // Elevate subtitles above the bottom control bar so they are never obscured, respecting user's base margin
   useEffect(() => {
+    const baseMargin = subMarginY ?? 65;
     if (showBottomBar) {
-      playerService.setSubtitleMarginY(80);
-      playerService.setSubtitlePosition(86);
+      playerService.setSubtitleMarginY(baseMargin + 24);
     } else {
-      playerService.setSubtitleMarginY(40);
-      playerService.setSubtitlePosition(92);
+      playerService.setSubtitleMarginY(baseMargin);
     }
-  }, [showBottomBar]);
+  }, [showBottomBar, subMarginY]);
 
   return (
     <div

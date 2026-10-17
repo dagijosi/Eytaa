@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useThemeStore } from "../../stores/themeStore";
+import { usePlayerStore } from "../../stores/playerStore";
 import { formatSeconds } from "./shared";
 
 interface ProgressScrubberProps {
@@ -14,7 +15,10 @@ export function ProgressScrubber({ currentTime, duration, seek }: ProgressScrubb
     accentGlow,
     scrubberGlow,
     scrubberHeight,
+    showChapterMarkers,
+    scrubberGlowIntensity,
   } = useThemeStore();
+  const chapters = usePlayerStore((s) => s.chapters);
 
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverPosition, setHoverPosition] = useState<number>(0);
@@ -91,6 +95,8 @@ export function ProgressScrubber({ currentTime, duration, seek }: ProgressScrubb
       ? "h-1 group-hover:h-2"
       : scrubberHeight === "bold"
       ? "h-2.5 group-hover:h-3.5"
+      : scrubberHeight === "chunky"
+      ? "h-3.5 group-hover:h-4.5"
       : "h-1.5 group-hover:h-2.5";
 
   const hoverPercent =
@@ -210,12 +216,31 @@ export function ProgressScrubber({ currentTime, duration, seek }: ProgressScrubb
           />
         )}
 
+        {/* Chapter Marker Ticks */}
+        {showChapterMarkers &&
+          duration > 0 &&
+          chapters &&
+          chapters.map((ch, idx) => {
+            const pct = (ch.time / duration) * 100;
+            if (pct <= 0 || pct >= 100) return null;
+            return (
+              <div
+                key={idx}
+                style={{ left: `${pct}%` }}
+                className="absolute top-0 bottom-0 w-0.5 bg-black/60 pointer-events-none z-10"
+                title={ch.title}
+              />
+            );
+          })}
+
         {/* Active Progress Gradient */}
         <div
           style={{
             width: `${progressPercent}%`,
             backgroundColor: accentColor,
-            boxShadow: scrubberGlow ? `0 0 14px ${accentGlow}` : "none",
+            boxShadow: scrubberGlow
+              ? `0 0 ${Math.round(18 * (scrubberGlowIntensity || 0.6))}px ${accentGlow}`
+              : "none",
           }}
           className="relative h-full rounded-full transition-all duration-75"
         />

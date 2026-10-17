@@ -423,7 +423,7 @@ export function SettingsModal() {
 
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 z-50 animate-in fade-in duration-150">
-      <div className="bg-neutral-900/98 border border-white/10 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-row h-[630px] max-h-[88vh]">
+      <div className="ui-glass-panel w-full max-w-4xl shadow-2xl overflow-hidden flex flex-row h-[630px] max-h-[88vh]">
         {/* Left Sidebar Navigation */}
         <SettingsSidebar
           accentColor={accentColor}
@@ -437,7 +437,7 @@ export function SettingsModal() {
         />
 
         {/* Right Main Content */}
-        <div className="flex-1 flex flex-col min-w-0 bg-neutral-900/90 overflow-hidden">
+        <div className="flex-1 flex flex-col min-w-0 bg-black/25 overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-3 border-b border-white/10 shrink-0">
             <div>

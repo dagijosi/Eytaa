@@ -341,7 +341,7 @@ export function PlaylistDrawer() {
 
       {/* Main Drawer Panel */}
       <aside
-        className={`fixed inset-y-0 right-0 w-80 sm:w-96 max-w-full bg-neutral-950/95 backdrop-blur-3xl border-l border-white/10 shadow-2xl flex flex-col z-50 transition-transform duration-300 ease-out transform ${
+        className={`fixed inset-y-0 right-0 w-80 sm:w-96 max-w-full ui-glass-bar border-l border-white/10 shadow-2xl flex flex-col z-50 transition-transform duration-300 ease-out transform ${
           isPlaylistOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >

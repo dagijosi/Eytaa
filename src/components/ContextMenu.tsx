@@ -143,7 +143,7 @@ export function ContextMenu({ x, y, onClose }: ContextMenuProps) {
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.12, ease: "easeOut" }}
       style={{ left: pos.x, top: pos.y, width: MENU_WIDTH }}
-      className="fixed z-[100] bg-neutral-900/95 backdrop-blur-xl border border-white/10 rounded-xl p-1.5 shadow-2xl shadow-black/60 select-none"
+      className="fixed z-[100] ui-glass-panel p-1.5 shadow-2xl shadow-black/80 select-none"
       onContextMenu={(e) => e.preventDefault()}
     >
       <button className={itemClass} onClick={handleOpenFiles}>

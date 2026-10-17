@@ -8,6 +8,10 @@
   --accent-text: #0a0a0a;
   --ui-bg: rgba(12, 12, 16, 0.88);
   --ui-blur: 16px;
+  --ui-border: 1px solid rgba(255, 255, 255, 0.1);
+  --ui-border-glow: none;
+  --ui-radius: 14px;
+  --ui-radius-pill: 9999px;
 }
 
 html,
@@ -41,10 +45,31 @@ body,
   box-shadow: 0 0 25px var(--accent-glow) !important;
 }
 
+/* Reactive Surface Glassmorphism Utilities */
 .ui-backdrop {
   background-color: var(--ui-bg) !important;
   backdrop-filter: blur(var(--ui-blur)) !important;
   -webkit-backdrop-filter: blur(var(--ui-blur)) !important;
+}
+
+.ui-glass-panel {
+  background-color: var(--ui-bg) !important;
+  backdrop-filter: blur(var(--ui-blur)) !important;
+  -webkit-backdrop-filter: blur(var(--ui-blur)) !important;
+  border: var(--ui-border) !important;
+  box-shadow: var(--ui-border-glow) !important;
+  border-radius: var(--ui-radius) !important;
+}
+
+.ui-glass-bar {
+  background-color: var(--ui-bg) !important;
+  backdrop-filter: blur(var(--ui-blur)) !important;
+  -webkit-backdrop-filter: blur(var(--ui-blur)) !important;
+}
+
+.ui-glass-border {
+  border: var(--ui-border) !important;
+  box-shadow: var(--ui-border-glow) !important;
 }
 
 /* Sleek Minimalist Scrollbars */
@@ -81,4 +106,3 @@ select:focus-visible,
   outline-offset: 2px !important;
   box-shadow: 0 0 0 2px #0a0a0a, 0 0 12px var(--accent-glow) !important;
 }
-

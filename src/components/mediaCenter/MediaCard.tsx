@@ -219,7 +219,14 @@ function MediaCardBase({
                 <span>RESUME {progressPercent}%</span>
               </span>
             ) : isRecentlyAdded ? (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 backdrop-blur-md shrink-0 whitespace-nowrap">
+              <span
+                style={{
+                  backgroundColor: `${accentColor}25`,
+                  color: accentColor,
+                  borderColor: `${accentColor}55`,
+                }}
+                className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border backdrop-blur-md shrink-0 whitespace-nowrap shadow-sm"
+              >
                 NEW
               </span>
             ) : null}

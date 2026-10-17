@@ -391,7 +391,7 @@ export function TopBar() {
   return (
     <header
       data-tauri-drag-region
-      className="relative flex items-center justify-between px-3 py-1.5 bg-gradient-to-b from-black/95 via-black/70 to-transparent backdrop-blur-md select-none transition-all duration-300 z-40 h-10 border-b border-white/5"
+      className="relative flex items-center justify-between px-3 py-1.5 ui-glass-bar border-none select-none transition-all duration-300 z-40 h-10"
     >
       {/* Left: App Menu and Movie Name */}
       <div

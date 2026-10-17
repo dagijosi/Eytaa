@@ -102,6 +102,7 @@ export class MpvPlayerService implements MediaPlayerService {
             "sub-pos": "88",
             "sub-margin-y": "65",
             "sub-use-margins": "yes",
+            "sub-ass-override": "force",
             "slang": "en,ar",
             "demuxer-mkv-subtitle-preroll": "yes",
             "osd-bar": "no",
