@@ -875,6 +875,8 @@ pub fn db_get_library_items(
     category: Option<String>,
     series_name: Option<String>,
     watch_status: Option<String>,
+    limit: Option<i64>,
+    offset: Option<i64>,
 ) -> Result<Vec<LibraryItemDto>, String> {
     let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
 
@@ -971,7 +973,20 @@ pub fn db_get_library_items(
     }
 
     // Specials (season 0) sort last within a series; otherwise by season then episode
-    sql.push_str("ORDER BY COALESCE(li.series_key, li.title) COLLATE NOCASE ASC, CASE WHEN COALESCE(li.season_number, 0) = 0 THEN 9999 ELSE COALESCE(li.season_number, 0) END ASC, COALESCE(li.episode_number, 0) ASC, li.title COLLATE NOCASE ASC");
+    sql.push_str("ORDER BY COALESCE(li.series_key, li.title) COLLATE NOCASE ASC, CASE WHEN COALESCE(li.season_number, 0) = 0 THEN 9999 ELSE COALESCE(li.season_number, 0) END ASC, COALESCE(li.episode_number, 0) ASC, li.title COLLATE NOCASE ASC ");
+
+    if let Some(lim) = limit {
+        if lim > 0 {
+            sql.push_str(&format!(" LIMIT {}", lim));
+        }
+    }
+    if let Some(off) = offset {
+        if off > 0 {
+            sql.push_str(&format!(" OFFSET {}", off));
+        } else if off < 0 {
+            sql.push_str(" OFFSET 0");
+        }
+    }
 
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
 

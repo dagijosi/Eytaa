@@ -210,6 +210,8 @@ class LibraryService {
     category?: string;
     seriesName?: string;
     watchStatus?: "all" | "unwatched" | "partially_watched" | "watched";
+    limit?: number;
+    offset?: number;
   }): Promise<LibraryItem[]> {
     try {
       return await invoke<LibraryItem[]>("db_get_library_items", {
@@ -221,6 +223,8 @@ class LibraryService {
         category: filter?.category || null,
         seriesName: filter?.seriesName || null,
         watchStatus: filter?.watchStatus || null,
+        limit: filter?.limit ?? null,
+        offset: filter?.offset ?? null,
       });
     } catch (e) {
       console.error("Failed to get library items:", e);
