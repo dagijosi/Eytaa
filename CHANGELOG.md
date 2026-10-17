@@ -16,6 +16,9 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ### 🎛️ Controls & UX
 - **Separate Auto-Play Next & Repeat**: These are now distinct controls — a dedicated Auto-Play Next toggle alongside a direct-select Repeat dropdown (Off / Repeat Playlist / Repeat One), with quick actions in the More menu. Their combined state stays in sync and is always reflected in the UI.
+- **Playlist: Queue & Saved Tabs**: Playlist drawer now has tabs to switch between the current playback queue and saved playlists. Searching, list, and counts are tab-aware; saved playlists refresh on open and when switching tabs.
+- **Playlist Drag-to-Reorder**: Live drag-and-drop reordering of queue items with smooth layout animations (framer-motion) and whole-row drag with 5px threshold; scrolls to keep the dragged row visible.
+- **Scroll-to-Current on Open**: Opening the playlist scrolls the currently playing track to center in the visible list.
 - **Consistent Tooltips**: A single app-wide tooltip layer replaces the browser's slow and unreliable native `title` tooltips, giving every icon button a fast, uniform, viewport-clamped hint.
 - **New Shortcuts**: Cycle Audio Track (`A`), Cycle Repeat Mode (`R`), Open Network Stream (`U`), Save Screenshot (`E`), and Toggle Playback Stats (`F9`). Bare-key shortcuts no longer fire through Ctrl/Alt/Meta, so browser and OS combinations are left untouched.
 - **Instant Window**: The window is now revealed as soon as the new startup splash (logo + spinner) paints, eliminating the blank window during boot.
