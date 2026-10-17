@@ -164,7 +164,7 @@ export class MpvPlayerService implements MediaPlayerService {
         break;
       }
       case "eof-reached": {
-        if (Boolean(data)) {
+        if (data) {
           this.notifyEndFile("eof");
         }
         break;

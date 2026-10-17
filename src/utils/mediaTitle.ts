@@ -16,6 +16,7 @@ export function normalizeSeriesKey(name?: string | null): string {
   if (s.startsWith("the ")) s = s.slice(4).trim();
   if (s.startsWith("a ")) s = s.slice(2).trim();
   if (s.startsWith("an ")) s = s.slice(3).trim();
+  // eslint-disable-next-line no-useless-escape
   s = s.replace(/[\(\[]?(19\d\d|20\d\d)[\)\]]?/g, "").trim();
   s = s.replace(/\b(season|series)\s*\d+\b/gi, "").trim();
   s = s.replace(/[._\-:,]/g, " ").replace(/\s+/g, " ").trim();
@@ -48,6 +49,7 @@ export function formatMediaTitle(rawTitle?: string | null, filePath?: string | n
   const isMusicFile = filePath && /\.(mp3|flac|wav|m4a|aac|ogg|opus)$/i.test(filePath);
   if (isMusicFile) {
     // Strip leading track numbers like "01. ", "01 - ", "1-01 "
+    // eslint-disable-next-line no-useless-escape
     let musicTitle = baseName.replace(/^(\d{1,2}[.\s\-]+)+/, "").trim();
     // Replace underscores with space
     musicTitle = musicTitle.replace(/_/g, " ");
@@ -55,7 +57,10 @@ export function formatMediaTitle(rawTitle?: string | null, filePath?: string | n
   }
 
   // Strip leading release group in brackets e.g. "[SubsPlease] ", "[Erai-raws] "
-  let cleaned = baseName.replace(/^\[[^\]]+\]\s*/, "");
+  const cleaned = baseName.replace(/^\[[^\]]+\]\s*/, "");
+
+
+
 
   // 1. Check for standard TV Show pattern: "Show.Name.S01E02.Episode.Title..." or "Show Name S01E02..."
   const tvPattern = /(.*?)[.\s_]+[sS](\d{1,2})[.\s_-]*[eE](\d{1,3})(?:[.\s_-]+(.*))?$/;
@@ -128,6 +133,7 @@ export function formatMediaTitle(rawTitle?: string | null, filePath?: string | n
   }
 
   // 4. Check for Movie with Year: "Movie.Name.2023.1080p..." or "Movie Name (2023)..."
+  // eslint-disable-next-line no-useless-escape
   const movieYearPattern = /(.*?)[.\s_]+(?:[\(\[])?((?:19|20)\d{2})(?:[\)\]])?(?:[.\s_]+(.*))?$/;
   const movieMatch = cleaned.match(movieYearPattern);
   if (movieMatch) {
@@ -145,6 +151,7 @@ function cleanShowOrMovieName(str: string): string {
   let s = str
     .replace(/[._]/g, " ")
     .replace(/\[[^\]]*\]/g, "")
+    // eslint-disable-next-line no-useless-escape
     .replace(/\([^\)]*\)/g, "")
     .trim();
 
@@ -168,7 +175,7 @@ function cleanEpisodeTitle(str: string): string {
 
   let s = str.replace(cutPattern, "");
   s = s.replace(/\[[^\]]*\]/g, "");
-  s = s.replace(/\([^\)]*\)/g, "");
+  s = s.replace(/\([^)]*\)/g, "");
   s = s.replace(/[._]/g, " ").trim();
   s = s.replace(/^[-–—\s]+|[-–—\s]+$/g, "");
 
