@@ -142,6 +142,8 @@ During `npm run tauri:build`, the DLLs are packaged into the installer and bundl
 | `npm run rust:check` | Checks Rust backend syntax and dependency compilation |
 | `npm run setup:lib` | Downloads or refreshes Windows `libmpv` and wrapper DLLs |
 
+> 🚀 **Release & Versioning Process**: For step-by-step instructions on version bumping, pre-flight verification, committing, pushing, and tagging releases that trigger GitHub Actions builds, see **[RELEASE_PROCESS.md](RELEASE_PROCESS.md)**.
+
 ---
 
 ## 6. Verification Test Harness
