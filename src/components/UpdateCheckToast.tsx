@@ -91,7 +91,7 @@ export function UpdateCheckToast() {
             <span className="text-xs font-bold text-white tracking-wide">{content.title}</span>
             {updateCheckToast.state === "available" && updateCheckToast.version && (
               <span
-                style={{ backgroundColor: `${accentColor}25`, color: accentColor }}
+                style={{ backgroundColor: accentColor, color: accentText, boxShadow: `0 2px 8px ${accentGlow}` }}
                 className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold"
               >
                 v{updateCheckToast.version}

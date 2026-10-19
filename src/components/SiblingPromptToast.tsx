@@ -50,7 +50,7 @@ export function SiblingPromptToast() {
       >
         {/* Glow Icon */}
         <div
-          style={{ backgroundColor: accentGlow, borderColor: `${accentColor}66`, color: accentColor }}
+          style={{ backgroundColor: accentColor, borderColor: accentColor, color: accentText }}
           className="w-10 h-10 rounded-xl border flex items-center justify-center shrink-0"
         >
           <Film className="w-5 h-5" />

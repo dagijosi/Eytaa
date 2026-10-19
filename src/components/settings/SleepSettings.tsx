@@ -48,14 +48,13 @@ export function SleepSettings({
         <div
           style={{
             backgroundColor: `${accentGlow}`,
-            borderColor: `${accentColor}50`,
+            borderColor: accentColor,
           }}
           className="p-4 rounded-xl border flex items-center justify-between"
         >
           <div>
             <div
-              style={{ color: accentColor }}
-              className="text-xs font-bold flex items-center gap-2"
+              className="text-xs font-bold flex items-center gap-2 text-white"
             >
               <span
                 style={{ backgroundColor: accentColor }}
@@ -64,8 +63,7 @@ export function SleepSettings({
               Sleep Timer Countdown Active
             </div>
             <div
-              style={{ color: accentColor }}
-              className="text-2xl font-mono font-extrabold mt-1"
+              className="text-2xl font-mono font-extrabold mt-1 text-white"
             >
               {Math.floor(sleepTimer.remainingSeconds / 60)}m{" "}
               {(sleepTimer.remainingSeconds % 60)
@@ -77,8 +75,9 @@ export function SleepSettings({
             <button
               onClick={() => addSleepTimerMinutes(15)}
               style={{
-                backgroundColor: `${accentGlow}`,
-                color: accentColor,
+                backgroundColor: accentColor,
+                color: accentText,
+                boxShadow: `0 2px 10px ${accentGlow}`,
               }}
               className="px-3 py-1.5 rounded-lg text-xs font-semibold hover:brightness-110 transition active:scale-95"
             >

@@ -133,7 +133,7 @@ function EditMetadataModalContent({
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-neutral-950/60">
           <div className="flex items-center gap-2.5">
             <div
-              style={{ backgroundColor: `${accentColor}25`, color: accentColor }}
+              style={{ backgroundColor: accentColor, color: accentText, boxShadow: `0 2px 10px ${accentGlow}` }}
               className="w-8 h-8 rounded-xl flex items-center justify-center"
             >
               <Film className="w-4 h-4" />
@@ -177,9 +177,10 @@ function EditMetadataModalContent({
                     style={
                       isSelected
                         ? {
-                            backgroundColor: `${accentColor}25`,
+                            backgroundColor: accentColor,
                             borderColor: accentColor,
-                            color: accentColor,
+                            color: accentText,
+                            boxShadow: `0 2px 8px ${accentGlow}`,
                           }
                         : {}
                     }

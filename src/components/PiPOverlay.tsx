@@ -254,8 +254,9 @@ export function PiPOverlay() {
               }}
               title="Expand to normal window"
               style={{
-                backgroundColor: `${accentGlow}`,
-                color: accentColor,
+                backgroundColor: accentColor,
+                color: accentText,
+                boxShadow: `0 2px 10px ${accentGlow}`,
               }}
               className="p-1 px-1.5 rounded hover:brightness-110 font-sans font-bold text-[10px] flex items-center gap-1 transition"
             >

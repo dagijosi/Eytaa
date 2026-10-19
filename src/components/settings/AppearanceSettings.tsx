@@ -349,9 +349,10 @@ export function AppearanceSettings(_props?: AppearanceSettingsProps) {
                 <div className="flex items-center gap-1.5">
                   <span
                     style={{
-                      backgroundColor: `${accentGlow}`,
-                      color: accentColor,
+                      backgroundColor: accentColor,
+                      color: accentText,
                       borderColor: accentColor,
+                      boxShadow: `0 2px 8px ${accentGlow}`,
                     }}
                     className="text-[9px] font-mono px-1.5 py-0.5 rounded border font-semibold"
                   >

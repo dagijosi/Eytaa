@@ -142,25 +142,29 @@ export function AudioSubtitleSettings({
           <p className="text-xs text-neutral-500 italic">No audio tracks detected.</p>
         ) : (
           <div className="space-y-1">
-            {audioTracks.map((t) => (
+            {audioTracks.map((t) => {
+              const isAudioActive = currentAudioTrackId === t.id;
+              return (
               <button
                 key={t.id}
                 onClick={() => selectAudioTrack(t.id)}
                 style={{
-                  backgroundColor: currentAudioTrackId === t.id ? `${accentGlow}` : undefined,
-                  borderColor: currentAudioTrackId === t.id ? `${accentColor}70` : undefined,
-                  color: currentAudioTrackId === t.id ? accentColor : undefined,
+                  backgroundColor: isAudioActive ? accentColor : undefined,
+                  borderColor: isAudioActive ? accentColor : undefined,
+                  color: isAudioActive ? "var(--accent-text)" : undefined,
+                  boxShadow: isAudioActive ? `0 2px 10px ${accentGlow}` : undefined,
                 }}
                 className={`w-full flex items-center justify-between p-2 rounded-xl border text-left text-xs transition ${
-                  currentAudioTrackId === t.id
+                  isAudioActive
                     ? "font-semibold shadow-sm"
                     : "bg-white/5 border-white/5 hover:bg-white/10 text-neutral-300"
                 }`}
               >
                 <span>{t.title || `Audio Stream ${t.id}`}</span>
-                <span className="font-mono text-[10px] text-neutral-500">{t.lang || "und"}</span>
+                <span className={`font-mono text-[10px] ${isAudioActive ? "opacity-70" : "text-neutral-500"}`}>{t.lang || "und"}</span>
               </button>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -188,15 +192,19 @@ export function AudioSubtitleSettings({
             style={{
               backgroundColor:
                 !currentSubtitleTrackId || currentSubtitleTrackId === 0
-                  ? `${accentGlow}`
+                  ? accentColor
                   : undefined,
               borderColor:
                 !currentSubtitleTrackId || currentSubtitleTrackId === 0
-                  ? `${accentColor}70`
+                  ? accentColor
                   : undefined,
               color:
                 !currentSubtitleTrackId || currentSubtitleTrackId === 0
-                  ? accentColor
+                  ? "var(--accent-text)"
+                  : undefined,
+              boxShadow:
+                !currentSubtitleTrackId || currentSubtitleTrackId === 0
+                  ? `0 2px 10px ${accentGlow}`
                   : undefined,
             }}
             className={`w-full flex items-center justify-between p-2 rounded-xl border text-left text-xs transition ${
@@ -214,9 +222,10 @@ export function AudioSubtitleSettings({
                 key={t.id}
                 onClick={() => selectSubtitleTrack(t.id)}
                 style={{
-                  backgroundColor: isSubActive ? `${accentGlow}` : undefined,
-                  borderColor: isSubActive ? `${accentColor}70` : undefined,
-                  color: isSubActive ? accentColor : undefined,
+                  backgroundColor: isSubActive ? accentColor : undefined,
+                  borderColor: isSubActive ? accentColor : undefined,
+                  color: isSubActive ? "var(--accent-text)" : undefined,
+                  boxShadow: isSubActive ? `0 2px 10px ${accentGlow}` : undefined,
                 }}
                 className={`w-full flex items-center justify-between p-2 rounded-xl border text-left text-xs transition ${
                   isSubActive
@@ -225,7 +234,7 @@ export function AudioSubtitleSettings({
                 }`}
               >
                 <span>{t.title || `Subtitle ${t.id}`}</span>
-                <span className="font-mono text-[10px] text-neutral-500">{t.lang || "und"}</span>
+                <span className={`font-mono text-[10px] ${isSubActive ? "opacity-70" : "text-neutral-500"}`}>{t.lang || "und"}</span>
               </button>
             );
           })}

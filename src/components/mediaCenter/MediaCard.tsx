@@ -212,7 +212,7 @@ function MediaCardBase({
               </span>
             ) : isPartiallyWatched ? (
               <span
-                style={{ backgroundColor: `${accentColor}25`, borderColor: `${accentColor}55`, color: accentColor }}
+                style={{ backgroundColor: accentColor, borderColor: accentColor, color: accentText, boxShadow: `0 2px 8px ${accentGlow}` }}
                 className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border backdrop-blur-md shadow-md shrink-0 whitespace-nowrap"
               >
                 <Clock className="w-2.5 h-2.5" />
@@ -221,9 +221,10 @@ function MediaCardBase({
             ) : isRecentlyAdded ? (
               <span
                 style={{
-                  backgroundColor: `${accentColor}25`,
-                  color: accentColor,
-                  borderColor: `${accentColor}55`,
+                  backgroundColor: accentColor,
+                  color: accentText,
+                  borderColor: accentColor,
+                  boxShadow: `0 2px 8px ${accentGlow}`,
                 }}
                 className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border backdrop-blur-md shrink-0 whitespace-nowrap shadow-sm"
               >

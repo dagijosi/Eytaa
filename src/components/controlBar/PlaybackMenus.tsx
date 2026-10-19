@@ -146,7 +146,7 @@ export function RepeatMenu({ repeatMode, onSetRepeatMode }: RepeatMenuProps) {
                     onSetRepeatMode(opt.mode);
                     setShowRepeatMenu(false);
                   }}
-                  style={isSelected ? { backgroundColor: accentGlow, color: accentColor, borderColor: accentColor } : undefined}
+                  style={isSelected ? { backgroundColor: accentColor, color: "var(--accent-text)", borderColor: accentColor, boxShadow: `0 2px 10px ${accentGlow}` } : undefined}
                   className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs transition text-left ${
                     isSelected ? "font-bold border" : "text-neutral-200 hover:bg-white/10"
                   }`}
@@ -155,10 +155,10 @@ export function RepeatMenu({ repeatMode, onSetRepeatMode }: RepeatMenuProps) {
                     {opt.icon}
                     <div className="flex flex-col">
                       <span>{opt.label}</span>
-                      <span className="text-[10px] font-normal text-neutral-500">{opt.desc}</span>
+                      <span className={`text-[10px] font-normal ${isSelected ? "opacity-75" : "text-neutral-500"}`}>{opt.desc}</span>
                     </div>
                   </div>
-                  {isSelected && <Check style={{ color: accentColor }} className="w-3.5 h-3.5 shrink-0" />}
+                  {isSelected && <Check style={{ color: "var(--accent-text)" }} className="w-3.5 h-3.5 shrink-0" />}
                 </button>
               );
             })}
@@ -215,7 +215,7 @@ export function ProfileMenu({
           }`}
           title={`Active Profile: ${activeProfile.name} (Click to choose)`}
         >
-          {getProfileIcon(activeProfile.icon, accentColor)}
+          {getProfileIcon(activeProfile.icon, accentColor, activeProfileId !== "default")}
           <span className="text-[11px] truncate max-w-[70px]">
             {activeProfile.name.split(" ")[0]}
           </span>
@@ -235,7 +235,7 @@ export function ProfileMenu({
                     onApplyProfile(p.id);
                     setShowProfileMenu(false);
                   }}
-                  style={isSelected ? { backgroundColor: accentGlow, color: accentColor, borderColor: accentColor } : undefined}
+                  style={isSelected ? { backgroundColor: accentColor, color: "var(--accent-text)", borderColor: accentColor, boxShadow: `0 2px 10px ${accentGlow}` } : undefined}
                   className={`flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition text-left ${
                     isSelected
                       ? "font-bold border"
@@ -243,10 +243,10 @@ export function ProfileMenu({
                   }`}
                 >
                   <div className="flex items-center gap-2">
-                    {getProfileIcon(p.icon, accentColor)}
+                    {getProfileIcon(p.icon, accentColor, isSelected)}
                     <span>{p.name}</span>
                   </div>
-                  {isSelected && <Check style={{ color: accentColor }} className="w-3.5 h-3.5" />}
+                  {isSelected && <Check style={{ color: "var(--accent-text)" }} className="w-3.5 h-3.5" />}
                 </button>
               );
             })}

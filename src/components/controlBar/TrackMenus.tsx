@@ -65,7 +65,7 @@ export function AudioTrackMenu({
                       onSelectAudioTrack(track.id);
                       setShowAudioMenu(false);
                     }}
-                    style={selected ? { backgroundColor: accentGlow, color: accentColor } : undefined}
+                    style={selected ? { backgroundColor: accentColor, color: "var(--accent-text)", boxShadow: `0 2px 10px ${accentGlow}` } : undefined}
                     className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition ${
                       selected ? "font-bold" : "text-neutral-300 hover:bg-white/10"
                     }`}
@@ -73,7 +73,7 @@ export function AudioTrackMenu({
                     <span className="truncate">
                       {track.title || track.lang || `Track ${track.id}`}
                     </span>
-                    {selected && <Check className="w-3.5 h-3.5 shrink-0" style={{ color: accentColor }} />}
+                    {selected && <Check className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--accent-text)" }} />}
                   </button>
                 );
               })}
@@ -156,13 +156,13 @@ export function SubtitleMenu({
                 onSelectSubtitleTrack(0);
                 setShowSubMenu(false);
               }}
-              style={!currentSubtitleTrackId ? { backgroundColor: accentGlow, color: accentColor } : undefined}
+              style={!currentSubtitleTrackId ? { backgroundColor: accentColor, color: "var(--accent-text)", boxShadow: `0 2px 10px ${accentGlow}` } : undefined}
               className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition ${
                 !currentSubtitleTrackId ? "font-bold" : "text-neutral-300 hover:bg-white/10"
               }`}
             >
               <span>Off</span>
-              {!currentSubtitleTrackId && <Check className="w-3.5 h-3.5" style={{ color: accentColor }} />}
+              {!currentSubtitleTrackId && <Check className="w-3.5 h-3.5" style={{ color: "var(--accent-text)" }} />}
             </button>
             {subtitleTracks.map((track) => {
               const isSelected = currentSubtitleTrackId === track.id;
@@ -173,13 +173,13 @@ export function SubtitleMenu({
                     onSelectSubtitleTrack(track.id);
                     setShowSubMenu(false);
                   }}
-                  style={isSelected ? { backgroundColor: accentGlow, color: accentColor } : undefined}
+                  style={isSelected ? { backgroundColor: accentColor, color: "var(--accent-text)", boxShadow: `0 2px 10px ${accentGlow}` } : undefined}
                   className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition truncate ${
                     isSelected ? "font-bold" : "text-neutral-300 hover:bg-white/10"
                   }`}
                 >
                   <span className="truncate">{track.title || track.lang || `Track ${track.id}`}</span>
-                  {isSelected && <Check className="w-3.5 h-3.5 shrink-0" style={{ color: accentColor }} />}
+                  {isSelected && <Check className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--accent-text)" }} />}
                 </button>
               );
             })}

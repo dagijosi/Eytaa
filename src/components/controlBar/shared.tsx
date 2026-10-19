@@ -20,35 +20,43 @@ export function activeBtnStyle(
   active: boolean,
   accentColor: string,
   accentGlow: string,
-): { backgroundColor: string; color: string; borderColor: string } | undefined {
+): { backgroundColor: string; color: string; borderColor: string; boxShadow: string } | undefined {
   return active
     ? {
-        backgroundColor: accentGlow,
-        color: accentColor,
+        backgroundColor: accentColor,
+        color: "var(--accent-text)",
         borderColor: accentColor,
+        boxShadow: `0 2px 10px ${accentGlow}`,
       }
     : undefined;
 }
 
-export function getProfileIcon(icon: string, accentColor: string): ReactElement {
+export function getProfileIcon(
+  icon: string,
+  accentColor: string,
+  monochrome = false,
+): ReactElement {
+  const accentStyle = monochrome ? undefined : { color: accentColor };
+  const tone = (className: string) => (monochrome ? "" : className);
+
   switch (icon) {
     case "tv":
-      return <Tv style={{ color: accentColor }} className="w-3.5 h-3.5" />;
+      return <Tv style={accentStyle} className="w-3.5 h-3.5" />;
     case "sparkles":
-      return <Sparkles className="w-3.5 h-3.5 text-amber-300" />;
+      return <Sparkles className={`w-3.5 h-3.5 ${tone("text-amber-300")}`} />;
     case "moon":
-      return <Moon className="w-3.5 h-3.5 text-indigo-400" />;
+      return <Moon className={`w-3.5 h-3.5 ${tone("text-indigo-400")}`} />;
     case "flame":
-      return <Flame className="w-3.5 h-3.5 text-rose-500" />;
+      return <Flame className={`w-3.5 h-3.5 ${tone("text-rose-500")}`} />;
     case "layers":
-      return <Layers style={{ color: accentColor }} className="w-3.5 h-3.5" />;
+      return <Layers style={accentStyle} className="w-3.5 h-3.5" />;
     case "film":
-      return <Film className="w-3.5 h-3.5 text-rose-400" />;
+      return <Film className={`w-3.5 h-3.5 ${tone("text-rose-400")}`} />;
     case "headphones":
-      return <Headphones className="w-3.5 h-3.5 text-sky-400" />;
+      return <Headphones className={`w-3.5 h-3.5 ${tone("text-sky-400")}`} />;
     case "mic":
-      return <Mic className="w-3.5 h-3.5 text-emerald-400" />;
+      return <Mic className={`w-3.5 h-3.5 ${tone("text-emerald-400")}`} />;
     default:
-      return <Sliders className="w-3.5 h-3.5 text-neutral-300" />;
+      return <Sliders className={`w-3.5 h-3.5 ${tone("text-neutral-300")}`} />;
   }
 }

@@ -66,9 +66,10 @@ export function PlaybackSettings({
         <div className="flex items-center gap-3">
           <div
             style={{
-              backgroundColor: `${accentGlow}`,
-              borderColor: `${accentColor}60`,
-              color: accentColor,
+              backgroundColor: accentColor,
+              borderColor: accentColor,
+              color: accentText,
+              boxShadow: `0 2px 10px ${accentGlow}`,
             }}
             className="w-10 h-10 rounded-xl border flex items-center justify-center"
           >

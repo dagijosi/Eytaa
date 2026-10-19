@@ -118,26 +118,29 @@ export function ProfileSettings({
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importJsonText, setImportJsonText] = useState("");
 
-  const getProfileIcon = (icon: string, size = "w-4 h-4") => {
+  const getProfileIcon = (icon: string, size = "w-4 h-4", monochrome = false) => {
+    const accentStyle = monochrome ? undefined : { color: accentColor };
+    const tone = (className: string) => (monochrome ? "" : className);
+
     switch (icon) {
       case "tv":
-        return <Tv style={{ color: accentColor }} className={size} />;
+        return <Tv style={accentStyle} className={size} />;
       case "sparkles":
-        return <Sparkles className={`${size} text-amber-300`} />;
+        return <Sparkles className={`${size} ${tone("text-amber-300")}`} />;
       case "moon":
-        return <Moon className={`${size} text-indigo-400`} />;
+        return <Moon className={`${size} ${tone("text-indigo-400")}`} />;
       case "flame":
-        return <Flame className={`${size} text-rose-500`} />;
+        return <Flame className={`${size} ${tone("text-rose-500")}`} />;
       case "layers":
-        return <Layers style={{ color: accentColor }} className={size} />;
+        return <Layers style={accentStyle} className={size} />;
       case "film":
-        return <Film className={`${size} text-rose-400`} />;
+        return <Film className={`${size} ${tone("text-rose-400")}`} />;
       case "headphones":
-        return <Headphones className={`${size} text-sky-400`} />;
+        return <Headphones className={`${size} ${tone("text-sky-400")}`} />;
       case "mic":
-        return <Mic className={`${size} text-emerald-400`} />;
+        return <Mic className={`${size} ${tone("text-emerald-400")}`} />;
       default:
-        return <Sliders className={`${size} text-neutral-300`} />;
+        return <Sliders className={`${size} ${tone("text-neutral-300")}`} />;
     }
   };
 
@@ -678,20 +681,20 @@ export function ProfileSettings({
                       }
                       style={
                         isMatch
-                          ? { backgroundColor: `${accentGlow}`, borderColor: accentColor }
+                          ? { backgroundColor: accentColor, borderColor: accentColor, color: accentText, boxShadow: `0 2px 10px ${accentGlow}` }
                           : undefined
                       }
                       className={`w-full p-2 rounded-lg border text-left transition flex items-center justify-between cursor-pointer ${
                         isMatch
-                          ? "border-white/30 text-white font-semibold"
+                          ? "font-semibold"
                           : "bg-white/5 border-white/5 text-neutral-300 hover:bg-white/10"
                       }`}
                     >
                       <div>
                         <div className="text-xs">{aud.label}</div>
-                        <div className="text-[10px] text-neutral-400">{aud.desc}</div>
+                        <div className={`text-[10px] ${isMatch ? "opacity-75" : "text-neutral-400"}`}>{aud.desc}</div>
                       </div>
-                      {isMatch && <Check className="w-3.5 h-3.5" style={{ color: accentColor }} />}
+                      {isMatch && <Check className="w-3.5 h-3.5" style={{ color: "var(--accent-text)" }} />}
                     </button>
                   );
                 })}
@@ -956,7 +959,7 @@ export function ProfileSettings({
                     }}
                     className="p-2.5 rounded-xl shrink-0 mt-0.5 border border-white/10 shadow-sm"
                   >
-                    {getProfileIcon(p.icon, "w-4 h-4")}
+                    {getProfileIcon(p.icon, "w-4 h-4", isActive)}
                   </div>
 
                   <div className="min-w-0 space-y-1 flex-1">
@@ -1076,9 +1079,10 @@ export function ProfileSettings({
                     <button
                       onClick={() => applyProfile(p.id)}
                       style={{
-                        backgroundColor: `${accentGlow}`,
-                        color: accentColor,
-                        borderColor: `${accentColor}50`,
+                        backgroundColor: accentColor,
+                        color: accentText,
+                        borderColor: accentColor,
+                        boxShadow: `0 2px 10px ${accentGlow}`,
                       }}
                       className="px-3.5 py-1.5 rounded-xl text-xs font-bold border hover:brightness-110 transition active:scale-95 cursor-pointer ml-1"
                     >

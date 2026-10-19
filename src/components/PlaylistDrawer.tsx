@@ -353,8 +353,8 @@ export function PlaylistDrawer() {
             </span>
             <span
               style={{
-                backgroundColor: `${accentGlow}`,
-                color: accentColor,
+                backgroundColor: accentColor,
+                color: "var(--accent-text)",
                 borderColor: accentColor,
               }}
               className="text-xs border px-2 py-0.5 rounded-full font-mono font-bold"
@@ -533,7 +533,7 @@ export function PlaylistDrawer() {
             onClick={() => setActiveTab("queue")}
             style={
               activeTab === "queue"
-                ? { backgroundColor: accentGlow, color: accentColor, borderColor: accentColor }
+                ? { backgroundColor: accentColor, color: "var(--accent-text)", borderColor: accentColor }
                 : undefined
             }
             className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold border transition ${
@@ -552,7 +552,7 @@ export function PlaylistDrawer() {
             onClick={() => setActiveTab("saved")}
             style={
               activeTab === "saved"
-                ? { backgroundColor: accentGlow, color: accentColor, borderColor: accentColor }
+                ? { backgroundColor: accentColor, color: "var(--accent-text)", borderColor: accentColor }
                 : undefined
             }
             className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold border transition ${
@@ -580,10 +580,10 @@ export function PlaylistDrawer() {
           {savedPlaylists.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center p-6 text-neutral-500">
               <div
-                style={{ backgroundColor: `${accentGlow}`, borderColor: accentColor }}
+                style={{ backgroundColor: accentColor, borderColor: accentColor }}
                 className="w-16 h-16 rounded-2xl border flex items-center justify-center mb-3"
               >
-                <BookMarked style={{ color: accentColor }} className="w-8 h-8" />
+                <BookMarked style={{ color: "var(--accent-text)" }} className="w-8 h-8" />
               </div>
               <p className="text-sm font-bold text-neutral-200">No saved playlists</p>
               <p className="text-xs mt-1 text-neutral-400 max-w-[220px]">
@@ -663,10 +663,10 @@ export function PlaylistDrawer() {
           {playlist.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center p-6 text-neutral-500">
               <div
-                style={{ backgroundColor: `${accentGlow}`, borderColor: accentColor }}
+                style={{ backgroundColor: accentColor, borderColor: accentColor }}
                 className="w-16 h-16 rounded-2xl border flex items-center justify-center mb-3"
               >
-                <Film style={{ color: accentColor }} className="w-8 h-8" />
+                <Film style={{ color: "var(--accent-text)" }} className="w-8 h-8" />
               </div>
               <p className="text-sm font-bold text-neutral-200">Playlist is empty</p>
               <p className="text-xs mt-1 text-neutral-400 mb-5 max-w-[220px]">

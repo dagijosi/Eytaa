@@ -56,9 +56,9 @@ export function UpdateNotificationToast() {
         {/* Glow Sparkle Icon */}
         <div
           style={{
-            backgroundColor: `${accentColor}18`,
-            borderColor: `${accentColor}55`,
-            color: accentColor,
+            backgroundColor: accentColor,
+            borderColor: accentColor,
+            color: accentText,
             boxShadow: `0 0 16px ${accentGlow}`,
           }}
           className="w-9 h-9 rounded-xl border flex items-center justify-center shrink-0"
@@ -73,7 +73,7 @@ export function UpdateNotificationToast() {
               Update Available
             </span>
             <span
-              style={{ backgroundColor: `${accentColor}25`, color: accentColor }}
+              style={{ backgroundColor: accentColor, color: accentText, boxShadow: `0 2px 8px ${accentGlow}` }}
               className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold"
             >
               v{availableUpdate.version}

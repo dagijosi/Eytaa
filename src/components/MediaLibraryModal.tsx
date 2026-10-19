@@ -1031,7 +1031,7 @@ export function MediaLibraryModal() {
                 Smart Media Center
               </h1>
               <span
-                style={{ backgroundColor: `${accentColor}25`, color: accentColor }}
+                style={{ backgroundColor: accentColor, color: accentText, boxShadow: `0 2px 8px ${accentGlow}` }}
                 className="px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-mono font-bold shrink-0"
               >
                 v2.0
@@ -1280,10 +1280,11 @@ export function MediaLibraryModal() {
                       style={
                         isActive
                           ? {
-                              backgroundColor: `${accentColor}25`,
-                              color: accentColor,
+                              backgroundColor: accentColor,
+                              color: accentText,
                               borderLeftColor: !isSidebarCollapsed ? accentColor : undefined,
-                              borderColor: isSidebarCollapsed ? `${accentColor}60` : undefined,
+                              borderColor: isSidebarCollapsed ? accentColor : undefined,
+                              boxShadow: `0 2px 10px ${accentGlow}`,
                             }
                           : {}
                       }
@@ -1361,10 +1362,11 @@ export function MediaLibraryModal() {
                       style={
                         isActive
                           ? {
-                              backgroundColor: `${accentColor}25`,
-                              color: accentColor,
+                              backgroundColor: accentColor,
+                              color: accentText,
                               borderLeftColor: !isSidebarCollapsed ? accentColor : undefined,
-                              borderColor: isSidebarCollapsed ? `${accentColor}60` : undefined,
+                              borderColor: isSidebarCollapsed ? accentColor : undefined,
+                              boxShadow: `0 2px 10px ${accentGlow}`,
                             }
                           : {}
                       }
@@ -1650,7 +1652,7 @@ export function MediaLibraryModal() {
                   <div>
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                       <span
-                        style={{ backgroundColor: `${accentColor}25`, color: accentColor, borderColor: `${accentColor}40` }}
+                        style={{ backgroundColor: accentColor, color: accentText, borderColor: accentColor, boxShadow: `0 2px 8px ${accentGlow}` }}
                         className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase border flex items-center gap-1.5"
                       >
                         <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
@@ -2069,7 +2071,7 @@ export function MediaLibraryModal() {
                     onClick={() => setWatchFilter(f.id as WatchFilter)}
                     style={
                       watchFilter === f.id
-                        ? { backgroundColor: `${accentColor}25`, borderColor: accentColor, color: accentColor }
+                        ? { backgroundColor: accentColor, borderColor: accentColor, color: accentText, boxShadow: `0 2px 8px ${accentGlow}` }
                         : {}
                     }
                     className={`px-3 py-1 rounded-xl text-xs font-semibold border transition cursor-pointer ${
@@ -2146,9 +2148,10 @@ export function MediaLibraryModal() {
                     style={
                       watchFilter === f.id
                         ? {
-                            backgroundColor: `${accentColor}25`,
+                            backgroundColor: accentColor,
                             borderColor: accentColor,
-                            color: accentColor,
+                            color: accentText,
+                            boxShadow: `0 2px 8px ${accentGlow}`,
                           }
                         : {}
                     }

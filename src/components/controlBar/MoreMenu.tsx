@@ -131,7 +131,7 @@ export function MoreMenu({
                 <span>Auto-Play Next</span>
               </div>
               <span
-                style={autoPlayNext ? { backgroundColor: accentGlow, color: accentColor, borderColor: `${accentColor}66` } : undefined}
+                style={autoPlayNext ? { backgroundColor: accentColor, color: "var(--accent-text)", borderColor: accentColor, boxShadow: `0 2px 8px ${accentGlow}` } : undefined}
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                   autoPlayNext
                     ? "border uppercase"
@@ -197,14 +197,14 @@ export function MoreMenu({
                   <button
                     key={p.id}
                     onClick={() => onApplyProfile(p.id)}
-                    style={p.id === activeProfileId ? { backgroundColor: accentGlow, color: accentColor, borderColor: accentColor } : undefined}
+                    style={p.id === activeProfileId ? { backgroundColor: accentColor, color: "var(--accent-text)", borderColor: accentColor, boxShadow: `0 2px 8px ${accentGlow}` } : undefined}
                     className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] transition text-left truncate ${
                       p.id === activeProfileId
                         ? "font-bold border"
                         : "bg-white/5 text-neutral-300 hover:bg-white/10"
                     }`}
                   >
-                    {getProfileIcon(p.icon, accentColor)}
+                    {getProfileIcon(p.icon, accentColor, p.id === activeProfileId)}
                     <span className="truncate">{p.name.split(" ")[0]}</span>
                   </button>
                 ))}
@@ -236,7 +236,7 @@ export function MoreMenu({
                 <span>Playback Stats</span>
               </div>
               <span
-                style={showStats ? { backgroundColor: accentGlow, color: accentColor, borderColor: `${accentColor}66` } : undefined}
+                style={showStats ? { backgroundColor: accentColor, color: "var(--accent-text)", borderColor: accentColor, boxShadow: `0 2px 8px ${accentGlow}` } : undefined}
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                   showStats ? "border" : "bg-white/5 text-neutral-500"
                 }`}

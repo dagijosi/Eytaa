@@ -68,7 +68,7 @@ export function SettingsSidebar({
         {/* Sidebar Title */}
         <div className="px-2.5 py-1.5 flex items-center gap-2.5 shrink-0">
           <div
-            style={{ backgroundColor: accentGlow, color: accentColor }}
+            style={{ backgroundColor: accentColor, color: accentText, boxShadow: `0 2px 10px ${accentGlow}` }}
             className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
           >
             <Sliders className="w-4 h-4" />

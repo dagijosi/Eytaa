@@ -143,9 +143,10 @@ export function UpdateSettings({
               </span>
               <span
                 style={{
-                  backgroundColor: `${accentGlow}`,
-                  color: accentColor,
-                  borderColor: `${accentColor}40`,
+                  backgroundColor: accentColor,
+                  color: accentText,
+                  borderColor: accentColor,
+                  boxShadow: `0 2px 8px ${accentGlow}`,
                 }}
                 className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border"
               >
@@ -253,8 +254,9 @@ export function UpdateSettings({
                 onClick={handleCheckUpdate}
                 disabled={updateStatus.state === "checking"}
                 style={{
-                  backgroundColor: `${accentGlow}`,
-                  color: accentColor,
+                  backgroundColor: accentColor,
+                  color: accentText,
+                  boxShadow: `0 2px 10px ${accentGlow}`,
                 }}
                 className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition hover:brightness-110 active:scale-95 disabled:opacity-50"
               >

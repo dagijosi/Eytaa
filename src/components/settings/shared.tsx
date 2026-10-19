@@ -52,7 +52,7 @@ export function RestoreDefaultsDialog({
       <div className="bg-neutral-900 border border-white/15 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
         <div className="flex items-center gap-3">
           <div
-            style={{ backgroundColor: `${accentGlow}`, color: accentColor }}
+            style={{ backgroundColor: accentColor, color: accentText, boxShadow: `0 2px 10px ${accentGlow}` }}
             className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border border-white/10"
           >
             <RotateCcw className="w-5 h-5" />

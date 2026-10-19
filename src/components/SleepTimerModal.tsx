@@ -65,7 +65,7 @@ export function SleepTimerModal({ isOpen, onClose }: SleepTimerModalProps) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0 bg-white/[0.02]">
           <div className="flex items-center gap-2.5">
             <div
-              style={{ backgroundColor: accentGlow, borderColor: `${accentColor}44`, color: accentColor }}
+              style={{ backgroundColor: accentColor, borderColor: accentColor, color: accentText }}
               className="w-8 h-8 rounded-xl border flex items-center justify-center"
             >
               <Moon className="w-4 h-4" />
@@ -91,7 +91,7 @@ export function SleepTimerModal({ isOpen, onClose }: SleepTimerModalProps) {
           {/* Active Countdown Card */}
           {sleepTimer.isActive && (
             <div
-              style={{ backgroundColor: accentGlow, borderColor: `${accentColor}55` }}
+              style={{ backgroundColor: accentGlow, borderColor: accentColor }}
               className="p-4 rounded-xl border flex flex-col gap-3"
             >
               <div className="flex items-center justify-between">
@@ -100,11 +100,11 @@ export function SleepTimerModal({ isOpen, onClose }: SleepTimerModalProps) {
                     <span style={{ backgroundColor: accentColor }} className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"></span>
                     <span style={{ backgroundColor: accentColor }} className="relative inline-flex rounded-full h-2.5 w-2.5"></span>
                   </span>
-                  <span style={{ color: accentColor }} className="text-xs font-semibold uppercase tracking-wider">
+                  <span className="text-white text-xs font-semibold uppercase tracking-wider">
                     Sleep Timer Active
                   </span>
                 </div>
-                <span style={{ color: accentColor }} className="text-xl font-mono font-bold">
+                <span className="text-white text-xl font-mono font-bold">
                   {formatCountdown(sleepTimer.remainingSeconds)}
                 </span>
               </div>
@@ -126,14 +126,14 @@ export function SleepTimerModal({ isOpen, onClose }: SleepTimerModalProps) {
               <div className="flex items-center gap-2 pt-1">
                 <button
                   onClick={() => addSleepTimerMinutes(15)}
-                  style={{ backgroundColor: accentGlow, color: accentColor }}
+                  style={{ backgroundColor: accentColor, color: accentText, boxShadow: `0 2px 10px ${accentGlow}` }}
                   className="flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1 hover:brightness-125"
                 >
                   <Plus className="w-3.5 h-3.5" /> +15 min
                 </button>
                 <button
                   onClick={() => addSleepTimerMinutes(30)}
-                  style={{ backgroundColor: accentGlow, color: accentColor }}
+                  style={{ backgroundColor: accentColor, color: accentText, boxShadow: `0 2px 10px ${accentGlow}` }}
                   className="flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1 hover:brightness-125"
                 >
                   <Plus className="w-3.5 h-3.5" /> +30 min
@@ -228,7 +228,7 @@ export function SleepTimerModal({ isOpen, onClose }: SleepTimerModalProps) {
                 <button
                   type="button"
                   onClick={() => setAction("pause")}
-                  style={action === "pause" ? { backgroundColor: accentGlow, borderColor: accentColor, color: accentColor } : undefined}
+                  style={action === "pause" ? { backgroundColor: accentColor, borderColor: accentColor, color: accentText, boxShadow: `0 2px 10px ${accentGlow}` } : undefined}
                   className={`py-1.5 px-3 rounded-lg border text-xs font-medium transition flex items-center justify-center gap-1.5 ${
                     action === "pause"
                       ? "font-semibold"
@@ -240,7 +240,7 @@ export function SleepTimerModal({ isOpen, onClose }: SleepTimerModalProps) {
                 <button
                   type="button"
                   onClick={() => setAction("closeApp")}
-                  style={action === "closeApp" ? { backgroundColor: accentGlow, borderColor: accentColor, color: accentColor } : undefined}
+                  style={action === "closeApp" ? { backgroundColor: accentColor, borderColor: accentColor, color: accentText, boxShadow: `0 2px 10px ${accentGlow}` } : undefined}
                   className={`py-1.5 px-3 rounded-lg border text-xs font-medium transition flex items-center justify-center gap-1.5 ${
                     action === "closeApp"
                       ? "font-semibold"

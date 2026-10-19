@@ -4,6 +4,21 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ---
 
+## [0.2.6] - 2026-10-19
+
+### 🎨 UI & Readability
+- **High-Contrast Active States**: Reworked every active/selected control to use a solid accent fill with the theme’s guaranteed-contrast accent text, eliminating faded accent-on-accent icons and labels. Applied across playlist queue/saved tabs, auto-play next, repeat, audio/subtitle tracks, playback profiles, always-on-top pin, PiP restore, sleep timer, update badges and toasts, media library filters, metadata editor, and settings panels.
+- **Theme-Aware Profile Icons**: Selected profile icons now inherit the active foreground color instead of blending into the accent background.
+
+### 📺 Media Center
+- **One-Click Season Pills**: Replaced the scrolling season tab strip with compact season pills that wrap onto multiple rows, showing watched/total progress per season plus an All Episodes option. Every season remains directly selectable in a single click, with no dropdown or extra step.
+
+### 🔄 Updater
+- **Persistent Update State**: Update check results are now cached and restored across sessions, with version-aware comparison (`isNewerVersion`) so stale or equal-version results no longer surface as available updates.
+- **Stale Indicator Cleanup**: The TopBar update dot, menu badge, and update toasts now clear automatically when the installed app is already up to date.
+
+---
+
 ## [0.2.5] - 2026-10-17
 
 ### 🎨 Deep Theming & Aesthetic Customization

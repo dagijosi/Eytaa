@@ -60,8 +60,9 @@ export function HistorySettings({
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 <div
                   style={{
-                    backgroundColor: `${accentGlow}`,
-                    color: accentColor,
+                    backgroundColor: accentColor,
+                    color: "var(--accent-text)",
+                    boxShadow: `0 2px 10px ${accentGlow}`,
                   }}
                   className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition"
                 >

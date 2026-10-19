@@ -485,7 +485,7 @@ export function TopBar() {
                 </div>
                 {hasRealUpdate && availableUpdate && (
                   <span
-                    style={{ backgroundColor: `${accentColor}25`, color: accentColor }}
+                    style={{ backgroundColor: accentColor, color: "var(--accent-text)", boxShadow: `0 2px 8px ${accentGlow}` }}
                     className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold"
                   >
                     v{availableUpdate.version}
@@ -557,8 +557,9 @@ export function TopBar() {
           style={
             isAlwaysOnTop
               ? {
-                  backgroundColor: accentGlow,
-                  color: accentColor,
+                  backgroundColor: accentColor,
+                  color: "var(--accent-text)",
+                  boxShadow: `0 2px 10px ${accentGlow}`,
                 }
               : undefined
           }

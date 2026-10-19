@@ -183,6 +183,29 @@ export function SeriesDetailView({
     seasons.length > 0 ? seasons[0] : "all",
   );
 
+  // Per-season progress summaries (shown on the season pills)
+  const seasonSummaries = useMemo(
+    () =>
+      seasons.map((season) => {
+        const seasonEps = seriesEpisodes.filter(
+          (ep) => (ep.season_number ?? 1) === season,
+        );
+        return {
+          season,
+          total: seasonEps.length,
+          watched: seasonEps.filter((ep) => ep.is_watched).length,
+        };
+      }),
+    [seasons, seriesEpisodes],
+  );
+
+  const activeSeasonLabel =
+    activeSeason === "all"
+      ? "All Episodes"
+      : activeSeason === 0
+        ? "Specials"
+        : `Season ${activeSeason}`;
+
   // Filter episodes by season
   const displayEpisodes = useMemo(() => {
     if (activeSeason === "all") return seriesEpisodes;
@@ -586,40 +609,42 @@ export function SeriesDetailView({
         </div>
       </div>
 
-      {/* Season Selector Tabs */}
-      <div className="flex items-center justify-between border-b border-white/10 pb-3">
-        <div className="flex items-center gap-2 overflow-x-auto">
+      {/* Season Selector */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
+        <div className="flex flex-1 flex-wrap items-center gap-1.5 min-w-0">
           {seasons.map((season) => {
             const isSelected = activeSeason === season;
-            const seasonEps = seriesEpisodes.filter(
-              (ep) => (ep.season_number ?? 1) === season,
-            );
-            const seasonWatched = seasonEps.filter(
-              (ep) => ep.is_watched,
-            ).length;
-
+            const summary = seasonSummaries.find((s) => s.season === season);
+            const label = season === 0 ? "Specials" : `Season ${season}`;
             return (
               <button
                 key={season}
+                type="button"
                 onClick={() => setActiveSeason(season)}
                 style={
                   isSelected
                     ? {
-                        backgroundColor: `${accentColor}25`,
+                        backgroundColor: accentColor,
+                        color: accentText,
                         borderColor: accentColor,
-                        color: accentColor,
+                        boxShadow: `0 2px 10px ${accentGlow}`,
                       }
-                    : {}
+                    : undefined
                 }
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition cursor-pointer shrink-0 ${
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition cursor-pointer ${
                   isSelected
-                    ? "shadow-sm"
-                    : "bg-white/5 border-transparent text-neutral-400 hover:text-white hover:bg-white/10"
+                    ? "font-bold"
+                    : "bg-white/5 border-white/5 text-neutral-300 hover:text-white hover:bg-white/10 hover:border-white/15"
                 }`}
+                title={`${label} — ${summary?.watched ?? 0}/${summary?.total ?? 0} watched`}
               >
-                <span>{season === 0 ? "Specials" : `Season ${season}`}</span>
-                <span className="text-[10px] font-mono opacity-60">
-                  ({seasonWatched}/{seasonEps.length})
+                <span>{label}</span>
+                <span
+                  className={`text-[9px] font-mono ${
+                    isSelected ? "opacity-70" : "text-neutral-500"
+                  }`}
+                >
+                  {summary?.watched ?? 0}/{summary?.total ?? 0}
                 </span>
               </button>
             );
@@ -627,23 +652,33 @@ export function SeriesDetailView({
 
           {seasons.length > 1 && (
             <button
+              type="button"
               onClick={() => setActiveSeason("all")}
               style={
                 activeSeason === "all"
                   ? {
-                      backgroundColor: `${accentColor}25`,
+                      backgroundColor: accentColor,
+                      color: accentText,
                       borderColor: accentColor,
-                      color: accentColor,
+                      boxShadow: `0 2px 10px ${accentGlow}`,
                     }
-                  : {}
+                  : undefined
               }
-              className={`px-4 py-2 rounded-xl text-xs font-bold border transition cursor-pointer shrink-0 ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition cursor-pointer ${
                 activeSeason === "all"
-                  ? "shadow-sm"
-                  : "bg-white/5 border-transparent text-neutral-400 hover:text-white hover:bg-white/10"
+                  ? "font-bold"
+                  : "bg-white/5 border-white/5 text-neutral-300 hover:text-white hover:bg-white/10 hover:border-white/15"
               }`}
+              title={`All Episodes — ${watchedCount}/${totalCount} watched`}
             >
-              All Episodes ({totalCount})
+              <span>All Episodes</span>
+              <span
+                className={`text-[9px] font-mono ${
+                  activeSeason === "all" ? "opacity-70" : "text-neutral-500"
+                }`}
+              >
+                {watchedCount}/{totalCount}
+              </span>
             </button>
           )}
         </div>
@@ -652,10 +687,10 @@ export function SeriesDetailView({
         {typeof activeSeason === "number" && (
           <button
             onClick={() => handleToggleSeasonWatched(activeSeason)}
-            className="text-xs text-neutral-400 hover:text-white flex items-center gap-1.5 transition cursor-pointer"
+            className="text-xs text-neutral-400 hover:text-white flex items-center gap-1.5 transition cursor-pointer shrink-0"
           >
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Mark Season {activeSeason} Watched</span>
+            <span>Mark {activeSeasonLabel} Watched</span>
           </button>
         )}
       </div>
