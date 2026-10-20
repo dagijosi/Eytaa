@@ -73,17 +73,28 @@ done < <(find "$STAGING_DIR" "$STAGING_BIN_DIR" -type f \( -name "*.dylib" -o -n
 
 find "$STAGING_DIR" "$STAGING_BIN_DIR" -type f \( -name "*.dylib" -o -name "ffmpeg" \) -exec codesign --force --sign - {} \;
 
-if otool -L "$STAGING_DIR"/*.dylib "$STAGING_BIN_DIR/ffmpeg" | grep -E "/opt/homebrew|/usr/local/(Cellar|opt)"; then
-  echo "prepare-macos-libs: bundled binaries still reference Homebrew paths." >&2
-  exit 1
-fi
+for binary in "$STAGING_DIR"/*.dylib "$STAGING_BIN_DIR/ffmpeg"; do
+  # otool prints a filename header, and dylibs also print their own install name
+  # (LC_ID_DYLIB) first. The ID may legitimately point at Homebrew; only the
+  # actual dependency entries matter for runtime.
+  start_line=2
+  if [[ "$binary" == *.dylib ]]; then
+    start_line=3
+  fi
+
+  if otool -L "$binary" | tail -n +"$start_line" | grep -E "/opt/homebrew|/usr/local/(Cellar|opt)"; then
+    echo "prepare-macos-libs: $binary still references Homebrew paths." >&2
+    exit 1
+  fi
+done
 
 while IFS= read -r dependency; do
   dependency="${dependency#@rpath/}"
+  dependency="${dependency#@executable_path/lib/}"
   if [[ ! -f "$STAGING_DIR/$dependency" ]]; then
     echo "prepare-macos-libs: missing bundled dependency $dependency." >&2
     exit 1
   fi
-done < <(otool -L "$STAGING_DIR"/*.dylib "$STAGING_BIN_DIR/ffmpeg" | awk '/@rpath\// { print $1 }' | sort -u)
+done < <(otool -L "$STAGING_DIR"/*.dylib "$STAGING_BIN_DIR/ffmpeg" | awk '/@rpath\// || /@executable_path\/lib\// { print $1 }' | sort -u)
 
 echo "prepare-macos-libs: bundled $(find "$STAGING_DIR" -type f -name "*.dylib" | wc -l | tr -d ' ') dylibs and ffmpeg into $STAGING_DIR / $STAGING_BIN_DIR."
