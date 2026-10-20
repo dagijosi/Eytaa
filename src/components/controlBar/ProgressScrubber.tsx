@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useThemeStore } from "../../stores/themeStore";
 import { usePlayerStore } from "../../stores/playerStore";
 import { formatSeconds } from "./shared";
@@ -32,12 +32,12 @@ export function ProgressScrubber({ currentTime, duration, seek }: ProgressScrubb
 
   // Coalesce rapid scrub seeks into a single IPC call per animation frame so
   // dragging the scrubber doesn't flood the mpv command queue.
-  const flushPendingSeek = () => {
+  const flushPendingSeek = useCallback(() => {
     if (pendingSeekRef.current !== null) {
       seek(pendingSeekRef.current);
       pendingSeekRef.current = null;
     }
-  };
+  }, [seek]);
 
   const scheduleSeek = (seconds: number) => {
     pendingSeekRef.current = seconds;
@@ -88,7 +88,7 @@ export function ProgressScrubber({ currentTime, duration, seek }: ProgressScrubb
     };
     window.addEventListener("mouseup", handleMouseUp);
     return () => window.removeEventListener("mouseup", handleMouseUp);
-  }, [isScrubbing]);
+  }, [isScrubbing, flushPendingSeek]);
 
   const trackHeightClass =
     scrubberHeight === "slim"

@@ -19,6 +19,8 @@ import {
   libraryService,
 } from "../../services/library/libraryService";
 import { normalizeSeriesKey } from "../../utils/mediaTitle";
+import { pickPosterItem } from "../../utils/mediaPoster";
+import { useResolvedPoster } from "../../hooks/useResolvedPoster";
 import { MediaCard } from "./MediaCard";
 import { ProceduralPoster } from "./ProceduralPoster";
 
@@ -116,49 +118,18 @@ export function SeriesDetailView({
       });
   }, [items, seriesKey, showAllEpisodes, unfilteredEpisodes]);
 
+  // Prefer the first episode with a custom poster, falling back to the first episode.
+  const posterItem = useMemo(
+    () => pickPosterItem(seriesEpisodes) ?? seriesEpisodes[0],
+    [seriesEpisodes],
+  );
+
   // Dynamic series hero poster
-  const [heroThumb, setHeroThumb] = useState<string | null>(() => {
-    const sample =
-      seriesEpisodes.find((ep) => ep.custom_poster) || seriesEpisodes[0];
-    const cp = sample?.custom_poster?.trim();
-    if (cp && (cp.startsWith("data:") || cp.startsWith("http://") || cp.startsWith("https://"))) {
-      return cp;
-    }
-    return null;
-  });
-
-  useEffect(() => {
-    const sample =
-      seriesEpisodes.find((ep) => ep.custom_poster) || seriesEpisodes[0];
-    if (!sample) return;
-
-    let isMounted = true;
-    if (sample.custom_poster) {
-      const cp = sample.custom_poster.trim();
-      if (cp.startsWith("data:") || cp.startsWith("http://") || cp.startsWith("https://")) {
-        setHeroThumb(cp);
-      } else {
-        libraryService.getThumbnail(cp).then((thumb) => {
-          if (isMounted && thumb) {
-            setHeroThumb(thumb);
-          }
-        });
-      }
-      return () => {
-        isMounted = false;
-      };
-    }
-
-    libraryService.getThumbnail(sample.file_path).then((thumb) => {
-      if (isMounted && thumb) {
-        setHeroThumb(thumb);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [seriesEpisodes]);
+  const [heroThumb, setHeroThumb] = useResolvedPoster(
+    posterItem?.custom_poster,
+    posterItem?.file_path,
+  );
+  const hasCustomCover = Boolean(posterItem?.custom_poster?.trim());
 
   // Helper to play an episode and automatically enqueue subsequent episodes in playlist
   const handlePlayEpisodeWithQueue = (targetPath: string) => {
@@ -303,24 +274,16 @@ export function SeriesDetailView({
           },
         ],
       });
-      if (selected && typeof selected === "string") {
-        const sample =
-          seriesEpisodes.find((ep) => ep.custom_poster) || seriesEpisodes[0];
-        if (sample) {
-          await libraryService.updateMediaMetadata({
-            filePath: sample.file_path,
-            title: sample.title,
-            category: "series",
-            seriesName: seriesName,
-            customPoster: selected,
-            applyToSeries: true,
-          });
-          const resolved = await libraryService.getThumbnail(selected);
-          if (resolved) {
-            setHeroThumb(resolved);
-          }
-          await onRefreshData();
-        }
+      if (selected && typeof selected === "string" && posterItem) {
+        await libraryService.updateMediaMetadata({
+          filePath: posterItem.file_path,
+          title: posterItem.title,
+          category: "series",
+          seriesName: seriesName,
+          customPoster: selected,
+          applyToSeries: true,
+        });
+        await onRefreshData();
       }
     } catch (e) {
       console.error("Change series cover error:", e);
@@ -331,20 +294,16 @@ export function SeriesDetailView({
 
   const handleResetCover = async () => {
     try {
-      const sample =
-        seriesEpisodes.find((ep) => ep.custom_poster) || seriesEpisodes[0];
-      if (sample) {
-        await libraryService.updateMediaMetadata({
-          filePath: sample.file_path,
-          title: sample.title,
-          category: "series",
-          seriesName: seriesName,
-          customPoster: undefined,
-          applyToSeries: true,
-        });
-        setHeroThumb(null);
-        await onRefreshData();
-      }
+      if (!posterItem) return;
+      await libraryService.updateMediaMetadata({
+        filePath: posterItem.file_path,
+        title: posterItem.title,
+        category: "series",
+        seriesName: seriesName,
+        customPoster: undefined,
+        applyToSeries: true,
+      });
+      await onRefreshData();
     } catch (e) {
       console.error("Reset series cover error:", e);
     }
@@ -451,9 +410,9 @@ export function SeriesDetailView({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-neutral-300 hover:text-white transition cursor-pointer"
           >
             <ImageIcon className="w-3.5 h-3.5" />
-            <span>{heroThumb ? "Change Cover" : "Add Cover"}</span>
+            <span>{hasCustomCover ? "Change Cover" : "Add Cover"}</span>
           </button>
-          {heroThumb && (
+          {hasCustomCover && (
             <button
               type="button"
               onClick={handleResetCover}

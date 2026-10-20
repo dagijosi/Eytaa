@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, memo } from "react";
 import { Play, Plus, Heart, CheckCircle2, Circle, Edit3, Clock } from "lucide-react";
 import { useThemeStore } from "../../stores/themeStore";
-import { libraryService, LibraryItem } from "../../services/library/libraryService";
+import { LibraryItem } from "../../services/library/libraryService";
+import { useResolvedPoster } from "../../hooks/useResolvedPoster";
 import { ProceduralPoster } from "./ProceduralPoster";
 
 interface MediaCardProps {
@@ -61,8 +62,12 @@ function MediaCardBase({
   showSeriesTitle = true,
 }: MediaCardProps) {
   const { accentColor, accentGlow, accentText } = useThemeStore();
-  const [thumbSrc, setThumbSrc] = useState<string | null>(null);
   const [isVisible, setIsVisible] = useState(false);
+  const [thumbSrc, setThumbSrc] = useResolvedPoster(
+    item.custom_poster,
+    item.file_path,
+    isVisible,
+  );
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Lazy thumbnail loader
@@ -83,43 +88,6 @@ function MediaCardBase({
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
-
-  useEffect(() => {
-    if (!isVisible) return;
-    let isMounted = true;
-
-    if (item.custom_poster) {
-      const cp = item.custom_poster.trim();
-      if (cp.startsWith("data:") || cp.startsWith("http://") || cp.startsWith("https://")) {
-        setThumbSrc(cp);
-      } else {
-        libraryService
-          .getThumbnail(cp)
-          .then((src) => {
-            if (isMounted && src) {
-              setThumbSrc(src);
-            }
-          })
-          .catch(() => {});
-      }
-      return () => {
-        isMounted = false;
-      };
-    }
-
-    libraryService
-      .getThumbnail(item.file_path)
-      .then((src) => {
-        if (isMounted && src) {
-          setThumbSrc(src);
-        }
-      })
-      .catch(() => {});
-
-    return () => {
-      isMounted = false;
-    };
-  }, [isVisible, item.file_path, item.custom_poster]);
 
   // Compute watch progress
   const hasResume = typeof item.resume_position === "number" && item.resume_position > 10;

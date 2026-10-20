@@ -3,6 +3,7 @@ import { X, Save, Film, Tv, Music, Video, FolderOpen } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useThemeStore } from "../../stores/themeStore";
 import { libraryService, LibraryItem } from "../../services/library/libraryService";
+import { resolvePoster } from "../../utils/mediaPoster";
 
 interface EditMetadataModalProps {
   item: LibraryItem | null;
@@ -45,25 +46,9 @@ function EditMetadataModalContent({
   // Live artwork preview resolver
   useEffect(() => {
     let isMounted = true;
-    const trimmed = customPoster.trim();
-    if (!trimmed) {
-      setPosterPreview(null);
-      return;
-    }
-    if (trimmed.startsWith("data:") || trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-      setPosterPreview(trimmed);
-      return;
-    }
-    libraryService
-      .getThumbnail(trimmed)
-      .then((src) => {
-        if (isMounted) {
-          setPosterPreview(src);
-        }
-      })
-      .catch(() => {
-        if (isMounted) setPosterPreview(null);
-      });
+    resolvePoster(customPoster).then((src) => {
+      if (isMounted) setPosterPreview(src);
+    });
 
     return () => {
       isMounted = false;

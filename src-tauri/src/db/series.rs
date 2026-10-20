@@ -97,14 +97,22 @@ pub fn db_get_series_overview(
 
     let mut stmt = conn
         .prepare(
-            "SELECT series_key,
+            "SELECT li.series_key,
                     COUNT(*) as episode_count,
-                    COUNT(DISTINCT COALESCE(season_number,1)) as season_count,
-                    SUM(COALESCE(is_watched,0)) as watched_count,
-                    MAX(custom_poster) as custom_poster
-             FROM library_items
-             WHERE COALESCE(series_key,'') != ''
-             GROUP BY series_key",
+                    COUNT(DISTINCT COALESCE(li.season_number,1)) as season_count,
+                    SUM(COALESCE(li.is_watched,0)) as watched_count,
+                    (SELECT li2.custom_poster
+                     FROM library_items li2
+                     WHERE li2.series_key = li.series_key
+                       AND COALESCE(TRIM(li2.custom_poster),'') != ''
+                     ORDER BY CASE WHEN COALESCE(li2.season_number,0) = 0 THEN 9999
+                                   ELSE COALESCE(li2.season_number,0) END ASC,
+                              COALESCE(li2.episode_number,0) ASC,
+                              li2.title COLLATE NOCASE ASC
+                     LIMIT 1) as custom_poster
+             FROM library_items li
+             WHERE COALESCE(li.series_key,'') != ''
+             GROUP BY li.series_key",
         )
         .map_err(|e| e.to_string())?;
     let rows: Vec<(String, i64, i64, i64, Option<String>)> = stmt

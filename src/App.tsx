@@ -310,6 +310,30 @@ export default function App() {
     };
   }, [resetHideTimer]);
 
+  const handleDroppedPaths = useCallback(
+    async (paths: string[], mode: "play" | "playlist") => {
+      if (!paths || paths.length === 0) return;
+
+      // Detect if dropped file is an external subtitle file (.srt, .vtt, .ass, .ssa, .sub, .lrc)
+      const ext = paths[0].split(".").pop()?.toLowerCase() || "";
+      const SUBTITLE_EXTS = new Set(["srt", "vtt", "ass", "ssa", "sub", "lrc"]);
+      if (SUBTITLE_EXTS.has(ext) && (status === "playing" || status === "paused")) {
+        await loadSubtitle(paths[0]);
+        return;
+      }
+
+      if (mode === "play") {
+        await openFile(paths[0]);
+        if (paths.length > 1) {
+          addToPlaylist(paths.slice(1));
+        }
+      } else {
+        addToPlaylist(paths);
+      }
+    },
+    [status, loadSubtitle, openFile, addToPlaylist],
+  );
+
   // Tauri Native Drag-and-Drop listener
   useEffect(() => {
     let unlistenDragDrop: (() => void) | null = null;
@@ -342,28 +366,7 @@ export default function App() {
     return () => {
       if (unlistenDragDrop) unlistenDragDrop();
     };
-  }, []);
-
-  const handleDroppedPaths = async (paths: string[], mode: "play" | "playlist") => {
-    if (!paths || paths.length === 0) return;
-
-    // Detect if dropped file is an external subtitle file (.srt, .vtt, .ass, .ssa, .sub, .lrc)
-    const ext = paths[0].split(".").pop()?.toLowerCase() || "";
-    const SUBTITLE_EXTS = new Set(["srt", "vtt", "ass", "ssa", "sub", "lrc"]);
-    if (SUBTITLE_EXTS.has(ext) && (status === "playing" || status === "paused")) {
-      await loadSubtitle(paths[0]);
-      return;
-    }
-
-    if (mode === "play") {
-      await openFile(paths[0]);
-      if (paths.length > 1) {
-        addToPlaylist(paths.slice(1));
-      }
-    } else {
-      addToPlaylist(paths);
-    }
-  };
+  }, [handleDroppedPaths]);
 
   // Fullscreen toggle helper
   const handleToggleFullscreen = async () => {

@@ -55,6 +55,8 @@ import { EditMetadataModal } from "./mediaCenter/EditMetadataModal";
 import { SeriesDetailView } from "./mediaCenter/SeriesDetailView";
 import { ProceduralPoster } from "./mediaCenter/ProceduralPoster";
 import { normalizeSeriesKey } from "../utils/mediaTitle";
+import { pickPosterItem } from "../utils/mediaPoster";
+import { useResolvedPoster } from "../hooks/useResolvedPoster";
 
 type MediaCenterTab = "hub" | "movies" | "series" | "music" | "all" | "favorites" | "duplicates" | "folders";
 type WatchFilter = "all" | "in_progress" | "unwatched" | "watched";
@@ -108,6 +110,7 @@ interface SeriesGroupItem {
   seriesKey: string;
   seriesName: string;
   sampleItem: LibraryItem;
+  poster?: string;
   seasonsCount: number;
   episodesCount: number;
   watchedCount: number;
@@ -128,44 +131,11 @@ function SeriesCard({
   viewFormat?: "poster" | "widescreen";
 }) {
   const { accentColor } = useThemeStore();
-  const [thumbSrc, setThumbSrc] = useState<string | null>(() => {
-    const cp = group.sampleItem.custom_poster?.trim();
-    if (cp && (cp.startsWith("data:") || cp.startsWith("http://") || cp.startsWith("https://"))) {
-      return cp;
-    }
-    return null;
-  });
+  const [thumbSrc, setThumbSrc] = useResolvedPoster(
+    group.poster,
+    group.sampleItem.file_path,
+  );
   const isWidescreen = viewFormat === "widescreen";
-
-  useEffect(() => {
-    let isMounted = true;
-    const cp = group.sampleItem.custom_poster?.trim();
-
-    if (cp) {
-      if (cp.startsWith("data:") || cp.startsWith("http://") || cp.startsWith("https://")) {
-        setThumbSrc(cp);
-      } else {
-        libraryService.getThumbnail(cp).then((thumb) => {
-          if (isMounted && thumb) {
-            setThumbSrc(thumb);
-          }
-        });
-      }
-      return () => {
-        isMounted = false;
-      };
-    }
-
-    libraryService.getThumbnail(group.sampleItem.file_path).then((thumb) => {
-      if (isMounted) {
-        setThumbSrc(thumb);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [group.sampleItem.file_path, group.sampleItem.custom_poster]);
 
   return (
     <div
@@ -580,9 +550,13 @@ export function MediaLibraryModal() {
         seasonsSet.add(ep.season_number ?? 1);
         if (ep.is_watched) watchedCount++;
       }
-      const sampleItem = episodes.find((ep) => ep.custom_poster) || episodes[0];
+      const sampleItem = episodes[0];
       // Prefer authoritative overview counts so search never fragments a series
       const overview = overviewByKey.get(key);
+      const poster =
+        overview?.custom_poster?.trim() ||
+        pickPosterItem(episodes)?.custom_poster?.trim() ||
+        undefined;
       if (overview) {
         if (overview.display_name) displayName = overview.display_name;
         const total = overview.episode_count;
@@ -591,22 +565,24 @@ export function MediaLibraryModal() {
           seriesKey: key,
           seriesName: displayName,
           episodes,
+          sampleItem,
+          poster,
           seasonsCount: overview.season_count,
           episodesCount: total,
           watchedCount: watched,
           progressPercent: total > 0 ? Math.round((watched / total) * 100) : 0,
-          sampleItem,
         };
       }
       return {
         seriesKey: key,
         seriesName: displayName,
         episodes,
+        sampleItem,
+        poster,
         seasonsCount: seasonsSet.size,
         episodesCount: episodes.length,
         watchedCount,
         progressPercent: episodes.length > 0 ? Math.round((watchedCount / episodes.length) * 100) : 0,
-        sampleItem,
       };
     });
 
@@ -684,34 +660,10 @@ export function MediaLibraryModal() {
     return null;
   }, [continueWatchingItems, movies, items]);
 
-  const [spotlightThumb, setSpotlightThumb] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!spotlightItem) {
-      setSpotlightThumb(null);
-      return;
-    }
-    let isMounted = true;
-    if (spotlightItem.custom_poster) {
-      const cp = spotlightItem.custom_poster.trim();
-      if (cp.startsWith("data:") || cp.startsWith("http://") || cp.startsWith("https://")) {
-        setSpotlightThumb(cp);
-      } else {
-        libraryService.getThumbnail(cp).then((src) => {
-          if (isMounted && src) setSpotlightThumb(src);
-        });
-      }
-      return () => {
-        isMounted = false;
-      };
-    }
-    libraryService.getThumbnail(spotlightItem.file_path).then((src) => {
-      if (isMounted && src) setSpotlightThumb(src);
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, [spotlightItem]);
+  const [spotlightThumb, setSpotlightThumb] = useResolvedPoster(
+    spotlightItem?.custom_poster,
+    spotlightItem?.file_path,
+  );
 
   // Handler to pick cover image for an entire TV series
   const handlePickSeriesCover = async (group: SeriesGroupItem) => {
@@ -1594,10 +1546,7 @@ export function MediaLibraryModal() {
             }}
             cardFormat={cardFormat}
             onToggleCardFormat={handleToggleCardFormat}
-            onBack={() => {
-              setInspectingSeriesName(null);
-              loadData();
-            }}
+            onBack={() => setInspectingSeriesName(null)}
             onPlay={handlePlayItem}
             onQueue={handleQueueItem}
             onEdit={(item) => setEditingItem(item)}
@@ -1933,7 +1882,7 @@ export function MediaLibraryModal() {
                 >
                   {seriesGroups.slice(0, 5).map((group) => (
                     <SeriesCard
-                      key={group.seriesName}
+                      key={group.seriesKey || group.seriesName}
                       group={group}
                       viewFormat={cardFormat}
                       onClick={() => setInspectingSeriesName(group.seriesName)}
@@ -2238,7 +2187,7 @@ export function MediaLibraryModal() {
               <VirtualizedMediaGrid
                 items={seriesGroups}
                 scrollRef={scrollRef}
-                getKey={(group) => group.seriesName}
+                getKey={(group) => group.seriesKey || group.seriesName}
                 cardFormat={cardFormat}
                 gap={16}
                 posterColumns={[2, 3, 4, 5]}
@@ -2246,7 +2195,6 @@ export function MediaLibraryModal() {
                 rowEstimate={260}
                 renderItem={(group) => (
                   <SeriesCard
-                    key={group.seriesKey || group.seriesName}
                     group={group}
                     viewFormat={cardFormat}
                     onClick={() => setInspectingSeriesName(group.seriesName)}
