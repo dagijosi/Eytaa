@@ -4,6 +4,19 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ---
 
+## [0.2.7] - 2026-10-20
+
+### 📺 Media Center & Series Management
+- **Deterministic Series Poster Query**: Upgraded the `db_get_series_overview` database query with an ordered subquery that selects custom series posters prioritized deterministically by season and episode sequence (rather than an arbitrary max string), ensuring series cards consistently display the intended cover artwork.
+- **Unified Poster Resolver**: Introduced a centralized `useResolvedPoster` React hook and `mediaPoster` utility module (`resolvePoster`, `pickPosterItem`, `isDirectPosterUrl`), consolidating thumbnail and custom cover resolution logic across `MediaCard`, `EditMetadataModal`, and `SeriesDetailView`.
+- **Series Detail Cover Management**: Enhanced `SeriesDetailView` cover actions to pick the first episode with a custom poster, cleanly handling "Add Cover", "Change Cover", and conditional "Reset Cover" states.
+
+### 🎛️ Player & Drag-and-Drop Stability
+- **Scrubber Event Listener Optimization**: Memoized `flushPendingSeek` callback within `ProgressScrubber` to eliminate unnecessary window mouseup listener churn during rapid playback scrubbing.
+- **Native Drag-and-Drop Memoization**: Stabilized the native file and subtitle drag-and-drop listener callback in `App.tsx` for cleaner effect lifecycle and reliable drop handling.
+
+---
+
 ## [0.2.6] - 2026-10-19
 
 ### 🎨 UI & Readability
