@@ -257,6 +257,9 @@ export const createSettingsSlice: StateCreator<
       await playerService.setMpvProperty("sub-color", s.subColor);
       await playerService.setMpvProperty("sub-delay", s.subDelay);
       await playerService.setPlaybackRate(s.playbackRate);
+      if (profileId === "battery") {
+        await playerService.setVideoRenderer("gpu");
+      }
 
       set({ activeProfileId: profileId });
       await storageService.setPreference("activeProfileId", profileId);

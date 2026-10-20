@@ -75,6 +75,7 @@ export class MpvPlayerService implements MediaPlayerService {
   private hwdecFallbackAttempted = false;
   private autoSelectGeneration = 0;
   private autoSelectTimers: ReturnType<typeof setTimeout>[] = [];
+  private lastTimePosDispatch = 0;
 
   public async initialize(): Promise<void> {
     if (this.state.isInitialized) {
@@ -87,10 +88,20 @@ export class MpvPlayerService implements MediaPlayerService {
 
     this.initializingPromise = (async () => {
       try {
+        const storedVo = (() => {
+          try {
+            return localStorage.getItem("eytaa_video_vo") || "gpu";
+          } catch {
+            return "gpu";
+          }
+        })();
+
         await init({
           initialOptions: {
-            vo: "gpu-next",
+            vo: storedVo,
             hwdec: "auto-safe",
+            "video-sync": "audio",
+            "vd-lavc-dr": "yes",
             "keep-open": "no",
             "force-window": "yes",
             keepaspect: "yes",
@@ -151,13 +162,22 @@ export class MpvPlayerService implements MediaPlayerService {
       case "pause": {
         const isPaused = Boolean(data);
         if (this.state.status === "playing" || this.state.status === "paused") {
+          this.lastTimePosDispatch = 0;
           this.updateState({ status: isPaused ? "paused" : "playing" });
         }
         break;
       }
       case "time-pos": {
         if (typeof data === "number") {
-          this.updateState({ currentTime: Math.max(0, data) });
+          const time = Math.max(0, data);
+          this.state.currentTime = time;
+          const now = performance.now();
+          // Throttle UI store updates to 4 times per second (250ms) during continuous playback
+          // to prevent React from re-rendering the whole UI on every video frame.
+          if (now - this.lastTimePosDispatch >= 250 || time === 0) {
+            this.lastTimePosDispatch = now;
+            this.updateState({ currentTime: time });
+          }
           if (this.state.duration > 2 && data >= this.state.duration - 0.3) {
             this.notifyEndFile("eof");
           }
@@ -273,10 +293,12 @@ export class MpvPlayerService implements MediaPlayerService {
     switch (eventName) {
       case "start-file":
         this.hasFiredEofForCurrent = false;
+        this.lastTimePosDispatch = 0;
         this.updateState({ status: "loading", error: null });
         break;
       case "file-loaded":
         this.hasFiredEofForCurrent = false;
+        this.lastTimePosDispatch = 0;
         this.updateState({ status: "playing", error: null });
         this.scheduleAutoSubtitleSelection();
         break;
@@ -546,8 +568,26 @@ export class MpvPlayerService implements MediaPlayerService {
     await this.ensureInitialized();
     const clamped = Math.max(0, Math.min(seconds, this.state.duration || seconds));
     this.hasFiredEofForCurrent = false;
+    this.lastTimePosDispatch = 0;
     await command("seek", [clamped, "absolute"]);
     this.updateState({ currentTime: clamped });
+  }
+
+  public getVideoRenderer(): "gpu" | "gpu-next" {
+    try {
+      return (localStorage.getItem("eytaa_video_vo") as "gpu" | "gpu-next") || "gpu";
+    } catch {
+      return "gpu";
+    }
+  }
+
+  public async setVideoRenderer(vo: "gpu" | "gpu-next"): Promise<void> {
+    try {
+      localStorage.setItem("eytaa_video_vo", vo);
+      await this.setMpvProperty("vo", vo);
+    } catch (e) {
+      console.warn("Failed to set video renderer:", e);
+    }
   }
 
   public async setVolume(value: number): Promise<void> {
