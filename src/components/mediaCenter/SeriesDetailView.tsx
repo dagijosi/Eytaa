@@ -117,9 +117,15 @@ export function SeriesDetailView({
   }, [items, seriesKey, showAllEpisodes, unfilteredEpisodes]);
 
   // Dynamic series hero poster
-  const [heroThumb, setHeroThumb] = useState<string | null>(
-    seriesEpisodes[0]?.custom_poster || null,
-  );
+  const [heroThumb, setHeroThumb] = useState<string | null>(() => {
+    const sample =
+      seriesEpisodes.find((ep) => ep.custom_poster) || seriesEpisodes[0];
+    const cp = sample?.custom_poster?.trim();
+    if (cp && (cp.startsWith("data:") || cp.startsWith("http://") || cp.startsWith("https://"))) {
+      return cp;
+    }
+    return null;
+  });
 
   useEffect(() => {
     const sample =
@@ -298,7 +304,8 @@ export function SeriesDetailView({
         ],
       });
       if (selected && typeof selected === "string") {
-        const sample = seriesEpisodes[0];
+        const sample =
+          seriesEpisodes.find((ep) => ep.custom_poster) || seriesEpisodes[0];
         if (sample) {
           await libraryService.updateMediaMetadata({
             filePath: sample.file_path,
@@ -324,7 +331,8 @@ export function SeriesDetailView({
 
   const handleResetCover = async () => {
     try {
-      const sample = seriesEpisodes[0];
+      const sample =
+        seriesEpisodes.find((ep) => ep.custom_poster) || seriesEpisodes[0];
       if (sample) {
         await libraryService.updateMediaMetadata({
           filePath: sample.file_path,

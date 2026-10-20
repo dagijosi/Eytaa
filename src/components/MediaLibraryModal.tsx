@@ -128,14 +128,20 @@ function SeriesCard({
   viewFormat?: "poster" | "widescreen";
 }) {
   const { accentColor } = useThemeStore();
-  const [thumbSrc, setThumbSrc] = useState<string | null>(group.sampleItem.custom_poster || null);
+  const [thumbSrc, setThumbSrc] = useState<string | null>(() => {
+    const cp = group.sampleItem.custom_poster?.trim();
+    if (cp && (cp.startsWith("data:") || cp.startsWith("http://") || cp.startsWith("https://"))) {
+      return cp;
+    }
+    return null;
+  });
   const isWidescreen = viewFormat === "widescreen";
 
   useEffect(() => {
     let isMounted = true;
+    const cp = group.sampleItem.custom_poster?.trim();
 
-    if (group.sampleItem.custom_poster) {
-      const cp = group.sampleItem.custom_poster.trim();
+    if (cp) {
       if (cp.startsWith("data:") || cp.startsWith("http://") || cp.startsWith("https://")) {
         setThumbSrc(cp);
       } else {
@@ -151,7 +157,7 @@ function SeriesCard({
     }
 
     libraryService.getThumbnail(group.sampleItem.file_path).then((thumb) => {
-      if (isMounted && thumb) {
+      if (isMounted) {
         setThumbSrc(thumb);
       }
     });
@@ -574,6 +580,7 @@ export function MediaLibraryModal() {
         seasonsSet.add(ep.season_number ?? 1);
         if (ep.is_watched) watchedCount++;
       }
+      const sampleItem = episodes.find((ep) => ep.custom_poster) || episodes[0];
       // Prefer authoritative overview counts so search never fragments a series
       const overview = overviewByKey.get(key);
       if (overview) {
@@ -588,7 +595,7 @@ export function MediaLibraryModal() {
           episodesCount: total,
           watchedCount: watched,
           progressPercent: total > 0 ? Math.round((watched / total) * 100) : 0,
-          sampleItem: episodes[0],
+          sampleItem,
         };
       }
       return {
@@ -599,7 +606,7 @@ export function MediaLibraryModal() {
         episodesCount: episodes.length,
         watchedCount,
         progressPercent: episodes.length > 0 ? Math.round((watchedCount / episodes.length) * 100) : 0,
-        sampleItem: episodes[0],
+        sampleItem,
       };
     });
 
@@ -1587,7 +1594,10 @@ export function MediaLibraryModal() {
             }}
             cardFormat={cardFormat}
             onToggleCardFormat={handleToggleCardFormat}
-            onBack={() => setInspectingSeriesName(null)}
+            onBack={() => {
+              setInspectingSeriesName(null);
+              loadData();
+            }}
             onPlay={handlePlayItem}
             onQueue={handleQueueItem}
             onEdit={(item) => setEditingItem(item)}
@@ -2236,6 +2246,7 @@ export function MediaLibraryModal() {
                 rowEstimate={260}
                 renderItem={(group) => (
                   <SeriesCard
+                    key={group.seriesKey || group.seriesName}
                     group={group}
                     viewFormat={cardFormat}
                     onClick={() => setInspectingSeriesName(group.seriesName)}
