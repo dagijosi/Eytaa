@@ -186,6 +186,9 @@ jobs:
       - name: Install macOS native dependencies
         run: brew install mpv ffmpeg dylibbundler
 
+      - name: Prepare macOS dynamic libraries and binaries
+        run: bash scripts/prepare-macos-libs.sh
+
       - name: Generate Release Notes
         id: release_notes
         uses: actions/github-script@v7
@@ -239,7 +242,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          args: "--target aarch64-apple-darwin"
+          args: "--target aarch64-apple-darwin --config src-tauri/tauri.macos.conf.json"
           tagName: ${{ github.ref_name || github.event.inputs.tag }}
           releaseName: "EYTAA ${{ github.ref_name || github.event.inputs.tag }}"
           releaseBody: ${{ steps.release_notes.outputs.notes }}

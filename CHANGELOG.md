@@ -4,6 +4,15 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ---
 
+## [0.2.9] - 2026-10-20
+
+### 🍎 macOS Packaging & Runtime Launch Fix
+- **Bundled Dynamic Libraries Packaging**: Configured the GitHub Actions macOS build pipeline to explicitly run `prepare-macos-libs.sh` and pass `--config src-tauri/tauri.macos.conf.json`. This ensures `libmpv.dylib`, `libmpv-wrapper.dylib`, and all dependent Homebrew dynamic libraries are correctly staged into `EYTAA.app/Contents/MacOS/lib/`.
+- **Eliminated dyld Launch Abort**: Fixed the missing library dependency issue that prevented the macOS `.app` from launching and caused it to silently exit upon double-clicking.
+- **macOS Gatekeeper First-Launch Guide**: Added detailed in-app and documentation guidance for macOS users to bypass Apple's unsigned application quarantine attribute via a 1-click terminal command (`xattr -cr /Applications/EYTAA.app`) or System Settings.
+
+---
+
 ## [0.2.8] - 2026-10-20
 
 ### 🪟 Responsive Window Geometry & Screen Scaling
