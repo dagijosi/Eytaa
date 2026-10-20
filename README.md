@@ -1,6 +1,8 @@
 # EYTAA (Vistara Player)
 
-A high-performance Windows desktop media player inspired by VLC and PotPlayer, built with **Tauri 2**, **React 19 + TypeScript + Vite**, **Tailwind CSS v4**, **Zustand**, **SQLite**, and **MPV / libmpv**.
+A high-performance Windows and Apple Silicon macOS desktop media player inspired by VLC and PotPlayer, built with **Tauri 2**, **React 19 + TypeScript + Vite**, **Tailwind CSS v4**, **Zustand**, **SQLite**, and **MPV / libmpv**.
+
+> **macOS builds** require macOS 15+ on Apple Silicon and are currently unsigned. If macOS blocks the first launch, right-click EYTAA in Applications and choose **Open**, or run `xattr -dr com.apple.quarantine /Applications/EYTAA.app`.
 
 > 📖 **Comprehensive Documentation**: For a full breakdown of the system architecture, features, keyboard shortcuts, and file structures, see **[SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md)**.
 
@@ -121,6 +123,17 @@ In `src-tauri/tauri.conf.json`, `bundle.resources` is configured:
 ```
 During `npm run tauri:build`, the DLLs are packaged into the installer and bundled directory alongside the executable.
 
+### macOS Packaging
+The macOS build is self-contained: `dylibbundler` collects libmpv, FFmpeg, and their Homebrew dependencies into `EYTAA.app/Contents/MacOS/lib`, and a bundled `ffmpeg` powers thumbnails.
+
+```bash
+brew install mpv ffmpeg dylibbundler
+npm run setup:lib
+npm run tauri:build
+```
+
+The `beforeBundleCommand` hook runs `scripts/prepare-macos-libs.sh` automatically. macOS releases currently target Apple Silicon (arm64) and macOS 15+.
+
 ---
 
 ## 5. Development & Verification Commands
@@ -140,7 +153,8 @@ During `npm run tauri:build`, the DLLs are packaged into the installer and bundl
 | `npm run tauri:dev` | Launches the complete Tauri desktop application with embedded MPV |
 | `npm run tauri:build` | Compiles release binary and creates Windows installer |
 | `npm run rust:check` | Checks Rust backend syntax and dependency compilation |
-| `npm run setup:lib` | Downloads or refreshes Windows `libmpv` and wrapper DLLs |
+| `npm run setup:lib` | Downloads or refreshes the `libmpv` wrapper for the current platform |
+| `npm run setup:mac` | Stages libmpv, FFmpeg, and dependencies for a macOS `.app` (macOS only) |
 
 > 🚀 **Release & Versioning Process**: For step-by-step instructions on version bumping, pre-flight verification, committing, pushing, and tagging releases that trigger GitHub Actions builds, see **[RELEASE_PROCESS.md](RELEASE_PROCESS.md)**.
 

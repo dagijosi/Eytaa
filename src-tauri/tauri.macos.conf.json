@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "beforeBundleCommand": "bash scripts/prepare-macos-libs.sh"
+  },
+  "bundle": {
+    "createUpdaterArtifacts": false,
+    "resources": [],
+    "macOS": {
+      "minimumSystemVersion": "15.0",
+      "files": {
+        "MacOS/ffmpeg": "./macos-bin/ffmpeg",
+        "MacOS/lib": "./macos-lib"
+      }
+    }
+  }
+}

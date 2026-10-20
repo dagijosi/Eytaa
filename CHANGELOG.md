@@ -4,6 +4,27 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ---
 
+## [0.2.8] - 2026-10-20
+
+### 🪟 Responsive Window Geometry & Screen Scaling
+- **Dynamic Work Area Sizing**: The window now computes its initial width (~68%) and height (~66%) dynamically from the connected monitor's actual usable work area (excluding taskbars, start menu, and OS docks) instead of using a rigid, oversized fixed resolution.
+- **Taskbar & Start Menu Clearance**: Centering and bounds checking now anchor strictly within `monitor.workArea`, ensuring the window never sits under the Windows taskbar, start menu, or display edges on any screen resolution (1080p, 768p, 2K, 4K, or high-DPI scaling).
+- **Proportional Ultra-wide Capping**: Aspect ratio is automatically balanced on ultra-wide screens (e.g. 21:9 or 32:9) so the initial window frames content naturally without stretching across the entire display.
+- **Automatic Storage Migration**: Upgraded window geometry persistence key to `v2`, ensuring any legacy oversized window dimensions from prior releases are cleanly reset to the new responsive screen-proportional defaults.
+
+### 🪟 Multi-Instance & Multiple Windows Mode
+- **Multi-Process SQLite Concurrency**: Enabled SQLite `WAL` mode (`PRAGMA journal_mode = WAL`) and a 5-second `busy_timeout` in the Rust backend, eliminating database file locks when multiple player instances run concurrently.
+- **Cross-Platform Read-Only Preference Detection**: `should_reuse_single_window()` now accesses user preferences with non-locking read-only flags (`SQLITE_OPEN_READ_ONLY`) across Windows, macOS, and Linux, ensuring new processes accurately detect when "Allow Multiple Player Windows" is enabled.
+- **New Player Window Action & Shortcut**: Added "New Player Window" (`Ctrl+N` / `Cmd+N`) to the TopBar quick menu and keyboard shortcuts, and registered the `open_new_window` Tauri command to spawn fresh player instances on demand.
+- **Preference Alignment**: Synchronized the default state between the frontend and native backend so enabling "Allow Multiple Player Windows" immediately allows launching multiple player windows side-by-side.
+
+### macOS Distribution
+- **Apple Silicon Release Builds**: Added a macOS 15+ arm64 GitHub Actions release job that produces a `.dmg` alongside the existing Windows installers.
+- **Self-Contained Media Stack**: `dylibbundler` now collects libmpv and its FFmpeg/Homebrew dependencies into `EYTAA.app/Contents/MacOS/lib`, and a bundled `ffmpeg` binary powers thumbnails without requiring Homebrew.
+- **Separate Updater Artifacts**: macOS updater artifacts are disabled for now so the Windows updater manifest remains valid while macOS packaging is validated.
+
+---
+
 ## [0.2.7] - 2026-10-20
 
 ### 📺 Media Center & Series Management

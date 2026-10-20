@@ -409,6 +409,17 @@ export default function App() {
         return;
       }
 
+      // New Player Window shortcut (Ctrl+N / Cmd+N)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        try {
+          await invoke("open_new_window");
+        } catch (err) {
+          console.error("Open new window error:", err);
+        }
+        return;
+      }
+
       const action = localShortcutsService.resolveAction(e);
       if (!action) return;
 

@@ -11,7 +11,9 @@ import {
   Pin,
   LayoutGrid,
   Film,
+  PlusSquare,
 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import { usePlayerStore } from "../stores/playerStore";
 import { useThemeStore } from "../stores/themeStore";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -384,6 +386,15 @@ export function TopBar() {
     }
   };
 
+  const handleOpenNewWindow = async () => {
+    setIsMenuOpen(false);
+    try {
+      await invoke("open_new_window");
+    } catch (err) {
+      console.error("Open new window error:", err);
+    }
+  };
+
   const hasActiveMedia =
     status !== "idle" && Boolean(mediaMetadata?.filePath || playlist.length > 0);
 
@@ -437,6 +448,14 @@ export function TopBar() {
           {/* Quick Menu Dropdown */}
           {isMenuOpen && (
             <div className="absolute top-full left-0 mt-1 w-56 bg-neutral-900/98 backdrop-blur-2xl border border-white/10 rounded-xl shadow-2xl p-1.5 flex flex-col gap-1 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+              <button
+                onClick={handleOpenNewWindow}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 text-left transition cursor-pointer"
+              >
+                <PlusSquare style={{ color: accentColor }} className="w-3.5 h-3.5" />
+                <span>New Player Window (Ctrl+N)</span>
+              </button>
+              <div className="h-px bg-white/10 my-0.5" />
               <button
                 onClick={() => handleOpenFile()}
                 className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 text-left transition cursor-pointer"

@@ -25,6 +25,8 @@ dist-ssr
 
 # Tauri and Rust
 src-tauri/target
+src-tauri/macos-lib
+src-tauri/macos-bin
 target
 *.key
 *.key.pub

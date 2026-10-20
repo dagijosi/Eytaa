@@ -190,7 +190,12 @@ export function SettingsModal() {
       if (typeof resume === "boolean") setAutoResume(resume);
 
       const reuseSingle = await storageService.getPreference<boolean>("reuseSingleWindow");
-      if (typeof reuseSingle === "boolean") setAllowMultipleWindows(!reuseSingle);
+      if (typeof reuseSingle === "boolean") {
+        setAllowMultipleWindows(!reuseSingle);
+      } else {
+        setAllowMultipleWindows(true);
+        void storageService.setPreference("reuseSingleWindow", false);
+      }
 
       const savedHwdec = await storageService.getPreference<string>("hwdec");
       if (savedHwdec) setHwdec(savedHwdec);

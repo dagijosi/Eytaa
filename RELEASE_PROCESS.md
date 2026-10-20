@@ -9,10 +9,18 @@ This document defines the standard procedure for version bumping, committing, pu
 When an annotated Git tag matching `v*` (e.g., `v0.2.4`) is pushed to GitHub, the automated GitHub Actions workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) is triggered:
 - Compiles the production frontend bundle via `npm run build`.
 - Compiles the Rust backend in release mode via Tauri CLI (`cargo tauri build`).
-- Bundles native runtime libraries (`libmpv-2.dll`, `libmpv-wrapper.dll`).
+- Bundles Windows native runtime libraries (`libmpv-2.dll`, `libmpv-wrapper.dll`).
 - Generates NSIS installers (`.exe`) and MSI bundles.
+- Builds an Apple Silicon macOS app on `macos-15`, staging `libmpv.dylib`, its Homebrew dependencies, and a bundled `ffmpeg` binary before Tauri creates the `.dmg`.
 - Extracts release notes from `CHANGELOG.md` for the corresponding version.
-- Creates a GitHub Release and attaches signed binaries and update bundles.
+- Creates a GitHub Release and attaches the Windows installers, macOS `.dmg`, and Windows update bundles.
+- Runs release cleanup only after both platform jobs finish.
+
+### macOS Packaging Notes
+- macOS releases currently target **Apple Silicon (arm64)** and **macOS 15+**.
+- The macOS build is unsigned/not notarized. Users may need to right-click the app and choose **Open**, or run `xattr -dr com.apple.quarantine /Applications/EYTAA.app`.
+- macOS updater artifacts are intentionally disabled (`createUpdaterArtifacts: false` in `src-tauri/tauri.macos.conf.json`) so the Windows `latest.json` updater manifest is not overwritten.
+- To reproduce the macOS build locally: `brew install mpv ffmpeg dylibbundler`, then `npm run setup:lib && npm run tauri:build`. The Tauri hook runs `scripts/prepare-macos-libs.sh` automatically.
 
 ---
 
@@ -158,4 +166,5 @@ git push origin $TAG
 1. Navigate to GitHub Actions tab: `https://github.com/dagijosi/Eytaa/actions`.
 2. Confirm the **Release EYTAA** workflow runs and finishes with green checks.
 3. Check GitHub Releases: `https://github.com/dagijosi/Eytaa/releases/tag/vX.Y.Z`.
-4. Verify installer `.exe` and update artifacts are properly generated and attached.
+4. Verify the Windows `.exe` installer, `latest.json`, and macOS `.dmg` are attached.
+5. On Apple Silicon macOS 15+, open the `.dmg`, copy EYTAA to Applications, and confirm playback works without Homebrew mpv installed.

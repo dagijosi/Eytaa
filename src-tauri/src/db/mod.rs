@@ -80,6 +80,11 @@ pub fn init_db(app: &AppHandle) -> Result<DbState, String> {
     let conn = Connection::open(&db_path)
         .map_err(|e| format!("Failed to open SQLite database at {:?}: {}", db_path, e))?;
 
+    // Enable WAL mode and busy timeout so multiple player processes can access the database concurrently
+    let _ = conn.busy_timeout(std::time::Duration::from_secs(5));
+    let _ = conn.pragma_update(None, "journal_mode", "WAL");
+    let _ = conn.pragma_update(None, "synchronous", "NORMAL");
+
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS user_preferences (

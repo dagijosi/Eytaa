@@ -95,26 +95,76 @@ fn extract_media_arg(args: &[String]) -> Option<String> {
     None
 }
 
-fn should_reuse_single_window() -> bool {
+fn get_eytaa_db_path() -> Option<std::path::PathBuf> {
+    let mut candidate_dirs = Vec::new();
+
     if let Ok(app_data) = std::env::var("APPDATA") {
-        let app_dir = std::path::PathBuf::from(app_data).join("com.dagi.eytaa");
-        let eytaa_db = app_dir.join("eytaa.db");
-        let db_path = if eytaa_db.exists() {
-            eytaa_db
-        } else {
-            app_dir.join("vistara.db")
-        };
-        if db_path.exists() {
-            if let Ok(conn) = rusqlite::Connection::open(&db_path) {
-                if let Ok(mut stmt) = conn.prepare("SELECT value FROM user_preferences WHERE key = 'reuseSingleWindow'") {
-                    if let Ok(val) = stmt.query_row([], |row| row.get::<_, String>(0)) {
-                        return val != "false";
-                    }
+        candidate_dirs.push(std::path::PathBuf::from(app_data).join("com.dagi.eytaa"));
+    }
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        candidate_dirs.push(std::path::PathBuf::from(local_app_data).join("com.dagi.eytaa"));
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        candidate_dirs.push(
+            std::path::PathBuf::from(&home)
+                .join("Library")
+                .join("Application Support")
+                .join("com.dagi.eytaa"),
+        );
+        candidate_dirs.push(
+            std::path::PathBuf::from(home)
+                .join(".local")
+                .join("share")
+                .join("com.dagi.eytaa"),
+        );
+    }
+
+    for dir in candidate_dirs {
+        let eytaa = dir.join("eytaa.db");
+        if eytaa.exists() {
+            return Some(eytaa);
+        }
+        let vistara = dir.join("vistara.db");
+        if vistara.exists() {
+            return Some(vistara);
+        }
+    }
+    None
+}
+
+fn should_reuse_single_window() -> bool {
+    if let Some(db_path) = get_eytaa_db_path() {
+        // MUST open in Read-Only mode with URI and NO_MUTEX flags so it never conflicts
+        // with another running process holding a database handle.
+        let flags = rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+            | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX
+            | rusqlite::OpenFlags::SQLITE_OPEN_URI;
+
+        if let Ok(conn) = rusqlite::Connection::open_with_flags(&db_path, flags) {
+            let _ = conn.busy_timeout(std::time::Duration::from_millis(1000));
+            if let Ok(mut stmt) = conn.prepare("SELECT value FROM user_preferences WHERE key = 'reuseSingleWindow'") {
+                if let Ok(val) = stmt.query_row([], |row| row.get::<_, String>(0)) {
+                    let cleaned = val.trim().trim_matches('"').to_lowercase();
+                    return cleaned == "true" || cleaned == "1";
                 }
             }
         }
     }
-    true // Clean Windows installations default to single-window media reuse
+    // Default: false (Allow multiple windows by default, matching UI setting)
+    false
+}
+
+#[tauri::command]
+fn open_new_window(file_path: Option<String>) -> Result<(), String> {
+    let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let mut cmd = std::process::Command::new(current_exe);
+    if let Some(path) = file_path {
+        if !path.trim().is_empty() {
+            cmd.arg(path);
+        }
+    }
+    cmd.spawn().map_err(|e| format!("Failed to spawn new player instance: {}", e))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -182,6 +232,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_launch_file,
+            open_new_window,
             db::db_get_preference,
             db::db_set_preference,
             db::db_get_resume_position,

@@ -54,6 +54,32 @@ fn get_limiter() -> &'static ConcurrencyLimiter {
     FFMPEG_LIMITER.get_or_init(|| ConcurrencyLimiter::new(2))
 }
 
+/// Resolves the ffmpeg executable, preferring a copy bundled beside the app binary.
+fn resolve_ffmpeg_binary() -> PathBuf {
+    let names: [&str; 2] = if cfg!(windows) {
+        ["ffmpeg.exe", "ffmpeg"]
+    } else {
+        ["ffmpeg", "ffmpeg.exe"]
+    };
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for name in names {
+                let beside_exe = dir.join(name);
+                if beside_exe.is_file() {
+                    return beside_exe;
+                }
+                let in_lib = dir.join("lib").join(name);
+                if in_lib.is_file() {
+                    return in_lib;
+                }
+            }
+        }
+    }
+
+    PathBuf::from("ffmpeg")
+}
+
 /// Generates a simple hash string from a file path
 fn hash_path(path: &str) -> String {
     let mut hash: u64 = 5381;
@@ -262,7 +288,7 @@ pub fn generate_or_load_thumbnail(app: &AppHandle, file_path: &str) -> Result<Op
     let output_path_str = output_thumb.to_string_lossy().to_string();
 
     let success = if is_audio {
-        let mut cmd = std::process::Command::new("ffmpeg");
+        let mut cmd = std::process::Command::new(resolve_ffmpeg_binary());
         cmd.arg("-nostdin")
             .arg("-loglevel")
             .arg("error")
@@ -277,7 +303,7 @@ pub fn generate_or_load_thumbnail(app: &AppHandle, file_path: &str) -> Result<Op
         run_ffmpeg_with_timeout(cmd, 3)
     } else {
         let try_seek = |seek_pos: &str| -> bool {
-            let mut cmd = std::process::Command::new("ffmpeg");
+            let mut cmd = std::process::Command::new(resolve_ffmpeg_binary());
             cmd.arg("-nostdin")
                 .arg("-loglevel")
                 .arg("error")
