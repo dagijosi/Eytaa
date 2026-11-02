@@ -4,6 +4,35 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ---
 
+## [0.2.12] - 2026-11-02
+
+### 📊 Watch Report & Analytics Dashboard (Obsidian v3)
+- **Decoupled Watch Archive (`watched_archive`)**: Implemented persistent watch tracking in SQLite that retains titles, categories, watch timestamps, play durations, and file sizes even when media is removed from disk to free up laptop space.
+- **ApexCharts Visualizations**:
+  - Donut Chart breaking down watched content across Movies, TV Series Episodes, and Music.
+  - 14-Day Activity Trend stacked bar chart showing day-by-day consumption volume.
+- **Cinema-Grade TV Series Tracker**: Dedicated series tracking showcase with procedural and resolved cover artwork, season count badges, episode watch counters, and 1-click archive filtering.
+- **Infinite Scroll Archive Log**: Smooth, automatic pagination via `IntersectionObserver` replacing manual "load more" clicks.
+- **Storage & Sorting Filters**: Filter archive items by Laptop Storage Status ("On My Laptop" vs "Saved Space"), and sort by Recently Watched, File Size (Largest First), Title (A–Z), and Longest Playback Duration.
+
+### 🗑️ In-App Media Deletion
+- **Native Deletion Modal (`DeleteMediaModal`)**: Direct file deletion from within the player with support for Windows Recycle Bin (restorable) and Permanent deletion.
+- **Watch History Preservation**: Integrated "Keep in Watch Report" toggle that preserves playback history and reclaimed storage size before deleting the media file.
+- **Universal Availability**: Wired trash actions across Movies, TV Series, Episodes, Favorites, Duplicates, and the Watch Report table.
+- **Ghost/Phantom Item Prevention**: Enhanced live library watcher to archive records and mark missing items unavailable upon filesystem deletion.
+
+### 🎛️ Unified High-Contrast Component Architecture (`SelectDropdown`)
+- **De-Slopped Custom Dropdown**: Replaced low-contrast native browser `<select>` tags with a reusable, keyboard-accessible obsidian dropdown component featuring hairline borders (`border-white/15`), crisp white typography, floating popover menus, and emerald checkmark indicators.
+- **Universal Dropdown Adoption**: Standardized sort controls across Watch Report, Movies, Music, Hub recent item limits, and GPU Hardware Decoding Mode in Playback Settings.
+
+### 📋 Fullscreen Edge-Hover Playlist & Smart Queue
+- **Edge-Hover Fullscreen Gesture**: Hovering the cursor near either screen edge in playback or fullscreen reveals a peeking tab that smoothly opens the Playlist Drawer without requiring control bar clicks.
+- **Smart Auto-Dismiss & Pin Mode**: Peeking drawer automatically slides closed when cursor moves back into the video; header Pin toggle locks it open when desired.
+- **Clean Queue Management**: Opening new media now starts a fresh queue by default instead of appending onto past sessions' queues. Added user preference (`"replace"` | `"append"` | `"ask"`) in Settings -> Playback.
+- **1-Click Header Controls**: Added direct Clear Queue button (`Trash2`), Quick Shuffle button (`Shuffle`), Total Queue Runtime display (`• Xh Ym`), and instant 1-click Undo Queue Restoration.
+
+---
+
 ## [0.2.11] - 2026-11-02
 
 ### ⏱️ On-the-Fly Audio & Subtitle Sync Control
