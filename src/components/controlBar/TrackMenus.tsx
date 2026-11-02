@@ -186,6 +186,8 @@ interface SubtitleMenuProps {
   subDelay?: number;
   onChangeSubDelay?: (deltaSeconds: number) => Promise<void>;
   onSetSubDelay?: (secs: number) => Promise<void>;
+  secondarySubtitleTrackId?: number | null;
+  onSelectSecondarySubtitleTrack?: (trackId: number | null) => Promise<void>;
 }
 
 export function SubtitleMenu({
@@ -197,6 +199,8 @@ export function SubtitleMenu({
   subDelay = 0,
   onChangeSubDelay,
   onSetSubDelay,
+  secondarySubtitleTrackId,
+  onSelectSecondarySubtitleTrack,
 }: SubtitleMenuProps) {
   const { accentColor, accentGlow } = useThemeStore();
   const [showSubMenu, setShowSubMenu] = useState(false);
@@ -281,6 +285,52 @@ export function SubtitleMenu({
                 </button>
               );
             })}
+
+            {/* Dual Subtitles (Secondary Track rendered at top of viewport) */}
+            {onSelectSecondarySubtitleTrack && subtitleTracks.length > 1 && (
+              <div className="border-t border-white/10 pt-1 mt-1 flex flex-col gap-0.5">
+                <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 flex items-center justify-between">
+                  <span>Dual Subtitles (Top)</span>
+                  {secondarySubtitleTrackId ? (
+                    <span className="text-emerald-400 font-mono text-[9px]">Active</span>
+                  ) : null}
+                </div>
+                <button
+                  onClick={() => {
+                    onSelectSecondarySubtitleTrack(null);
+                    setShowSubMenu(false);
+                  }}
+                  style={!secondarySubtitleTrackId ? { backgroundColor: "rgba(255,255,255,0.1)" } : undefined}
+                  className={`flex items-center justify-between px-2.5 py-1 rounded-lg text-left transition cursor-pointer text-[11px] ${
+                    !secondarySubtitleTrackId ? "font-semibold text-white" : "text-neutral-400 hover:bg-white/10"
+                  }`}
+                >
+                  <span>None (Single Subtitle)</span>
+                  {!secondarySubtitleTrackId && <Check className="w-3 h-3 text-neutral-300" />}
+                </button>
+                {subtitleTracks.map((track) => {
+                  if (track.id === currentSubtitleTrackId) return null;
+                  const isSec = secondarySubtitleTrackId === track.id;
+                  return (
+                    <button
+                      key={`sec-${track.id}`}
+                      onClick={() => {
+                        onSelectSecondarySubtitleTrack(track.id);
+                        setShowSubMenu(false);
+                      }}
+                      style={isSec ? { backgroundColor: "rgba(16, 185, 129, 0.2)", color: "#6ee7b7" } : undefined}
+                      className={`flex items-center justify-between px-2.5 py-1 rounded-lg text-left transition cursor-pointer text-[11px] truncate ${
+                        isSec ? "font-bold" : "text-neutral-300 hover:bg-white/10"
+                      }`}
+                    >
+                      <span className="truncate">{track.title || track.lang || `Track ${track.id}`}</span>
+                      {isSec && <Check className="w-3 h-3 text-emerald-400 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <div className="h-px bg-white/10 my-0.5" />
             <button
               onClick={async () => {

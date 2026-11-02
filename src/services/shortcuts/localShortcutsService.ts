@@ -28,7 +28,10 @@ export type LocalAction =
   | "reset-sub-delay"
   | "audio-delay-down"
   | "audio-delay-up"
-  | "reset-audio-delay";
+  | "reset-audio-delay"
+  | "ab-loop-a"
+  | "ab-loop-b"
+  | "ab-loop-clear";
 
 export interface LocalActionMeta {
   label: string;
@@ -38,9 +41,12 @@ export interface LocalActionMeta {
 
 export const LOCAL_ACTION_META: Record<LocalAction, LocalActionMeta> = {
   "toggle-playback": { label: "Play / Pause", group: "Playback", defaultKeys: [" ", "k"] },
-  "speed-down": { label: "Playback Speed -0.25x", group: "Playback", defaultKeys: ["["] },
-  "speed-up": { label: "Playback Speed +0.25x", group: "Playback", defaultKeys: ["]"] },
+  "speed-down": { label: "Playback Speed -0.25x", group: "Playback", defaultKeys: ["-"] },
+  "speed-up": { label: "Playback Speed +0.25x", group: "Playback", defaultKeys: ["=", "+"] },
   "reset-speed": { label: "Reset Speed to 1.0x", group: "Playback", defaultKeys: ["backspace"] },
+  "ab-loop-a": { label: "A-B Loop: Set Point A", group: "Playback", defaultKeys: ["["] },
+  "ab-loop-b": { label: "A-B Loop: Set Point B", group: "Playback", defaultKeys: ["]"] },
+  "ab-loop-clear": { label: "A-B Loop: Clear Loop", group: "Playback", defaultKeys: ["\\"] },
   "seek-backward": { label: "Seek Backward (Shift = 30s)", group: "Seeking", defaultKeys: ["arrowleft"] },
   "seek-forward": { label: "Seek Forward (Shift = 30s)", group: "Seeking", defaultKeys: ["arrowright"] },
   "volume-up": { label: "Volume Up", group: "Volume", defaultKeys: ["arrowup"] },

@@ -47,6 +47,18 @@ export interface ScreenshotInfo {
   copied: boolean;
 }
 
+export interface AbLoopState {
+  a: number | null;
+  b: number | null;
+}
+
+export interface NextEpisodePrompt {
+  nextFilePath: string;
+  title: string;
+  season?: number;
+  episode?: number;
+}
+
 export interface PlaybackSlice extends PlayerState {
   initialize: () => Promise<void>;
   openFile: (
@@ -96,6 +108,20 @@ export interface PlaybackSlice extends PlayerState {
   }) => Promise<string | null>;
   copyScreenshotToClipboard: (path: string) => Promise<boolean>;
   dismissScreenshotToast: () => void;
+  // A-B Loop Playback
+  abLoop: AbLoopState;
+  setAbLoopA: (time?: number) => Promise<void>;
+  setAbLoopB: (time?: number) => Promise<void>;
+  clearAbLoop: () => Promise<void>;
+  // Dual Subtitles
+  secondarySubtitleTrackId: number | null;
+  selectSecondarySubtitleTrack: (trackId: number | null) => Promise<void>;
+  // Next Episode Binge Prompt
+  nextEpisodePrompt: NextEpisodePrompt | null;
+  dismissNextEpisodePrompt: () => void;
+  playNextEpisodePrompt: () => Promise<void>;
+  autoplayNextEpisodeEnabled: boolean;
+  setAutoplayNextEpisodeEnabled: (enabled: boolean) => Promise<void>;
   showStats: boolean;
   toggleStats: (enabled?: boolean) => void;
   openUrl: (url: string) => Promise<void>;

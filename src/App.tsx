@@ -23,6 +23,7 @@ const MediaLibraryModal = lazy(() =>
 );
 import { UpdateCheckToast } from "./components/UpdateCheckToast";
 import { ScreenshotToast } from "./components/ScreenshotToast";
+import { NextEpisodeOverlay } from "./components/NextEpisodeOverlay";
 import { ContextMenu } from "./components/ContextMenu";
 import { TooltipLayer } from "./components/TooltipLayer";
 import { StatsOverlay } from "./components/StatsOverlay";
@@ -83,6 +84,9 @@ export default function App() {
     setSubDelay,
     changeAudioDelay,
     setAudioDelay,
+    setAbLoopA,
+    setAbLoopB,
+    clearAbLoop,
   } = usePlayerStore(
     useShallow((s) => ({
       isInitialized: s.isInitialized,
@@ -130,6 +134,9 @@ export default function App() {
       toggleUrlModal: s.toggleUrlModal,
       takeScreenshot: s.takeScreenshot,
       toggleStats: s.toggleStats,
+      setAbLoopA: s.setAbLoopA,
+      setAbLoopB: s.setAbLoopB,
+      clearAbLoop: s.clearAbLoop,
     })),
   );
 
@@ -608,6 +615,18 @@ export default function App() {
           e.preventDefault();
           toggleNightListening();
           break;
+        case "ab-loop-a":
+          e.preventDefault();
+          await setAbLoopA();
+          break;
+        case "ab-loop-b":
+          e.preventDefault();
+          await setAbLoopB();
+          break;
+        case "ab-loop-clear":
+          e.preventDefault();
+          await clearAbLoop();
+          break;
       }
     };
 
@@ -648,6 +667,9 @@ export default function App() {
     setSubDelay,
     changeAudioDelay,
     setAudioDelay,
+    setAbLoopA,
+    setAbLoopB,
+    clearAbLoop,
     showOSD,
   ]);
 
@@ -881,6 +903,9 @@ export default function App() {
 
       {/* Screenshot Captured / Copied Toast */}
       <ScreenshotToast />
+
+      {/* Netflix-Style Next Episode Autoplay Binge Overlay */}
+      <NextEpisodeOverlay />
 
       {/* Network Stream / URL Opener */}
       <OpenUrlModal />

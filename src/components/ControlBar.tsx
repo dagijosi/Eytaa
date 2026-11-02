@@ -31,6 +31,8 @@ export function ControlBar() {
     currentAudioTrackId,
     selectAudioTrack,
     currentSubtitleTrackId,
+    secondarySubtitleTrackId,
+    selectSecondarySubtitleTrack,
     playlist,
     togglePlayback,
     seek,
@@ -82,6 +84,8 @@ export function ControlBar() {
       currentAudioTrackId: s.currentAudioTrackId,
       selectAudioTrack: s.selectAudioTrack,
       currentSubtitleTrackId: s.currentSubtitleTrackId,
+      secondarySubtitleTrackId: s.secondarySubtitleTrackId,
+      selectSecondarySubtitleTrack: s.selectSecondarySubtitleTrack,
       playlist: s.playlist,
       togglePlayback: s.togglePlayback,
       seek: s.seek,
@@ -192,6 +196,8 @@ export function ControlBar() {
               subDelay={subDelay}
               onChangeSubDelay={changeSubDelay}
               onSetSubDelay={setSubDelay}
+              secondarySubtitleTrackId={secondarySubtitleTrackId}
+              onSelectSecondarySubtitleTrack={selectSecondarySubtitleTrack}
             />
 
             <VideoFitButton videoFitMode={videoFitMode} onCycleVideoFitMode={cycleVideoFitMode} />

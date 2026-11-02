@@ -687,6 +687,38 @@ export class MpvPlayerService implements MediaPlayerService {
     }
   }
 
+  public async setAbLoop(a: number | null, b: number | null): Promise<void> {
+    await this.ensureInitialized();
+    try {
+      if (a === null && b === null) {
+        await setProperty("ab-loop-a", "no");
+        await setProperty("ab-loop-b", "no");
+      } else {
+        if (a !== null) await setProperty("ab-loop-a", a);
+        else await setProperty("ab-loop-a", "no");
+
+        if (b !== null) await setProperty("ab-loop-b", b);
+        else await setProperty("ab-loop-b", "no");
+      }
+    } catch (err) {
+      console.warn("Failed to set A-B loop in MPV:", err);
+    }
+  }
+
+  public async selectSecondarySubtitleTrack(trackId: number | null): Promise<void> {
+    await this.ensureInitialized();
+    try {
+      if (trackId === null || trackId === 0) {
+        await setProperty("secondary-sid", "no");
+      } else {
+        await setProperty("secondary-sid", trackId.toString());
+        await setProperty("secondary-sub-visibility", "yes");
+      }
+    } catch (err) {
+      console.warn("Failed to set secondary subtitle in MPV:", err);
+    }
+  }
+
   /**
    * Captures a screenshot next to the current media file (or into the given
    * directory). Returns the written path, or null when no local file is loaded.

@@ -1,5 +1,23 @@
 import { Music2, Plus, Subtitles } from "lucide-react";
 import type { TrackInfo } from "../../services/player/types";
+import { useThemeStore } from "../../stores/themeStore";
+import { SelectDropdown, SelectDropdownOption } from "../common/SelectDropdown";
+
+const SUB_FONT_OPTIONS: SelectDropdownOption<string>[] = [
+  { value: "Segoe UI", label: "Segoe UI", shortLabel: "Segoe UI", desc: "Clean modern Windows typography" },
+  { value: "Inter", label: "Inter", shortLabel: "Inter", desc: "Popular neutral grotesque" },
+  { value: "Trebuchet MS", label: "Trebuchet MS", shortLabel: "Trebuchet MS", desc: "Cinema classic legibility" },
+  { value: "Arial", label: "Arial", shortLabel: "Arial", desc: "Standard sans-serif" },
+  { value: "Roboto", label: "Roboto", shortLabel: "Roboto", desc: "Material geometric" },
+  { value: "Georgia", label: "Georgia", shortLabel: "Georgia", desc: "Warm editorial serif" },
+  { value: "Consolas", label: "Consolas", shortLabel: "Consolas", desc: "Tabular monospace" },
+];
+
+const SUB_BG_OPTIONS: SelectDropdownOption<"outline" | "box" | "none">[] = [
+  { value: "outline", label: "Outline & Drop Shadow", shortLabel: "Outline & Shadow", desc: "Hairline stroke with shadow (Default)" },
+  { value: "box", label: "High-Contrast Bounding Box", shortLabel: "Translucent Box", desc: "Dark background plate behind text" },
+  { value: "none", label: "Plain Text Only", shortLabel: "None", desc: "Raw characters without borders" },
+];
 
 interface AudioSubtitleSettingsProps {
   accentColor: string;
@@ -48,6 +66,18 @@ export function AudioSubtitleSettings({
   currentSubtitleTrackId,
   handleLoadExternalSubtitle,
 }: AudioSubtitleSettingsProps) {
+  const {
+    subFont,
+    subBold,
+    subItalic,
+    subBgStyle,
+    subMarginY,
+    setSubFont,
+    setSubBold,
+    setSubItalic,
+    setSubBgStyle,
+    setSubMarginY,
+  } = useThemeStore();
   return (
     <div className="space-y-5">
       {/* Night Mode / Dynamic Audio Normalizer */}
@@ -113,6 +143,23 @@ export function AudioSubtitleSettings({
         />
       </div>
 
+      {/* Subtitle Font Family */}
+      <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
+        <div>
+          <span className="font-medium text-neutral-200 text-xs">Subtitle Typography</span>
+          <p className="text-xs text-neutral-500">Font typeface rendered on screen</p>
+        </div>
+        <SelectDropdown<string>
+          value={subFont || "Segoe UI"}
+          onChange={async (font) => {
+            await setSubFont(font);
+          }}
+          options={SUB_FONT_OPTIONS}
+          menuHeader="Subtitle Font"
+          width="w-64"
+        />
+      </div>
+
       {/* Subtitle font size */}
       <div className="space-y-1.5 p-3 rounded-xl bg-white/5 border border-white/5">
         <div className="flex justify-between text-xs">
@@ -128,6 +175,64 @@ export function AudioSubtitleSettings({
           style={{ accentColor }}
           className="w-full h-1 bg-white/20 rounded-lg cursor-pointer"
         />
+      </div>
+
+      {/* Subtitle Contrast Style */}
+      <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
+        <div>
+          <span className="font-medium text-neutral-200 text-xs">Subtitle Contrast Style</span>
+          <p className="text-xs text-neutral-500">Outline & shadow or translucent bounding box</p>
+        </div>
+        <SelectDropdown<"outline" | "box" | "none">
+          value={subBgStyle || "outline"}
+          onChange={async (style) => {
+            await setSubBgStyle(style);
+          }}
+          options={SUB_BG_OPTIONS}
+          menuHeader="Contrast Style"
+          width="w-64"
+        />
+      </div>
+
+      {/* Subtitle Vertical Position / Distance from Bottom */}
+      <div className="space-y-1.5 p-3 rounded-xl bg-white/5 border border-white/5">
+        <div className="flex justify-between text-xs">
+          <span className="text-neutral-300 font-medium">Vertical Margin (Distance from bottom)</span>
+          <span className="font-mono text-neutral-400">{subMarginY ?? 65} px</span>
+        </div>
+        <input
+          type="range"
+          min={15}
+          max={140}
+          value={subMarginY ?? 65}
+          onChange={(e) => setSubMarginY(Number(e.target.value))}
+          style={{ accentColor }}
+          className="w-full h-1 bg-white/20 rounded-lg cursor-pointer"
+        />
+      </div>
+
+      {/* Subtitle Weight toggles */}
+      <div className="grid grid-cols-2 gap-2">
+        <div className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
+          <span className="text-xs font-medium text-neutral-200">Bold Font</span>
+          <input
+            type="checkbox"
+            checked={Boolean(subBold)}
+            onChange={(e) => setSubBold(e.target.checked)}
+            style={{ accentColor }}
+            className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+          />
+        </div>
+        <div className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
+          <span className="text-xs font-medium text-neutral-200">Italicize</span>
+          <input
+            type="checkbox"
+            checked={Boolean(subItalic)}
+            onChange={(e) => setSubItalic(e.target.checked)}
+            style={{ accentColor }}
+            className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+          />
+        </div>
       </div>
 
       {/* Subtitle Delay */}

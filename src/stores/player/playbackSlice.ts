@@ -22,6 +22,7 @@ import {
   promptedDirectories,
   clearSleepTimerInterval,
 } from "./helpers";
+import { formatSeconds } from "../../components/controlBar/shared";
 
 let activeLoadSequence = 0;
 let lastAutoSavedTime = 0;
@@ -60,6 +61,53 @@ export const createPlaybackSlice: StateCreator<
         storageService.setResumePosition(filePath, state.currentTime, state.duration);
       }
     }
+
+    // Next Episode binge overlay detection (20s before video ends)
+    const store = get();
+    if (
+      store.autoplayNextEpisodeEnabled &&
+      state.status === "playing" &&
+      state.duration > 60 &&
+      state.currentTime > 0 &&
+      state.duration - state.currentTime <= 22 &&
+      state.duration - state.currentTime >= 3 &&
+      !store.nextEpisodePrompt
+    ) {
+      let nextPath: string | null = null;
+      let nextTitle: string | null = null;
+
+      if (
+        store.currentPlaylistIndex >= 0 &&
+        store.currentPlaylistIndex < store.playlist.length - 1
+      ) {
+        const item = store.playlist[store.currentPlaylistIndex + 1];
+        if (item && item.filePath) {
+          nextPath = item.filePath;
+          nextTitle = item.title;
+        }
+      }
+
+      if (!nextPath && filePath && store.detectedSiblings && store.detectedSiblings.length > 1) {
+        const idx = store.detectedSiblings.indexOf(filePath);
+        if (idx >= 0 && idx < store.detectedSiblings.length - 1) {
+          const siblingPath = store.detectedSiblings[idx + 1];
+          nextPath = siblingPath;
+          nextTitle = formatMediaTitle(
+            siblingPath.split(/[/\\]/).pop() || siblingPath,
+            siblingPath,
+          );
+        }
+      }
+
+      if (nextPath) {
+        set({
+          nextEpisodePrompt: {
+            nextFilePath: nextPath,
+            title: nextTitle || nextPath.split(/[/\\]/).pop() || "Next Episode",
+          },
+        });
+      }
+    }
   });
 
   return {
@@ -71,6 +119,10 @@ export const createPlaybackSlice: StateCreator<
     lastActiveSubtitleTrackId: null,
     subDelay: 0,
     audioDelay: 0,
+    abLoop: { a: null, b: null },
+    secondarySubtitleTrackId: null,
+    nextEpisodePrompt: null,
+    autoplayNextEpisodeEnabled: true,
 
     initialize: async () => {
       await playerService.initialize();
@@ -330,6 +382,14 @@ export const createPlaybackSlice: StateCreator<
       },
     ) => {
       const seq = ++activeLoadSequence;
+
+      // Reset A-B Loop, Next Episode prompt, and Secondary Subtitle on new file
+      set({
+        abLoop: { a: null, b: null },
+        nextEpisodePrompt: null,
+        secondarySubtitleTrackId: null,
+      });
+      playerService.setAbLoop(null, null).catch(() => {});
 
       // Save progress of currently playing media before opening a new file
       const currentMedia = get();
@@ -737,6 +797,64 @@ export const createPlaybackSlice: StateCreator<
         get().showOSD("Screenshot capture failed");
         return null;
       }
+    },
+
+    setAbLoopA: async (time?: number) => {
+      const pos = time !== undefined ? time : get().currentTime;
+      const currentB = get().abLoop.b;
+      const nextB = currentB !== null && currentB > pos ? currentB : null;
+      set({ abLoop: { a: pos, b: nextB } });
+      await playerService.setAbLoop(pos, nextB);
+      get().showOSD(`A-B Loop: Point A set at ${formatSeconds(pos)}`);
+    },
+
+    setAbLoopB: async (time?: number) => {
+      const pos = time !== undefined ? time : get().currentTime;
+      let currentA = get().abLoop.a;
+      if (currentA === null || currentA >= pos) {
+        currentA = 0;
+      }
+      set({ abLoop: { a: currentA, b: pos } });
+      await playerService.setAbLoop(currentA, pos);
+      get().showOSD(
+        `A-B Loop: Active (${formatSeconds(currentA)} ➔ ${formatSeconds(pos)})`,
+      );
+    },
+
+    clearAbLoop: async () => {
+      set({ abLoop: { a: null, b: null } });
+      await playerService.setAbLoop(null, null);
+      get().showOSD("A-B Loop: Cleared");
+    },
+
+    selectSecondarySubtitleTrack: async (trackId: number | null) => {
+      await playerService.selectSecondarySubtitleTrack(trackId);
+      set({ secondarySubtitleTrackId: trackId });
+      if (trackId === null || trackId === 0) {
+        get().showOSD("Secondary Subtitles: Off");
+      } else {
+        const track = get().subtitleTracks.find((t) => t.id === trackId);
+        get().showOSD(
+          `Secondary Subtitles: ${track?.title || track?.lang || `Track ${trackId}`}`,
+        );
+      }
+    },
+
+    dismissNextEpisodePrompt: () => {
+      set({ nextEpisodePrompt: null });
+    },
+
+    playNextEpisodePrompt: async () => {
+      const prompt = get().nextEpisodePrompt;
+      if (!prompt) return;
+      set({ nextEpisodePrompt: null });
+      await get().openFile(prompt.nextFilePath, { preserveQueue: true });
+    },
+
+    setAutoplayNextEpisodeEnabled: async (enabled: boolean) => {
+      set({ autoplayNextEpisodeEnabled: enabled });
+      await storageService.setPreference("autoplayNextEpisodeEnabled", enabled);
+      get().showOSD(`Next Episode Autoplay: ${enabled ? "Enabled" : "Disabled"}`);
     },
 
     toggleStats: (enabled?: boolean) => {

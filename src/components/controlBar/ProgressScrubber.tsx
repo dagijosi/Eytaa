@@ -19,6 +19,7 @@ export function ProgressScrubber({ currentTime, duration, seek }: ProgressScrubb
     scrubberGlowIntensity,
   } = useThemeStore();
   const chapters = usePlayerStore((s) => s.chapters);
+  const abLoop = usePlayerStore((s) => s.abLoop);
 
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverPosition, setHoverPosition] = useState<number>(0);
@@ -233,6 +234,34 @@ export function ProgressScrubber({ currentTime, duration, seek }: ProgressScrubb
             );
           })}
 
+        {/* A-B Loop Range Highlight */}
+        {abLoop.a !== null && abLoop.b !== null && duration > 0 && (
+          <div
+            style={{
+              left: `${(Math.min(abLoop.a, abLoop.b) / duration) * 100}%`,
+              width: `${(Math.abs(abLoop.b - abLoop.a) / duration) * 100}%`,
+            }}
+            className="absolute inset-y-0 bg-emerald-500/40 border-x-2 border-emerald-400 z-10 pointer-events-none rounded-xs"
+            title={`A-B Loop Range: ${formatSeconds(Math.min(abLoop.a, abLoop.b))} - ${formatSeconds(Math.max(abLoop.a, abLoop.b))}`}
+          />
+        )}
+
+        {/* A-B Loop Point A Marker on track */}
+        {abLoop.a !== null && duration > 0 && (
+          <div
+            style={{ left: `${(abLoop.a / duration) * 100}%` }}
+            className="absolute top-0 bottom-0 w-1 bg-emerald-400 z-10 pointer-events-none"
+          />
+        )}
+
+        {/* A-B Loop Point B Marker on track */}
+        {abLoop.b !== null && duration > 0 && (
+          <div
+            style={{ left: `${(abLoop.b / duration) * 100}%` }}
+            className="absolute top-0 bottom-0 w-1 bg-emerald-400 z-10 pointer-events-none"
+          />
+        )}
+
         {/* Active Progress Gradient */}
         <div
           style={{
@@ -266,6 +295,28 @@ export function ProgressScrubber({ currentTime, duration, seek }: ProgressScrubb
         }}
         className="absolute -translate-x-1/2 w-3.5 h-3.5 rounded-full shadow-md scale-0 group-hover:scale-100 transition-transform duration-150 pointer-events-none border-2 border-neutral-900"
       />
+
+      {/* A-B Loop Point A Badge */}
+      {abLoop.a !== null && duration > 0 && (
+        <div
+          style={{ left: `${(abLoop.a / duration) * 100}%` }}
+          className="absolute -top-3.5 -translate-x-1/2 px-1 py-0.5 rounded bg-emerald-500 text-[8px] font-black text-black shadow-md z-20 pointer-events-none leading-none select-none border border-black/40"
+          title={`Point A: ${formatSeconds(abLoop.a)}`}
+        >
+          A
+        </div>
+      )}
+
+      {/* A-B Loop Point B Badge */}
+      {abLoop.b !== null && duration > 0 && (
+        <div
+          style={{ left: `${(abLoop.b / duration) * 100}%` }}
+          className="absolute -top-3.5 -translate-x-1/2 px-1 py-0.5 rounded bg-emerald-500 text-[8px] font-black text-black shadow-md z-20 pointer-events-none leading-none select-none border border-black/40"
+          title={`Point B: ${formatSeconds(abLoop.b)}`}
+        >
+          B
+        </div>
+      )}
     </div>
   );
 }

@@ -110,6 +110,8 @@ export function PlaybackSettings({
     setQueueOnPlayMode,
     edgeHoverPlaylistEnabled,
     setEdgeHoverPlaylistEnabled,
+    autoplayNextEpisodeEnabled,
+    setAutoplayNextEpisodeEnabled,
   } = usePlayerStore();
 
   const [screenshotDir, setScreenshotDir] = useState<string>("");
@@ -251,6 +253,25 @@ export function PlaybackSettings({
           type="checkbox"
           checked={autoPlayNext}
           onChange={() => toggleAutoPlayNext()}
+          style={{ accentColor }}
+          className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+        />
+      </div>
+
+      {/* Netflix-Style Next Episode Binge Countdown Overlay */}
+      <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
+        <div>
+          <span className="font-medium text-neutral-200 text-xs">
+            Next Episode Binge Autoplay Card
+          </span>
+          <p className="text-xs text-neutral-500">
+            Show a Netflix-style floating countdown card 20s before the end of TV episodes with 1-click &quot;Play Now&quot; and &quot;Stay&quot; options
+          </p>
+        </div>
+        <input
+          type="checkbox"
+          checked={autoplayNextEpisodeEnabled}
+          onChange={(e) => setAutoplayNextEpisodeEnabled(e.target.checked)}
           style={{ accentColor }}
           className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
         />
