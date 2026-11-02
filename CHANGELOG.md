@@ -4,6 +4,27 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ---
 
+## [0.2.11] - 2026-11-02
+
+### ⏱️ On-the-Fly Audio & Subtitle Sync Control
+- **Dedicated Synchronization Shortcuts**: Added quick keyboard shortcuts to adjust timing offsets in real time during video playback:
+  - `Z` / `X`: Subtitle delay step down/up (`-100ms` / `+100ms`) with instant Center OSD feedback.
+  - `C`: One-key reset of subtitle offset back to `0 ms`.
+  - `G` / `H`: Audio delay step down/up (`-100ms` / `+100ms`) with Center OSD readout.
+  - `J`: One-key reset of audio track offset back to `0 ms`.
+- **Inline Popup Menu Steppers**: Added quick timing adjustment bars directly inside the control bar's Subtitle and Audio Track popup menus, featuring `[-100ms]`, `[-50ms]`, `[+50ms]`, and `[+100ms]` stepper pills alongside live tabular timing readouts and a one-click reset button.
+- **Shortcuts Manager Integration**: Rebindable directly through Settings -> Shortcuts under dedicated "Subtitles" and "Audio" categories.
+
+### 🎨 Desktop Design System & Unslop Overhaul
+- **De-Slopped Interface Architecture**: Integrated the `heydamir/unslop` design system to strip away generic AI-generated visual defaults in favor of an intentional, native desktop cinema character.
+- **Eliminated Ambient Halos & Blur Blobs**: Removed artificial background blur balls (`blur-3xl`, `opacity-40` color fog) and rainbow emblem gradients from the Welcome Screen, Media Library spotlight, and Series Detail headers.
+- **Rock-Steady Media Cards**: Eliminated disorienting card hover jumps (`hover:-translate-y-1 hover:shadow-2xl`) and poster zoom jitter (`group-hover:scale-105`), keeping cards grounded on screen like native desktop media managers.
+- **Precision Broadcast Telemetry HUD**: Upgraded nerd stats (`F9`) into a clean, high-density telemetry panel with hairline borders (`border-white/[0.1]`) and strict tabular figures (`tabular-nums`) to prevent text shifting during active playback.
+- **Quiet, Confident Desktop Microcopy**: Modernized UI copy across all screens—renamed "Smart Media Center" to "Media Library", and simplified status badges ("Resume", "Up Next", "Watched").
+- **Snappy Desktop Interactions**: Replaced bouncy scaling (`scale-105`) with crisp, native opacity and background tint transitions (120–150ms).
+
+---
+
 ## [0.2.10] - 2026-10-20
 
 ### 🔋 Battery Saver & Laptop Power Tuning

@@ -53,7 +53,7 @@ export function PlaylistDrawer() {
     mediaMetadata,
   } = usePlayerStore();
 
-  const { accentColor, accentGlow, accentText } = useThemeStore();
+  const { accentColor, accentText } = useThemeStore();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [showSortMenu, setShowSortMenu] = useState(false);
@@ -240,16 +240,15 @@ export function PlaylistDrawer() {
             style={{
               backgroundColor: isActive ? accentColor : undefined,
               color: isActive ? accentText : undefined,
-              boxShadow: isActive ? `0 0 12px ${accentGlow}` : undefined,
             }}
-            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-transform ${
+            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
               isActive
-                ? "font-black scale-105"
+                ? "font-semibold shadow-xs"
                 : "bg-white/5 text-neutral-400 group-hover:text-white group-hover:bg-white/10"
             }`}
           >
             {isActive && isPlaying ? (
-              <Volume2 className="w-4 h-4 animate-pulse" />
+              <Volume2 className="w-4 h-4" />
             ) : isActive ? (
               <Play className="w-4 h-4 fill-current ml-0.5" />
             ) : isAudio ? (
@@ -677,9 +676,8 @@ export function PlaylistDrawer() {
                 style={{
                   backgroundColor: accentColor,
                   color: accentText,
-                  boxShadow: `0 4px 14px ${accentGlow}`,
                 }}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs active:scale-95 transition"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-xs hover:brightness-110 active:scale-[0.98] transition duration-150 shadow-xs"
               >
                 <Plus className="w-4 h-4" />
                 <span>Add Media Files</span>
@@ -700,7 +698,7 @@ export function PlaylistDrawer() {
                     onClick={() => playPlaylistItem(item.originalIndex)}
                     style={{
                       borderColor: isActive ? accentColor : undefined,
-                      backgroundColor: isActive ? `${accentGlow}` : undefined,
+                      backgroundColor: isActive ? "rgba(255, 255, 255, 0.08)" : undefined,
                     }}
                     className={`group relative flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all border ${
                       isActive
@@ -735,7 +733,7 @@ export function PlaylistDrawer() {
                       onPointerDown={(e) => handleDragPointerDown(e, index)}
                       style={{
                         borderColor: isDragging || isActive ? accentColor : undefined,
-                        backgroundColor: isActive ? `${accentGlow}` : undefined,
+                        backgroundColor: isActive ? "rgba(255, 255, 255, 0.08)" : undefined,
                         touchAction: "none",
                         zIndex: isDragging ? 20 : undefined,
                       }}

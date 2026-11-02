@@ -59,6 +59,13 @@ export interface PlaybackSlice extends PlayerState {
   selectSubtitleTrack: (trackId: number) => Promise<void>;
   toggleSubtitleTrack: () => Promise<void>;
   lastActiveSubtitleTrackId: number | null;
+  subDelay: number;
+  audioDelay: number;
+  setSubDelay: (seconds: number) => Promise<void>;
+  changeSubDelay: (deltaSeconds: number) => Promise<void>;
+  setAudioDelay: (ms: number) => Promise<void>;
+  changeAudioDelay: (deltaMs: number) => Promise<void>;
+  resetSyncDelays: () => Promise<void>;
   chapters: ChapterInfo[];
   currentChapterIndex: number;
   seekToChapter: (index: number) => Promise<void>;

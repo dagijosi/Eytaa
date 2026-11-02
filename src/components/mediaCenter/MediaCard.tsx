@@ -61,7 +61,7 @@ function MediaCardBase({
   badge,
   showSeriesTitle = true,
 }: MediaCardProps) {
-  const { accentColor, accentGlow, accentText } = useThemeStore();
+  const { accentColor, accentText } = useThemeStore();
   const [isVisible, setIsVisible] = useState(false);
   const [thumbSrc, setThumbSrc] = useResolvedPoster(
     item.custom_poster,
@@ -117,12 +117,12 @@ function MediaCardBase({
   return (
     <div
       ref={containerRef}
-      className="group relative flex flex-col rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 hover:border-white/15 transition-all duration-300 overflow-hidden cursor-pointer shadow-md hover:shadow-2xl hover:-translate-y-1"
+      className="group relative flex flex-col rounded-xl bg-neutral-900/50 hover:bg-neutral-900/85 border border-white/[0.08] hover:border-white/[0.2] transition-colors duration-150 overflow-hidden cursor-pointer shadow-xs"
       onClick={() => onPlay(item.file_path)}
     >
       {/* Media Artwork Container */}
       <div
-        className={`relative w-full overflow-hidden bg-neutral-900 ${
+        className={`relative w-full overflow-hidden bg-neutral-950 ${
           isWidescreen ? "aspect-video" : "aspect-[2/3]"
         }`}
       >
@@ -132,12 +132,12 @@ function MediaCardBase({
               src={thumbSrc}
               alt=""
               aria-hidden="true"
-              className="absolute inset-0 w-full h-full object-cover blur-xl opacity-45 scale-125 pointer-events-none"
+              className="absolute inset-0 w-full h-full object-cover blur-lg opacity-40 scale-110 pointer-events-none"
             />
             <img
               src={thumbSrc}
               alt={item.title}
-              className="relative w-full h-full object-contain transition-transform duration-500 group-hover:scale-105 drop-shadow-md"
+              className="relative w-full h-full object-contain drop-shadow-md"
               loading="lazy"
               onError={() => setThumbSrc(null)}
             />
@@ -159,7 +159,7 @@ function MediaCardBase({
         )}
 
         {/* Subtle bottom shadow overlay to keep badges legible */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/20 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/25 pointer-events-none" />
 
         {/* Top Badges */}
         <div className="absolute top-2 inset-x-2 flex items-center justify-between gap-1.5 z-20 pointer-events-none">
@@ -168,86 +168,74 @@ function MediaCardBase({
             {badge ? (
               <span
                 style={{ backgroundColor: accentColor, color: accentText }}
-                className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase shadow-md shrink-0 whitespace-nowrap flex items-center gap-1"
+                className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase shrink-0 whitespace-nowrap flex items-center gap-1 shadow-xs"
               >
                 <span>{badge}</span>
-                {progressPercent !== undefined && <span>• {progressPercent}%</span>}
+                {progressPercent !== undefined && <span className="tabular-nums">• {progressPercent}%</span>}
               </span>
             ) : item.is_watched ? (
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 backdrop-blur-md shadow-md shrink-0 whitespace-nowrap">
-                <CheckCircle2 className="w-3 h-3" />
-                <span>WATCHED</span>
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-sans font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 backdrop-blur-md shrink-0 whitespace-nowrap">
+                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                <span>Watched</span>
               </span>
             ) : isPartiallyWatched ? (
               <span
-                style={{ backgroundColor: accentColor, borderColor: accentColor, color: accentText, boxShadow: `0 2px 8px ${accentGlow}` }}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border backdrop-blur-md shadow-md shrink-0 whitespace-nowrap"
+                style={{ backgroundColor: accentColor, color: accentText }}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold backdrop-blur-md shrink-0 whitespace-nowrap shadow-xs tabular-nums"
               >
                 <Clock className="w-2.5 h-2.5" />
-                <span>RESUME {progressPercent}%</span>
+                <span>Resume {progressPercent}%</span>
               </span>
             ) : isRecentlyAdded ? (
               <span
                 style={{
                   backgroundColor: accentColor,
                   color: accentText,
-                  borderColor: accentColor,
-                  boxShadow: `0 2px 8px ${accentGlow}`,
                 }}
-                className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border backdrop-blur-md shrink-0 whitespace-nowrap shadow-sm"
+                className="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold shrink-0 whitespace-nowrap shadow-xs"
               >
-                NEW
+                New
               </span>
             ) : null}
           </div>
 
           {/* Right Controls: Duration Badge */}
           {item.duration && item.duration > 0 && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-black/60 text-neutral-300 border border-white/10 backdrop-blur-md shrink-0 ml-auto">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-black/75 text-neutral-300 border border-white/10 backdrop-blur-md shrink-0 ml-auto tabular-nums">
               {formatDuration(item.duration)}
             </span>
           )}
         </div>
 
-        {/* Center Hover Action: Modern Cinematic Frosted Glass Play Button */}
-        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 z-10 pointer-events-none">
-          <div className="relative flex items-center justify-center">
-            {/* Ambient neon aura */}
+        {/* Center Hover Action: Clean native-style Play Overlay */}
+        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10 pointer-events-none">
+          <div className="w-11 h-11 rounded-full bg-black/70 backdrop-blur-md border border-white/25 flex items-center justify-center shadow-lg">
             <div
-              style={{ backgroundColor: accentGlow }}
-              className="absolute w-14 h-14 rounded-full blur-xl opacity-60 group-hover:opacity-100 transition-opacity"
-            />
-            {/* Frosted glass halo with border */}
-            <div className="relative w-12 h-12 rounded-full bg-neutral-950/70 backdrop-blur-xl border border-white/30 group-hover:border-white/60 flex items-center justify-center shadow-2xl transition-transform duration-300 group-hover:scale-110">
-              {/* Inner glowing action disc */}
-              <div
-                style={{
-                  backgroundColor: accentColor,
-                  color: accentText,
-                  boxShadow: `0 4px 16px ${accentGlow}`,
-                }}
-                className="w-8 h-8 rounded-full flex items-center justify-center shadow-md transition-transform duration-300 group-hover:scale-105"
-              >
-                <Play className="w-4 h-4 fill-current translate-x-0.5" />
-              </div>
+              style={{
+                backgroundColor: accentColor,
+                color: accentText,
+              }}
+              className="w-7 h-7 rounded-full flex items-center justify-center shadow-xs"
+            >
+              <Play className="w-3.5 h-3.5 fill-current translate-x-0.5" />
             </div>
           </div>
         </div>
 
-        {/* Hover Quick Action Tray (Bottom-Left: clean, lower and to the left) */}
+        {/* Hover Quick Action Tray */}
         <div
           onClick={(e) => e.stopPropagation()}
-          className="absolute bottom-1.5 left-1.5 flex items-center gap-0.5 bg-black/85 backdrop-blur-md border border-white/20 rounded-xl p-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-20 shadow-xl pointer-events-auto"
+          className="absolute bottom-1.5 left-1.5 flex items-center gap-0.5 bg-black/80 backdrop-blur-md border border-white/15 rounded-lg p-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-20 shadow-lg pointer-events-auto"
         >
           {/* Mark Watched Toggle */}
           <button
             type="button"
             onClick={() => onToggleWatched(item.file_path, item.is_watched)}
             title={item.is_watched ? "Mark as Unwatched" : "Mark as Watched"}
-            className={`p-1.5 rounded-lg transition cursor-pointer ${
+            className={`p-1.5 rounded-md transition duration-150 cursor-pointer ${
               item.is_watched
                 ? "text-emerald-400 hover:bg-emerald-500/20"
-                : "text-neutral-400 hover:text-white hover:bg-white/20"
+                : "text-neutral-400 hover:text-white hover:bg-white/15"
             }`}
           >
             {item.is_watched ? (
@@ -262,10 +250,10 @@ function MediaCardBase({
             type="button"
             onClick={() => onToggleFavorite(item.file_path)}
             title={item.is_favorite ? "Remove from Favorites" : "Add to Favorites"}
-            className={`p-1.5 rounded-lg transition cursor-pointer ${
+            className={`p-1.5 rounded-md transition duration-150 cursor-pointer ${
               item.is_favorite
                 ? "text-rose-400 fill-rose-400 hover:bg-rose-500/20"
-                : "text-neutral-400 hover:text-white hover:bg-white/20"
+                : "text-neutral-400 hover:text-white hover:bg-white/15"
             }`}
           >
             <Heart className={`w-3.5 h-3.5 ${item.is_favorite ? "fill-current" : ""}`} />
@@ -276,7 +264,7 @@ function MediaCardBase({
             type="button"
             onClick={() => onQueue(item.file_path)}
             title="Add to Playlist"
-            className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/20 transition cursor-pointer"
+            className="p-1.5 rounded-md text-neutral-400 hover:text-white hover:bg-white/15 transition duration-150 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
@@ -286,7 +274,7 @@ function MediaCardBase({
             type="button"
             onClick={() => onEdit(item)}
             title="Edit Details"
-            className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/20 transition cursor-pointer"
+            className="p-1.5 rounded-md text-neutral-400 hover:text-white hover:bg-white/15 transition duration-150 cursor-pointer"
           >
             <Edit3 className="w-3.5 h-3.5" />
           </button>
@@ -294,7 +282,7 @@ function MediaCardBase({
 
         {/* Progress Bar (Bottom of artwork) */}
         {isPartiallyWatched && progressPercent && (
-          <div className="absolute bottom-0 inset-x-0 h-1 bg-white/20 overflow-hidden z-10">
+          <div className="absolute bottom-0 inset-x-0 h-1 bg-white/15 overflow-hidden z-10">
             <div
               className="h-full transition-all duration-300"
               style={{ width: `${progressPercent}%`, backgroundColor: accentColor }}
@@ -304,13 +292,13 @@ function MediaCardBase({
       </div>
 
       {/* Information Meta Bar */}
-      <div className="p-3.5 flex flex-col flex-1 justify-between gap-1">
+      <div className="p-3 flex flex-col flex-1 justify-between gap-1">
         <div>
           {/* Series Supertitle if episode */}
           {showSeriesTitle && item.series_name && (
             <p
               style={{ color: accentColor }}
-              className="text-[10px] font-mono font-bold tracking-wider uppercase truncate mb-0.5"
+              className="text-[10px] font-mono font-medium tracking-wide uppercase truncate mb-0.5"
             >
               {item.series_name}
             </p>
@@ -318,7 +306,7 @@ function MediaCardBase({
 
           {/* Title */}
           <h4
-            className="text-xs font-bold text-white group-hover:text-neutral-100 line-clamp-1 leading-snug tracking-tight"
+            className="text-xs font-semibold text-neutral-100 group-hover:text-white line-clamp-1 leading-snug tracking-tight"
             title={item.title}
           >
             {item.title}
@@ -332,11 +320,11 @@ function MediaCardBase({
           ) : null}
         </div>
 
-        {/* Footer Meta Row: Never cut resume label */}
-        <div className="flex items-center justify-between gap-2 text-[10px] text-neutral-400 font-mono pt-1 border-t border-white/5">
+        {/* Footer Meta Row */}
+        <div className="flex items-center justify-between gap-2 text-[10px] text-neutral-400 font-mono pt-1.5 border-t border-white/[0.06]">
           <div className="flex items-center gap-1.5 min-w-0 truncate">
             {item.season_number && item.episode_number ? (
-              <span className="text-neutral-300 font-bold shrink-0">
+              <span className="text-neutral-300 font-semibold shrink-0">
                 S{String(item.season_number).padStart(2, "0")}E{String(item.episode_number).padStart(2, "0")}
               </span>
             ) : item.year ? (
@@ -348,11 +336,11 @@ function MediaCardBase({
             <span className="truncate">{formatBytes(item.file_size)}</span>
           </div>
 
-          {/* Remaining resume time - ALWAYS VISIBLE, NEVER CUT */}
+          {/* Remaining resume time */}
           {remainingLabel ? (
             <span
               style={{ color: accentColor }}
-              className="font-bold shrink-0 whitespace-nowrap px-1.5 py-0.5 rounded-md bg-white/5"
+              className="font-medium shrink-0 whitespace-nowrap px-1.5 py-0.2 rounded bg-white/[0.06] tabular-nums"
             >
               {remainingLabel}
             </span>
@@ -366,4 +354,3 @@ function MediaCardBase({
 }
 
 export const MediaCard = memo(MediaCardBase);
-

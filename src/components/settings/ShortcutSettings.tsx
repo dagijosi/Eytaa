@@ -175,7 +175,7 @@ export function ShortcutSettings({
           </button>
         </div>
         <div className="space-y-3">
-          {(["Playback", "Seeking", "Volume", "View", "Tools"] as const).map((group) => {
+          {(["Playback", "Seeking", "Volume", "Audio", "Subtitles", "View", "Tools"] as const).map((group) => {
             const actions = (
               Object.keys(LOCAL_ACTION_META) as LocalAction[]
             ).filter((a) => LOCAL_ACTION_META[a].group === group);

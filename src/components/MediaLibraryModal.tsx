@@ -140,7 +140,7 @@ function SeriesCard({
   return (
     <div
       onClick={onClick}
-      className="group relative flex flex-col rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 hover:border-white/15 transition-all duration-300 overflow-hidden cursor-pointer shadow-md hover:shadow-2xl hover:-translate-y-1"
+      className="group relative flex flex-col rounded-xl bg-neutral-900/50 hover:bg-neutral-900/85 border border-white/[0.08] hover:border-white/[0.2] transition-colors duration-150 overflow-hidden cursor-pointer shadow-xs"
     >
       {/* Show Poster Container */}
       <div
@@ -159,7 +159,7 @@ function SeriesCard({
             <img
               src={thumbSrc}
               alt={group.seriesName}
-              className="relative w-full h-full object-contain transition-transform duration-500 group-hover:scale-105 drop-shadow-md"
+              className="relative w-full h-full object-contain drop-shadow-md"
               loading="lazy"
               onError={() => setThumbSrc(null)}
             />
@@ -216,7 +216,7 @@ function SeriesCard({
 
         {/* Hover Lower Overlay: View Episodes Capsule */}
         <div className="absolute inset-0 flex items-end justify-center pb-5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20 pointer-events-none">
-          <div className="px-3.5 py-1.5 rounded-full bg-neutral-950/85 backdrop-blur-xl border border-white/20 hover:border-white/40 text-neutral-200 hover:text-white font-medium text-xs flex items-center gap-1.5 shadow-2xl transition hover:scale-105 pointer-events-auto">
+          <div className="px-3.5 py-1.5 rounded-full bg-neutral-950/85 backdrop-blur-xl border border-white/20 hover:border-white/40 text-neutral-200 hover:text-white font-medium text-xs flex items-center gap-1.5 shadow-lg transition duration-150 pointer-events-auto">
             <Layers className="w-3.5 h-3.5 text-neutral-400" />
             <span>View Episodes</span>
             <span className="text-neutral-500">•</span>
@@ -254,7 +254,7 @@ function SeriesCard({
 
 export function MediaLibraryModal() {
   const { isLibraryOpen, toggleLibraryModal, toggleSettingsModal, openFile, addToPlaylist, showOSD } = usePlayerStore();
-  const { accentColor, accentGlow, accentText } = useThemeStore();
+  const { accentColor, accentText } = useThemeStore();
 
   const [activeTab, setActiveTab] = useState<MediaCenterTab>("hub");
   const [watchFilter, setWatchFilter] = useState<WatchFilter>("all");
@@ -990,7 +990,7 @@ export function MediaLibraryModal() {
                 Smart Media Center
               </h1>
               <span
-                style={{ backgroundColor: accentColor, color: accentText, boxShadow: `0 2px 8px ${accentGlow}` }}
+                style={{ backgroundColor: accentColor, color: accentText }}
                 className="px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-mono font-bold shrink-0"
               >
                 v2.0
@@ -1040,10 +1040,7 @@ export function MediaLibraryModal() {
           <button
             onClick={handleAddFolder}
             style={{
-              backgroundColor: accentColor,
-              color: accentText,
-              boxShadow: `0 2px 10px ${accentGlow}`,
-            }}
+              backgroundColor: accentColor, color: accentText, }}
             className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition hover:brightness-110 active:scale-95 cursor-pointer"
             title="Add a folder to scan for media"
           >
@@ -1243,8 +1240,7 @@ export function MediaLibraryModal() {
                               color: accentText,
                               borderLeftColor: !isSidebarCollapsed ? accentColor : undefined,
                               borderColor: isSidebarCollapsed ? accentColor : undefined,
-                              boxShadow: `0 2px 10px ${accentGlow}`,
-                            }
+                              }
                           : {}
                       }
                       className={`relative flex items-center h-10 w-full rounded-xl transition-colors cursor-pointer select-none px-2.5 overflow-hidden ${
@@ -1325,8 +1321,7 @@ export function MediaLibraryModal() {
                               color: accentText,
                               borderLeftColor: !isSidebarCollapsed ? accentColor : undefined,
                               borderColor: isSidebarCollapsed ? accentColor : undefined,
-                              boxShadow: `0 2px 10px ${accentGlow}`,
-                            }
+                              }
                           : {}
                       }
                       className={`relative flex items-center h-10 w-full rounded-xl transition-colors cursor-pointer select-none px-2.5 overflow-hidden ${
@@ -1559,11 +1554,7 @@ export function MediaLibraryModal() {
             {/* HERO SPOTLIGHT BANNER */}
             {spotlightItem && (
               <div className="relative rounded-3xl overflow-hidden border border-white/10 bg-gradient-to-r from-neutral-950 via-neutral-900/90 to-neutral-950 p-4 sm:p-6 lg:p-7 flex flex-row items-center gap-4 sm:gap-6 shadow-2xl">
-                {/* Ambient Glow */}
-                <div
-                  style={{ backgroundColor: accentGlow }}
-                  className="absolute -top-24 -left-24 w-72 h-72 rounded-full blur-3xl pointer-events-none opacity-30"
-                />
+                
 
                 {/* Cinematic Ambient Backdrop from spotlight artwork */}
                 {spotlightThumb && (
@@ -1592,7 +1583,7 @@ export function MediaLibraryModal() {
                       <img
                         src={spotlightThumb}
                         alt={spotlightItem.title}
-                        className="relative w-full h-full object-contain transition-transform duration-500 group-hover:scale-105 drop-shadow-md"
+                        className="relative w-full h-full object-contain drop-shadow-md"
                         onError={() => setSpotlightThumb(null)}
                       />
                     </>
@@ -1611,10 +1602,10 @@ export function MediaLibraryModal() {
                   <div>
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                       <span
-                        style={{ backgroundColor: accentColor, color: accentText, borderColor: accentColor, boxShadow: `0 2px 8px ${accentGlow}` }}
+                        style={{ backgroundColor: accentColor, color: accentText, borderColor: accentColor,  }}
                         className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase border flex items-center gap-1.5"
                       >
-                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-current " />
                         {spotlightItem.resume_position && spotlightItem.resume_position > 10 ? "Resume Watching" : "Featured Spotlight"}
                       </span>
                       {spotlightItem.series_name && (
@@ -1671,8 +1662,7 @@ export function MediaLibraryModal() {
                       style={{
                         backgroundColor: accentColor,
                         color: accentText,
-                        boxShadow: `0 4px 18px ${accentGlow}`,
-                      }}
+                        }}
                       className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs transition hover:brightness-110 active:scale-95 cursor-pointer shadow-lg shrink-0"
                     >
                       <Play className="w-4 h-4 fill-current" />
@@ -2030,7 +2020,7 @@ export function MediaLibraryModal() {
                     onClick={() => setWatchFilter(f.id as WatchFilter)}
                     style={
                       watchFilter === f.id
-                        ? { backgroundColor: accentColor, borderColor: accentColor, color: accentText, boxShadow: `0 2px 8px ${accentGlow}` }
+                        ? { backgroundColor: accentColor, borderColor: accentColor, color: accentText, }
                         : {}
                     }
                     className={`px-3 py-1 rounded-xl text-xs font-semibold border transition cursor-pointer ${
@@ -2110,8 +2100,7 @@ export function MediaLibraryModal() {
                             backgroundColor: accentColor,
                             borderColor: accentColor,
                             color: accentText,
-                            boxShadow: `0 2px 8px ${accentGlow}`,
-                          }
+                            }
                         : {}
                     }
                     className={`px-3 py-1 rounded-xl text-xs font-semibold border transition cursor-pointer ${

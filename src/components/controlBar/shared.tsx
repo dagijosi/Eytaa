@@ -19,14 +19,13 @@ export const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 export function activeBtnStyle(
   active: boolean,
   accentColor: string,
-  accentGlow: string,
-): { backgroundColor: string; color: string; borderColor: string; boxShadow: string } | undefined {
+  _accentGlow?: string,
+): { backgroundColor: string; color: string; borderColor: string } | undefined {
   return active
     ? {
         backgroundColor: accentColor,
         color: "var(--accent-text)",
         borderColor: accentColor,
-        boxShadow: `0 2px 10px ${accentGlow}`,
       }
     : undefined;
 }

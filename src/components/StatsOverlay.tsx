@@ -46,8 +46,8 @@ export function StatsOverlay() {
       playbackRate: s.playbackRate,
     })),
   );
-  const { accentColor, accentGlow } = useThemeStore(
-    useShallow((s) => ({ accentColor: s.accentColor, accentGlow: s.accentGlow })),
+  const { accentColor } = useThemeStore(
+    useShallow((s) => ({ accentColor: s.accentColor })),
   );
   const [stats, setStats] = useState<StatsSnapshot>(EMPTY);
   const timerRef = useRef<number | null>(null);
@@ -114,30 +114,27 @@ export function StatsOverlay() {
   ];
 
   return (
-    <div
-      style={{ borderColor: `${accentColor}55`, boxShadow: `0 0 24px ${accentGlow}` }}
-      className="absolute top-16 right-4 z-40 w-64 rounded-xl border bg-neutral-950/85 backdrop-blur-xl p-3 text-[11px] font-mono text-neutral-200 select-none animate-in fade-in slide-in-from-top-2 duration-150"
-    >
-      <div className="flex items-center justify-between mb-2">
-        <span
-          style={{ color: accentColor }}
-          className="font-bold tracking-widest uppercase text-[10px]"
-        >
-          Playback Stats
-        </span>
+    <div className="absolute top-14 right-4 z-40 w-68 rounded-xl border border-white/[0.1] bg-neutral-950/92 backdrop-blur-2xl p-3 text-[11px] font-mono text-neutral-200 select-none shadow-xl animate-in fade-in duration-150">
+      <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.08]">
+        <div className="flex items-center gap-1.5">
+          <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: accentColor }} />
+          <span className="font-semibold tracking-wider text-[10px] uppercase text-neutral-300">
+            Playback Telemetry
+          </span>
+        </div>
         <button
           onClick={() => toggleStats(false)}
-          className="p-0.5 rounded hover:bg-white/10 text-neutral-400 hover:text-white transition"
+          className="p-1 rounded-md hover:bg-white/[0.08] text-neutral-400 hover:text-white transition duration-150 cursor-pointer"
           title="Close (F9)"
         >
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1.5">
         {rows.map(([label, value]) => (
-          <div key={label} className="flex items-center justify-between gap-3">
-            <span className="text-neutral-500">{label}</span>
-            <span className="text-neutral-100 truncate" title={value}>
+          <div key={label} className="flex items-center justify-between gap-3 text-[11px]">
+            <span className="text-neutral-500 font-sans text-[11px]">{label}</span>
+            <span className="text-neutral-200 tabular-nums truncate font-mono text-right" title={value}>
               {value}
             </span>
           </div>

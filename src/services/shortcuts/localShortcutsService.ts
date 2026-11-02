@@ -22,7 +22,13 @@ export type LocalAction =
   | "open-url"
   | "screenshot"
   | "toggle-stats"
-  | "toggle-night-listening";
+  | "toggle-night-listening"
+  | "sub-delay-down"
+  | "sub-delay-up"
+  | "reset-sub-delay"
+  | "audio-delay-down"
+  | "audio-delay-up"
+  | "reset-audio-delay";
 
 export interface LocalActionMeta {
   label: string;
@@ -44,8 +50,8 @@ export const LOCAL_ACTION_META: Record<LocalAction, LocalActionMeta> = {
   "picture-in-picture": { label: "Toggle Picture-in-Picture", group: "View", defaultKeys: ["i"] },
   "toggle-playlist": { label: "Toggle Playlist (Shift+P = PiP)", group: "View", defaultKeys: ["p"] },
   "toggle-library": { label: "Toggle Media Library", group: "View", defaultKeys: ["b"] },
-  "cycle-subtitle": { label: "Cycle Subtitle Track", group: "Tools", defaultKeys: ["s"] },
-  "cycle-audio": { label: "Cycle Audio Track", group: "Tools", defaultKeys: ["a"] },
+  "cycle-subtitle": { label: "Cycle Subtitle Track", group: "Subtitles", defaultKeys: ["s"] },
+  "cycle-audio": { label: "Cycle Audio Track", group: "Audio", defaultKeys: ["a"] },
   "cycle-repeat": { label: "Cycle Repeat Mode", group: "Tools", defaultKeys: ["r"] },
   "open-file": { label: "Open File", group: "Tools", defaultKeys: ["o"] },
   "open-url": { label: "Open Network Stream (URL)", group: "Tools", defaultKeys: ["u"] },
@@ -53,6 +59,12 @@ export const LOCAL_ACTION_META: Record<LocalAction, LocalActionMeta> = {
   "toggle-stats": { label: "Toggle Playback Stats", group: "Tools", defaultKeys: ["f9"] },
   "cycle-profile": { label: "Cycle Playback Profile", group: "Tools", defaultKeys: ["f7"] },
   "toggle-night-listening": { label: "Toggle Night Listening", group: "Tools", defaultKeys: ["f8"] },
+  "sub-delay-down": { label: "Subtitle Delay -100ms", group: "Subtitles", defaultKeys: ["z"] },
+  "sub-delay-up": { label: "Subtitle Delay +100ms", group: "Subtitles", defaultKeys: ["x"] },
+  "reset-sub-delay": { label: "Reset Subtitle Delay (0ms)", group: "Subtitles", defaultKeys: ["c"] },
+  "audio-delay-down": { label: "Audio Delay -100ms", group: "Audio", defaultKeys: ["g"] },
+  "audio-delay-up": { label: "Audio Delay +100ms", group: "Audio", defaultKeys: ["h"] },
+  "reset-audio-delay": { label: "Reset Audio Delay (0ms)", group: "Audio", defaultKeys: ["j"] },
 };
 
 export type LocalShortcutsConfig = Record<LocalAction, string[]>;

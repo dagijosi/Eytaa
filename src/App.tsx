@@ -78,6 +78,10 @@ export default function App() {
     toggleUrlModal,
     takeScreenshot,
     toggleStats,
+    changeSubDelay,
+    setSubDelay,
+    changeAudioDelay,
+    setAudioDelay,
   } = usePlayerStore(
     useShallow((s) => ({
       isInitialized: s.isInitialized,
@@ -118,6 +122,10 @@ export default function App() {
       pauseOnSystemSleep: s.pauseOnSystemSleep,
       showOSD: s.showOSD,
       scrollVolumeEnabled: s.scrollVolumeEnabled,
+      changeSubDelay: s.changeSubDelay,
+      setSubDelay: s.setSubDelay,
+      changeAudioDelay: s.changeAudioDelay,
+      setAudioDelay: s.setAudioDelay,
       toggleUrlModal: s.toggleUrlModal,
       takeScreenshot: s.takeScreenshot,
       toggleStats: s.toggleStats,
@@ -474,6 +482,30 @@ export default function App() {
           }
           break;
         }
+        case "sub-delay-down":
+          e.preventDefault();
+          await changeSubDelay(-0.1);
+          break;
+        case "sub-delay-up":
+          e.preventDefault();
+          await changeSubDelay(0.1);
+          break;
+        case "reset-sub-delay":
+          e.preventDefault();
+          await setSubDelay(0);
+          break;
+        case "audio-delay-down":
+          e.preventDefault();
+          await changeAudioDelay(-100);
+          break;
+        case "audio-delay-up":
+          e.preventDefault();
+          await changeAudioDelay(100);
+          break;
+        case "reset-audio-delay":
+          e.preventDefault();
+          await setAudioDelay(0);
+          break;
         case "open-file": {
           e.preventDefault();
           try {
@@ -597,6 +629,10 @@ export default function App() {
     toggleUrlModal,
     takeScreenshot,
     toggleStats,
+    changeSubDelay,
+    setSubDelay,
+    changeAudioDelay,
+    setAudioDelay,
     showOSD,
   ]);
 

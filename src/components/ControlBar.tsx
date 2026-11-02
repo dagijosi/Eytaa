@@ -62,6 +62,12 @@ export function ControlBar() {
     takeScreenshot,
     showStats,
     toggleStats,
+    subDelay,
+    changeSubDelay,
+    setSubDelay,
+    audioDelay,
+    changeAudioDelay,
+    setAudioDelay,
   } = usePlayerStore(
     useShallow((s) => ({
       status: s.status,
@@ -109,6 +115,12 @@ export function ControlBar() {
       takeScreenshot: s.takeScreenshot,
       showStats: s.showStats,
       toggleStats: s.toggleStats,
+      subDelay: s.subDelay,
+      changeSubDelay: s.changeSubDelay,
+      setSubDelay: s.setSubDelay,
+      audioDelay: s.audioDelay,
+      changeAudioDelay: s.changeAudioDelay,
+      setAudioDelay: s.setAudioDelay,
     })),
   );
 
@@ -162,6 +174,9 @@ export function ControlBar() {
               audioTracks={audioTracks}
               currentAudioTrackId={currentAudioTrackId}
               onSelectAudioTrack={selectAudioTrack}
+              audioDelay={audioDelay}
+              onChangeAudioDelay={changeAudioDelay}
+              onSetAudioDelay={setAudioDelay}
             />
 
             <SubtitleMenu
@@ -170,6 +185,9 @@ export function ControlBar() {
               onSelectSubtitleTrack={selectSubtitleTrack}
               onToggleSubtitleTrack={toggleSubtitleTrack}
               onLoadSubtitle={loadSubtitle}
+              subDelay={subDelay}
+              onChangeSubDelay={changeSubDelay}
+              onSetSubDelay={setSubDelay}
             />
 
             <VideoFitButton videoFitMode={videoFitMode} onCycleVideoFitMode={cycleVideoFitMode} />

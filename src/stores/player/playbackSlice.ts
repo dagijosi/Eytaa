@@ -69,6 +69,8 @@ export const createPlaybackSlice: StateCreator<
     showStats: false,
     isUrlModalOpen: false,
     lastActiveSubtitleTrackId: null,
+    subDelay: 0,
+    audioDelay: 0,
 
     initialize: async () => {
       await playerService.initialize();
@@ -555,6 +557,39 @@ export const createPlaybackSlice: StateCreator<
         set({ currentChapterIndex: index });
         get().showOSD(`Chapter: ${chapter.title || `Chapter ${index + 1}`}`);
       }
+    },
+
+    setSubDelay: async (seconds: number) => {
+      const rounded = Math.round(seconds * 20) / 20;
+      await playerService.setMpvProperty("sub-delay", rounded);
+      set({ subDelay: rounded });
+      const ms = Math.round(rounded * 1000);
+      get().showOSD(`Subtitle Delay: ${ms > 0 ? "+" : ""}${ms} ms`);
+    },
+
+    changeSubDelay: async (deltaSeconds: number) => {
+      const current = get().subDelay;
+      const target = Math.round((current + deltaSeconds) * 20) / 20;
+      await get().setSubDelay(target);
+    },
+
+    setAudioDelay: async (ms: number) => {
+      const roundedMs = Math.round(ms / 50) * 50;
+      await playerService.setMpvProperty("audio-delay", roundedMs / 1000);
+      set({ audioDelay: roundedMs });
+      get().showOSD(`Audio Delay: ${roundedMs > 0 ? "+" : ""}${roundedMs} ms`);
+    },
+
+    changeAudioDelay: async (deltaMs: number) => {
+      const current = get().audioDelay;
+      await get().setAudioDelay(current + deltaMs);
+    },
+
+    resetSyncDelays: async () => {
+      await playerService.setMpvProperty("sub-delay", 0);
+      await playerService.setMpvProperty("audio-delay", 0);
+      set({ subDelay: 0, audioDelay: 0 });
+      get().showOSD("Audio & Subtitle Sync Reset (0 ms)");
     },
 
     takeScreenshot: async () => {

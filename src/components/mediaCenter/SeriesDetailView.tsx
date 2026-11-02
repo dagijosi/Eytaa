@@ -53,7 +53,7 @@ export function SeriesDetailView({
   onToggleFavorite,
   onRefreshData,
 }: SeriesDetailViewProps) {
-  const { accentColor, accentGlow, accentText } = useThemeStore();
+  const { accentColor, accentText } = useThemeStore();
   const [unfilteredEpisodes, setUnfilteredEpisodes] = useState<LibraryItem[]>([]);
   const [showAllEpisodes, setShowAllEpisodes] = useState(false);
 
@@ -442,8 +442,8 @@ export function SeriesDetailView({
       <div className="relative rounded-3xl bg-neutral-900/80 border border-white/10 overflow-hidden p-6 sm:p-8 flex flex-col md:flex-row items-center sm:items-start gap-6 shadow-2xl">
         {/* Ambient glow */}
         <div
-          style={{ backgroundColor: accentGlow }}
-          className="absolute -top-20 -left-20 w-72 h-72 rounded-full blur-3xl pointer-events-none opacity-40"
+          className="hidden"
+          aria-hidden="true"
         />
 
         {/* Cinematic Ambient Backdrop from series artwork */}
@@ -472,7 +472,7 @@ export function SeriesDetailView({
               <img
                 src={heroThumb}
                 alt={seriesName}
-                className="relative w-full h-full object-contain transition-transform duration-500 group-hover/poster:scale-105 drop-shadow-md"
+                className="relative w-full h-full object-contain drop-shadow-md"
                 onError={() => setHeroThumb(null)}
               />
             </>
@@ -493,7 +493,7 @@ export function SeriesDetailView({
             className="absolute inset-0 bg-black/60 backdrop-blur-xs opacity-0 group-hover/poster:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 text-white cursor-pointer z-10"
             title="Click to change series cover"
           >
-            <div className="p-2.5 rounded-full bg-white/20 border border-white/20 hover:scale-110 transition">
+            <div className="p-2.5 rounded-full bg-white/20 border border-white/20 hover:bg-white/30 transition duration-150">
               <Camera className="w-5 h-5 text-white" />
             </div>
             <span className="text-[11px] font-bold">Change Cover</span>
@@ -551,7 +551,7 @@ export function SeriesDetailView({
                 style={{
                   backgroundColor: accentColor,
                   color: accentText,
-                  boxShadow: `0 6px 20px ${accentGlow}`,
+
                 }}
                 className="flex items-center gap-2.5 px-6 py-3 rounded-2xl text-xs font-black tracking-wide uppercase transition hover:brightness-110 active:scale-95 cursor-pointer shadow-lg"
               >
@@ -594,7 +594,7 @@ export function SeriesDetailView({
                         backgroundColor: accentColor,
                         color: accentText,
                         borderColor: accentColor,
-                        boxShadow: `0 2px 10px ${accentGlow}`,
+
                       }
                     : undefined
                 }
@@ -627,7 +627,7 @@ export function SeriesDetailView({
                       backgroundColor: accentColor,
                       color: accentText,
                       borderColor: accentColor,
-                      boxShadow: `0 2px 10px ${accentGlow}`,
+
                     }
                   : undefined
               }
