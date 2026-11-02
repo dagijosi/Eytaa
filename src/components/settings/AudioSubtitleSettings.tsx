@@ -6,6 +6,8 @@ interface AudioSubtitleSettingsProps {
   accentGlow: string;
   audioNormalize: boolean;
   handleToggleAudioNormalize: () => Promise<void>;
+  isNightListening?: boolean;
+  handleToggleNightListening?: () => Promise<void>;
   audioDelay: number;
   handleAudioDelayChange: (ms: number) => Promise<void>;
   subFontSize: number;
@@ -28,6 +30,8 @@ export function AudioSubtitleSettings({
   accentGlow,
   audioNormalize,
   handleToggleAudioNormalize,
+  isNightListening = false,
+  handleToggleNightListening,
   audioDelay,
   handleAudioDelayChange,
   subFontSize,
@@ -46,6 +50,32 @@ export function AudioSubtitleSettings({
 }: AudioSubtitleSettingsProps) {
   return (
     <div className="space-y-5">
+      {/* Night Mode / Dynamic Audio Normalizer */}
+      {handleToggleNightListening && (
+        <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-neutral-200 text-xs">
+                Night Mode (Dynamic Audio Normalization)
+              </span>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                Key: N
+              </span>
+            </div>
+            <p className="text-xs text-neutral-500 mt-0.5">
+              Boosts quiet dialogue and dampens loud explosions to prevent volume-riding at night
+            </p>
+          </div>
+          <input
+            type="checkbox"
+            checked={isNightListening}
+            onChange={() => handleToggleNightListening()}
+            style={{ accentColor }}
+            className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+          />
+        </div>
+      )}
+
       {/* Audio Normalization */}
       <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
         <div>

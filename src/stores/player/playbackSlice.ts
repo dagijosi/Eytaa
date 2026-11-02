@@ -245,6 +245,11 @@ export const createPlaybackSlice: StateCreator<
       // Night listening setting
       if (typeof savedNightMode === "boolean") {
         set({ isNightListening: savedNightMode });
+        if (savedNightMode) {
+          playerService
+            .setMpvProperty("af", "lavfi=[dynaudnorm=f=150:g=15:m=10.0:r=0.9:b=1]")
+            .catch(() => {});
+        }
       }
 
       // Pause-on-sleep setting
@@ -654,17 +659,83 @@ export const createPlaybackSlice: StateCreator<
       get().showOSD("Audio & Subtitle Sync Reset (0 ms)");
     },
 
-    takeScreenshot: async () => {
+    lastScreenshot: null,
+
+    dismissScreenshotToast: () => {
+      set({ lastScreenshot: null });
+    },
+
+    copyScreenshotToClipboard: async (path: string) => {
       try {
-        const path = await playerService.takeScreenshot();
+        await invoke("copy_image_to_clipboard", { filePath: path });
+        set((s) => ({
+          lastScreenshot: s.lastScreenshot
+            ? { ...s.lastScreenshot, copied: true }
+            : null,
+        }));
+        get().showOSD("Copied image to clipboard");
+        return true;
+      } catch (err) {
+        console.warn("Failed to copy image to clipboard:", err);
+        get().showOSD("Failed to copy image to clipboard");
+        return false;
+      }
+    },
+
+    takeScreenshot: async (options?: {
+      mode?: "video" | "subtitles" | "window";
+      copyToClipboard?: boolean;
+      directory?: string;
+    }) => {
+      try {
+        const mode = options?.mode || "video";
+        const path = await playerService.takeScreenshot({
+          mode,
+          directory: options?.directory,
+        });
+
         if (path) {
-          get().showOSD(`Screenshot: ${path.split(/[/\\]/).pop()}`);
+          let thumbnail: string | null = null;
+          try {
+            thumbnail = await libraryService.getThumbnail(path);
+          } catch {}
+
+          let copied = false;
+          if (options?.copyToClipboard) {
+            try {
+              await invoke("copy_image_to_clipboard", { filePath: path });
+              copied = true;
+            } catch (copyErr) {
+              console.warn("Auto copy to clipboard failed:", copyErr);
+            }
+          }
+
+          set({
+            lastScreenshot: {
+              path,
+              thumbnail,
+              timestamp: Date.now(),
+              mode,
+              copied,
+            },
+          });
+
+          const fileName = path.split(/[/\\]/).pop();
+          if (copied) {
+            get().showOSD(`Screenshot Copied: ${fileName}`);
+          } else {
+            const label = mode === "video" ? "Clean Frame" : "With Subtitles";
+            get().showOSD(`Screenshot Saved (${label}): ${fileName}`);
+          }
+          return path;
         } else {
-          get().showOSD("Screenshots unavailable for streams");
+          get().showOSD("Screenshots unavailable for active stream");
+          return null;
         }
       } catch (err) {
         console.warn("Screenshot failed:", err);
-        get().showOSD("Screenshot failed");
+        get().showOSD("Screenshot capture failed");
+        return null;
       }
     },
 

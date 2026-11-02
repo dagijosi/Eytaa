@@ -691,21 +691,62 @@ export class MpvPlayerService implements MediaPlayerService {
    * Captures a screenshot next to the current media file (or into the given
    * directory). Returns the written path, or null when no local file is loaded.
    */
-  public async takeScreenshot(directory?: string): Promise<string | null> {
+  public async takeScreenshot(
+    options?: { directory?: string; mode?: "video" | "subtitles" | "window" } | string,
+  ): Promise<string | null> {
     await this.ensureInitialized();
-    const source = this.lastLoadedPath;
-    if (!source || /^[a-z][a-z0-9+.-]*:\/\//i.test(source)) {
+    const source = this.lastLoadedPath || this.state.mediaMetadata?.filePath;
+    if (!source) {
       return null;
     }
-    const dir = directory || source.replace(/[/\\][^/\\]+$/, "");
-    const base = (source.split(/[/\\]/).pop() || "frame").replace(/\.[^.]+$/, "");
+
+    const explicitDir = typeof options === "string" ? options : options?.directory;
+    const mode = typeof options === "object" && options?.mode ? options.mode : "video";
+    const isStream = /^[a-z][a-z0-9+.-]*:\/\//i.test(source);
+
+    let dir = explicitDir;
+    if (!dir) {
+      try {
+        dir = localStorage.getItem("eytaa_screenshot_dir") || undefined;
+      } catch {}
+    }
+
+    if (!dir) {
+      if (!isStream) {
+        dir = source.replace(/[/\\][^/\\]+$/, "");
+      } else {
+        try {
+          const { pictureDir } = await import("@tauri-apps/api/path");
+          const pic = await pictureDir();
+          dir = `${pic}\\EYTAA Screenshots`;
+        } catch {
+          dir = ".";
+        }
+      }
+    }
+
+    // Ensure target folder exists
+    try {
+      const { mkdir, exists } = await import("@tauri-apps/plugin-fs");
+      if (!(await exists(dir))) {
+        await mkdir(dir, { recursive: true });
+      }
+    } catch {
+      // Ignored if permissions restrict direct mkdir
+    }
+
+    const baseRaw = !isStream
+      ? source.split(/[/\\]/).pop() || "frame"
+      : this.state.mediaMetadata?.title || "stream";
+    const base = baseRaw.replace(/\.[^.]+$/, "").trim() || "screenshot";
     const stamp = new Date()
       .toISOString()
       .replace(/[:.]/g, "-")
       .slice(0, 19);
-    const sep = dir.includes("\\") ? "\\" : "/";
+    const sep = dir.includes("/") ? "/" : "\\";
     const target = `${dir}${sep}${base} - ${stamp}.png`;
-    await command("screenshot-to-file", [target, "subtitles"]);
+
+    await command("screenshot-to-file", [target, mode]);
     return target;
   }
 

@@ -39,6 +39,14 @@ export interface SavedPlaylistMeta {
   createdAt: string;
 }
 
+export interface ScreenshotInfo {
+  path: string;
+  thumbnail?: string | null;
+  timestamp: number;
+  mode: "video" | "subtitles" | "window";
+  copied: boolean;
+}
+
 export interface PlaybackSlice extends PlayerState {
   initialize: () => Promise<void>;
   openFile: (
@@ -80,7 +88,14 @@ export interface PlaybackSlice extends PlayerState {
   chapters: ChapterInfo[];
   currentChapterIndex: number;
   seekToChapter: (index: number) => Promise<void>;
-  takeScreenshot: () => Promise<void>;
+  lastScreenshot: ScreenshotInfo | null;
+  takeScreenshot: (options?: {
+    mode?: "video" | "subtitles" | "window";
+    copyToClipboard?: boolean;
+    directory?: string;
+  }) => Promise<string | null>;
+  copyScreenshotToClipboard: (path: string) => Promise<boolean>;
+  dismissScreenshotToast: () => void;
   showStats: boolean;
   toggleStats: (enabled?: boolean) => void;
   openUrl: (url: string) => Promise<void>;

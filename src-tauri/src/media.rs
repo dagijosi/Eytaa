@@ -57,3 +57,64 @@ pub fn find_sibling_episodes(file_path: String) -> Result<Vec<String>, String> {
     matched.sort();
     Ok(matched)
 }
+
+#[tauri::command]
+pub fn copy_image_to_clipboard(file_path: String) -> Result<(), String> {
+    let path = Path::new(&file_path);
+    if !path.exists() {
+        return Err("Screenshot file does not exist on disk".to_string());
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let escaped_path = file_path.replace('\'', "''");
+        let script = format!(
+            "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::SetImage([System.Drawing.Image]::FromFile('{}'))",
+            escaped_path
+        );
+        let status = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .creation_flags(CREATE_NO_WINDOW)
+            .status()
+            .map_err(|e| e.to_string())?;
+
+        if status.success() {
+            Ok(())
+        } else {
+            Err("PowerShell failed to copy image to clipboard".to_string())
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let escaped_path = file_path.replace('"', "\\\"");
+        let script = format!(
+            "set the clipboard to (read (POSIX file \"{}\") as JPEG picture)",
+            escaped_path
+        );
+        let status = std::process::Command::new("osascript")
+            .args(["-e", &script])
+            .status()
+            .map_err(|e| e.to_string())?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err("AppleScript failed to copy image to clipboard".to_string())
+        }
+    }
+
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let status = std::process::Command::new("xclip")
+            .args(["-selection", "clipboard", "-t", "image/png", "-i", &file_path])
+            .status()
+            .map_err(|e| e.to_string())?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err("xclip failed to copy image to clipboard".to_string())
+        }
+    }
+}

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Headphones, Subtitles, Check } from "lucide-react";
+import { Headphones, Subtitles, Check, Moon } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useThemeStore } from "../../stores/themeStore";
 import type { TrackInfo } from "../../services/player/types";
@@ -12,6 +12,8 @@ interface AudioTrackMenuProps {
   audioDelay?: number;
   onChangeAudioDelay?: (deltaMs: number) => Promise<void>;
   onSetAudioDelay?: (ms: number) => Promise<void>;
+  isNightListening?: boolean;
+  onToggleNightListening?: () => Promise<void>;
 }
 
 export function AudioTrackMenu({
@@ -21,6 +23,8 @@ export function AudioTrackMenu({
   audioDelay = 0,
   onChangeAudioDelay,
   onSetAudioDelay,
+  isNightListening = false,
+  onToggleNightListening,
 }: AudioTrackMenuProps) {
   const { accentColor, accentGlow } = useThemeStore();
   const [showAudioMenu, setShowAudioMenu] = useState(false);
@@ -41,27 +45,59 @@ export function AudioTrackMenu({
 
   return (
     <>
-      {/* Audio Track Picker */}
-      {audioTracks.length > 1 && (
+      {/* Audio Track & Night Mode Picker */}
+      {(audioTracks.length > 0 || onToggleNightListening) && (
         <div className="relative" ref={audioMenuRef}>
           <button
             onClick={() => setShowAudioMenu((prev) => !prev)}
-            style={activeBtnStyle(Boolean(currentAudioTrackId), accentColor, accentGlow)}
+            style={activeBtnStyle(Boolean(currentAudioTrackId) || isNightListening, accentColor, accentGlow)}
             className={`hidden xl:flex p-2 rounded-lg border transition duration-150 cursor-pointer ${
-              !currentAudioTrackId
+              !currentAudioTrackId && !isNightListening
                 ? "bg-white/5 text-neutral-300 border-white/10 hover:bg-white/10"
                 : ""
             }`}
-            title="Audio Track & Sync (A / G / H)"
+            title="Audio Track, Night Mode & Sync (A / N / G / H)"
           >
             <Headphones className="w-4 h-4" />
           </button>
 
           {showAudioMenu && (
-            <div className="absolute bottom-full mb-2 right-0 bg-neutral-900/98 backdrop-blur-xl border border-white/15 rounded-xl p-1.5 shadow-2xl flex flex-col gap-1 min-w-[200px] z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
-              <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 border-b border-white/5 mb-0.5">
-                Audio Tracks
-              </div>
+            <div className="absolute bottom-full mb-2 right-0 bg-neutral-900/98 backdrop-blur-xl border border-white/15 rounded-xl p-1.5 shadow-2xl flex flex-col gap-1 min-w-[210px] z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+              {/* Night Mode Quick Toggle */}
+              {onToggleNightListening && (
+                <div className="border-b border-white/10 pb-1.5 mb-1 px-1">
+                  <button
+                    onClick={() => onToggleNightListening()}
+                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition duration-150 cursor-pointer ${
+                      isNightListening
+                        ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-medium"
+                        : "text-neutral-300 hover:bg-white/10 border border-transparent"
+                    }`}
+                    title="Compress dynamic range for late-night viewing (Key: N)"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Moon className={`w-3.5 h-3.5 ${isNightListening ? "text-indigo-400" : "text-neutral-400"}`} />
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-xs leading-none">Night Mode</span>
+                        <span className="text-[9px] text-neutral-400 mt-0.5">Dialogue Booster (N)</span>
+                      </div>
+                    </div>
+                    <div
+                      className={`w-2.5 h-2.5 rounded-full border transition-all ${
+                        isNightListening
+                          ? "bg-indigo-400 border-indigo-300 shadow-[0_0_8px_rgba(99,102,241,0.7)]"
+                          : "border-white/30 bg-transparent"
+                      }`}
+                    />
+                  </button>
+                </div>
+              )}
+
+              {audioTracks.length > 0 && (
+                <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 border-b border-white/5 mb-0.5">
+                  Audio Tracks
+                </div>
+              )}
               {audioTracks.map((track) => {
                 const selected = currentAudioTrackId === track.id;
                 return (

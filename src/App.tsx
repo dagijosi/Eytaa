@@ -22,6 +22,7 @@ const MediaLibraryModal = lazy(() =>
   import("./components/MediaLibraryModal").then((m) => ({ default: m.MediaLibraryModal })),
 );
 import { UpdateCheckToast } from "./components/UpdateCheckToast";
+import { ScreenshotToast } from "./components/ScreenshotToast";
 import { ContextMenu } from "./components/ContextMenu";
 import { TooltipLayer } from "./components/TooltipLayer";
 import { StatsOverlay } from "./components/StatsOverlay";
@@ -432,6 +433,16 @@ export default function App() {
         return;
       }
 
+      // Clipboard Screenshot shortcut (Ctrl+Shift+S / Cmd+Shift+S or Ctrl+S)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        await takeScreenshot({
+          mode: e.shiftKey ? "subtitles" : "video",
+          copyToClipboard: true,
+        });
+        return;
+      }
+
       const action = localShortcutsService.resolveAction(e);
       if (!action) return;
 
@@ -587,7 +598,7 @@ export default function App() {
           break;
         case "screenshot":
           e.preventDefault();
-          await takeScreenshot();
+          await takeScreenshot({ mode: e.shiftKey ? "subtitles" : "video" });
           break;
         case "toggle-stats":
           e.preventDefault();
@@ -867,6 +878,9 @@ export default function App() {
 
       {/* Manual Update Check Result Toast */}
       <UpdateCheckToast />
+
+      {/* Screenshot Captured / Copied Toast */}
+      <ScreenshotToast />
 
       {/* Network Stream / URL Opener */}
       <OpenUrlModal />

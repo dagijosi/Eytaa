@@ -82,6 +82,7 @@ export interface MediaPlayerService {
   loadSubtitle(filePath: string): Promise<boolean>;
   selectAudioTrack(trackId: number): Promise<void>;
   selectSubtitleTrack(trackId: number): Promise<void>;
+  takeScreenshot(options?: { directory?: string; mode?: "video" | "subtitles" | "window" } | string): Promise<string | null>;
   getPlayerState(): PlayerState;
   subscribe(listener: (state: PlayerState) => void): () => void;
   dispose(): Promise<void>;

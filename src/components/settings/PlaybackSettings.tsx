@@ -1,4 +1,6 @@
-import { PictureInPicture2, Sliders } from "lucide-react";
+import { useState, useEffect } from "react";
+import { PictureInPicture2, Sliders, Camera, FolderOpen, RotateCcw } from "lucide-react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { playerService } from "../../services/player/mpvPlayerService";
 import { storageService } from "../../services/storage/storageService";
 import { SimpleModeCallout } from "./shared";
@@ -109,6 +111,49 @@ export function PlaybackSettings({
     edgeHoverPlaylistEnabled,
     setEdgeHoverPlaylistEnabled,
   } = usePlayerStore();
+
+  const [screenshotDir, setScreenshotDir] = useState<string>("");
+
+  useEffect(() => {
+    storageService.getPreference<string>("screenshotDirectory").then((dir) => {
+      if (dir) setScreenshotDir(dir);
+      else {
+        try {
+          const stored = localStorage.getItem("eytaa_screenshot_dir");
+          if (stored) setScreenshotDir(stored);
+        } catch {}
+      }
+    });
+  }, []);
+
+  const handlePickScreenshotDir = async () => {
+    try {
+      const selected = await openDialog({
+        directory: true,
+        multiple: false,
+        title: "Select Screenshot Destination Folder",
+      });
+      if (selected && typeof selected === "string") {
+        setScreenshotDir(selected);
+        await storageService.setPreference("screenshotDirectory", selected);
+        try {
+          localStorage.setItem("eytaa_screenshot_dir", selected);
+        } catch {}
+        showOSD("Screenshot directory updated");
+      }
+    } catch (err) {
+      console.warn("Folder picker failed:", err);
+    }
+  };
+
+  const handleResetScreenshotDir = async () => {
+    setScreenshotDir("");
+    await storageService.setPreference("screenshotDirectory", null);
+    try {
+      localStorage.removeItem("eytaa_screenshot_dir");
+    } catch {}
+    showOSD("Screenshots will save next to active media file");
+  };
   return (
     <div className="space-y-4">
       {/* Picture-in-Picture Quick Launch */}
@@ -285,6 +330,49 @@ export function PlaybackSettings({
           style={{ accentColor }}
           className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
         />
+      </div>
+
+      {/* Screenshot & Frame Capture Destination */}
+      <div className="p-3.5 rounded-xl bg-white/5 border border-white/5 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Camera className="w-4 h-4 text-neutral-400" />
+            <div>
+              <span className="font-medium text-neutral-200 text-xs">
+                Lossless Screenshot Save Location
+              </span>
+              <p className="text-xs text-neutral-500">
+                Custom directory for captured frame PNGs (<code className="text-neutral-400 font-mono">S</code> clean, <code className="text-neutral-400 font-mono">Shift+S</code> with subs, <code className="text-neutral-400 font-mono">Ctrl+Shift+S</code> to clipboard)
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={handlePickScreenshotDir}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-medium transition cursor-pointer border border-white/10"
+            >
+              <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
+              <span>{screenshotDir ? "Change Folder" : "Choose Folder"}</span>
+            </button>
+            {screenshotDir && (
+              <button
+                onClick={handleResetScreenshotDir}
+                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white transition cursor-pointer border border-white/10"
+                title="Reset to default (Save alongside media file)"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="px-3 py-2 rounded-lg bg-black/30 border border-white/5 font-mono text-[11px] text-neutral-300 truncate">
+          {screenshotDir ? (
+            <span className="text-neutral-200">{screenshotDir}</span>
+          ) : (
+            <span className="text-neutral-500 italic">Default: Alongside active media file (or Pictures/EYTAA Screenshots for streams)</span>
+          )}
+        </div>
       </div>
 
       {/* Simple Mode Switch Callout */}

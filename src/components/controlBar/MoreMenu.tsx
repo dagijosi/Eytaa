@@ -27,7 +27,7 @@ interface MoreMenuProps {
   profiles: PlaybackProfile[];
   activeProfileId: string;
   onApplyProfile: (profileId: string) => void;
-  onTakeScreenshot: () => void;
+  onTakeScreenshot: (options?: { mode?: "video" | "subtitles" | "window"; copyToClipboard?: boolean }) => void;
   showStats: boolean;
   onToggleStats: (enabled: boolean) => void;
   onToggleSleepTimer: (open?: boolean) => void;
@@ -211,17 +211,49 @@ export function MoreMenu({
               </div>
             </div>
 
-            {/* Screenshot */}
-            <button
-              onClick={() => {
-                onTakeScreenshot();
-                setShowMoreMenu(false);
-              }}
-              className="flex items-center gap-2 px-2.5 py-2 rounded-xl text-neutral-200 hover:bg-white/10 text-left transition"
-            >
-              <Camera className="w-3.5 h-3.5 text-neutral-400" />
-              <span>Take Screenshot</span>
-            </button>
+            {/* Screenshot Actions */}
+            <div className="flex flex-col gap-1 px-1 py-1 bg-white/5 rounded-xl border border-white/5">
+              <div className="flex items-center justify-between px-2 pt-1 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
+                <div className="flex items-center gap-1.5">
+                  <Camera className="w-3 h-3 text-neutral-400" />
+                  <span>Screenshot</span>
+                </div>
+                <span className="font-mono text-[9px] text-neutral-500">Key: S</span>
+              </div>
+              <div className="grid grid-cols-2 gap-1 pt-0.5">
+                <button
+                  onClick={() => {
+                    onTakeScreenshot({ mode: "video" });
+                    setShowMoreMenu(false);
+                  }}
+                  className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-200 text-[11px] text-center transition cursor-pointer"
+                  title="Capture clean video frame without subtitles (Key: S)"
+                >
+                  Clean Frame
+                </button>
+                <button
+                  onClick={() => {
+                    onTakeScreenshot({ mode: "subtitles" });
+                    setShowMoreMenu(false);
+                  }}
+                  className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-200 text-[11px] text-center transition cursor-pointer"
+                  title="Capture frame with subtitles (Key: Shift+S)"
+                >
+                  With Subs
+                </button>
+              </div>
+              <button
+                onClick={() => {
+                  onTakeScreenshot({ mode: "video", copyToClipboard: true });
+                  setShowMoreMenu(false);
+                }}
+                className="w-full flex items-center justify-center gap-1.5 px-2 py-1 rounded-lg bg-white/[0.04] hover:bg-white/10 text-neutral-300 text-[10px] font-medium transition cursor-pointer"
+                title="Capture frame and copy directly to OS clipboard (Key: Ctrl+Shift+S)"
+              >
+                <span>Copy to Clipboard</span>
+                <span className="text-[9px] font-mono text-neutral-500">Ctrl+Shift+S</span>
+              </button>
+            </div>
 
             {/* Playback Stats */}
             <button

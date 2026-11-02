@@ -646,6 +646,8 @@ export function SettingsModal() {
                 accentGlow={accentGlow}
                 audioNormalize={audioNormalize}
                 handleToggleAudioNormalize={handleToggleAudioNormalize}
+                isNightListening={isNightListening}
+                handleToggleNightListening={toggleNightListening}
                 audioDelay={audioDelay}
                 handleAudioDelayChange={handleAudioDelayChange}
                 subFontSize={subFontSize}

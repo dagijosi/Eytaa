@@ -52,6 +52,7 @@ export function ControlBar() {
     sleepTimer,
     toggleSleepTimer,
     isNightListening,
+    toggleNightListening,
     profiles,
     activeProfileId,
     applyProfile,
@@ -102,6 +103,7 @@ export function ControlBar() {
       sleepTimer: s.sleepTimer,
       toggleSleepTimer: s.toggleSleepTimer,
       isNightListening: s.isNightListening,
+      toggleNightListening: s.toggleNightListening,
       profiles: s.profiles,
       activeProfileId: s.activeProfileId,
       applyProfile: s.applyProfile,
@@ -177,6 +179,8 @@ export function ControlBar() {
               audioDelay={audioDelay}
               onChangeAudioDelay={changeAudioDelay}
               onSetAudioDelay={setAudioDelay}
+              isNightListening={isNightListening}
+              onToggleNightListening={toggleNightListening}
             />
 
             <SubtitleMenu

@@ -255,6 +255,7 @@ pub fn run() {
             db::db_get_playlist_items,
             db::db_delete_playlist,
             media::find_sibling_episodes,
+            media::copy_image_to_clipboard,
             library::scan_local_folder,
             library::cancel_library_scan,
             library::export_playlist_to_file,

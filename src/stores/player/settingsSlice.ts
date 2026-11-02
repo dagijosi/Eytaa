@@ -212,19 +212,19 @@ export const createSettingsSlice: StateCreator<
     set({ isNightListening: enabled });
     await storageService.setPreference("nightListening", enabled);
     if (enabled) {
-      // Night Listening: dialogue booster & peak limiter (loudnorm)
+      // Night Mode: dialogue booster & peak dynamic range compression
       await playerService.setMpvProperty(
         "af",
-        "lavfi=[loudnorm=I=-16:TP=-1.5:LRA=7]",
+        "lavfi=[dynaudnorm=f=150:g=15:m=10.0:r=0.9:b=1]",
       );
-      get().showOSD("Night Listening: Enabled (Dynamic Range Compressed)");
+      get().showOSD("Night Mode: ON (Dialogue Boosted)");
     } else {
       const activeProf = get().profiles.find(
         (p) => p.id === get().activeProfileId,
       );
       const filter = activeProf?.settings.audioFilter || "";
       await playerService.setMpvProperty("af", filter);
-      get().showOSD("Night Listening: Disabled");
+      get().showOSD("Night Mode: OFF");
     }
   },
 
