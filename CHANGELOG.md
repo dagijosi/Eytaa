@@ -4,6 +4,38 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ---
 
+## [0.2.13] - 2026-11-02
+
+### 🎬 Scrubber Hover Frame Thumbnail Preview (`F-06`)
+- **Real-Time Video Frame Previews**: Hovering over the timeline progress bar generates an instant, accurate video frame thumbnail preview at the cursor position.
+- **Accurate Millisecond Seeking**: Seamless background canvas extraction paired with crisp timestamp badges (`MM:SS` / `HH:MM:SS`) for precision scrubbing without interrupting active playback.
+
+### 🔍 Spotlight Command Palette (`F-07`)
+- **Universal Quick-Launcher (`Ctrl+K` / `Cmd+K`)**: Instant access to every player command, view navigation, audio/subtitle adjustment, and library action from anywhere in the app.
+- **Keyboard-First Navigation**: Smooth arrow-key traversal, instant execution on Enter, escape dismiss, and fuzzy search filtering across titles and shortcut badges.
+- **Obsidian Architectural Finish**: Styled per Unslop UI principles with high-contrast obsidian backdrops, hairline borders (`border-white/10`), crisp typography, and category chips.
+
+### ⌨️ Background Global Media Keys (`F-08`)
+- **Hardware Media Key Listeners**: Integrated hardware media controls (`Play/Pause`, `Next Track`, `Previous Track`, `Stop`) functioning both when the window is focused and when running minimized or in the background.
+- **Center OSD Integration**: Triggers standard center-screen visual notifications for immediate physical feedback.
+
+### 🌐 TMDb Online Metadata Scraper & Rich TV Series Details (`F-09`)
+- **TMDb API Integration**: Seamless metadata lookup for Movies and TV Series with secure API key configuration in Settings.
+- **Interactive Poster & Backdrop Chooser**: Visual gallery modal allowing users to inspect and select between multiple high-resolution poster arts and widescreen backdrops retrieved from TMDb.
+- **Show-Level TV Series Updating**: Fetching or editing metadata at the series level updates the entire series folder and cascades show metadata down to all child episodes.
+- **Persistent `series_metadata` SQLite Database**: Dedicated database schema capturing synopsis, tagline, TMDb user rating, content rating (e.g., TV-MA, PG-13), broadcast networks, production status, and genre tags.
+- **Cinema-Grade Series Detail View**: Hero header with ambient widescreen backdrop banners, tagline callouts, network badges, content ratings, and complete show overviews.
+
+### 🖼️ Picture-in-Picture Mode (`F-10`)
+- **Native Floating Video (PiP)**: One-click Picture-in-Picture mode (`P` shortcut) allowing video playback to float above all other desktop applications.
+- **Control Bar Integration**: Dedicated PiP toggle on the player control bar with synchronized active indicators.
+
+### 🎨 Unslop Iconography & Aesthetic Refactoring
+- **AI Cliché Eradication**: Thoroughly replaced generic AI sparkles (`Sparkles` ✨) and pulsing gradient effects across the Command Palette, Edit Metadata Modal, Series Detail View, Appearance Settings, Playback Settings, Profile Settings, and Update Notification toasts.
+- **Functional Obsidian UI**: Standardized on purposeful, cinema-grade iconography (`Film`, `Clapperboard`, `Search`, `Image`, `Globe`) adhering to strict obsidian design guidelines.
+
+---
+
 ## [0.2.12] - 2026-11-02
 
 ### 📊 Watch Report & Analytics Dashboard (Obsidian v3)
