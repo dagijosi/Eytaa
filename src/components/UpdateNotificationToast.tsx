@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Sparkles, ArrowRight, X } from "lucide-react";
+import { ArrowUpCircle, ArrowRight, X } from "lucide-react";
 import { usePlayerStore } from "../stores/playerStore";
 import { useThemeStore } from "../stores/themeStore";
 
@@ -53,7 +53,7 @@ export function UpdateNotificationToast() {
         style={{ borderColor: `${accentColor}44` }}
         className="bg-neutral-900/95 border rounded-2xl p-3.5 shadow-2xl backdrop-blur-2xl flex items-center gap-3.5 max-w-sm text-white"
       >
-        {/* Glow Sparkle Icon */}
+        {/* Update Icon */}
         <div
           style={{
             backgroundColor: accentColor,
@@ -63,7 +63,7 @@ export function UpdateNotificationToast() {
           }}
           className="w-9 h-9 rounded-xl border flex items-center justify-center shrink-0"
         >
-          <Sparkles className="w-4 h-4 animate-pulse" />
+          <ArrowUpCircle className="w-4 h-4" />
         </div>
 
         {/* Content */}

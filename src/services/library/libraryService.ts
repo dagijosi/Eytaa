@@ -79,6 +79,25 @@ export interface SeriesReportItem {
   last_watched_at?: string;
 }
 
+export interface SeriesMetadata {
+  series_key: string;
+  series_name: string;
+  tmdb_id?: number;
+  overview?: string;
+  tagline?: string;
+  rating?: number;
+  vote_count?: number;
+  genres?: string; // JSON array of genre strings e.g. '["Crime", "Drama"]'
+  status?: string;
+  networks?: string;
+  first_air_date?: string;
+  last_air_date?: string;
+  backdrop_url?: string;
+  poster_url?: string;
+  created_by?: string;
+  content_rating?: string;
+}
+
 export interface ActivityTrendItem {
   period: string;
   movies_count: number;
@@ -331,6 +350,40 @@ class LibraryService {
       applyToSeries: params.applyToSeries ?? null,
     });
     this.notifyLibraryChanged();
+  }
+
+  public async updateSeriesMetadata(params: {
+    seriesName: string;
+    newSeriesName?: string;
+    year?: string;
+    customPoster?: string;
+  }): Promise<number> {
+    const res = await invoke<number>("db_update_series_metadata", {
+      seriesName: params.seriesName,
+      newSeriesName: params.newSeriesName || null,
+      year: params.year || null,
+      customPoster: params.customPoster !== undefined ? params.customPoster : null,
+    });
+    this.notifyLibraryChanged();
+    return res;
+  }
+
+  public async getSeriesMetadata(seriesKey: string): Promise<SeriesMetadata | null> {
+    try {
+      return await invoke<SeriesMetadata | null>("db_get_series_metadata", { seriesKey });
+    } catch (e) {
+      console.warn("Failed to get series metadata:", e);
+      return null;
+    }
+  }
+
+  public async saveSeriesMetadata(metadata: SeriesMetadata): Promise<void> {
+    try {
+      await invoke("db_save_series_metadata", { metadata });
+      this.notifyLibraryChanged();
+    } catch (e) {
+      console.error("Failed to save series metadata:", e);
+    }
   }
 
   public async setWatchedStatus(filePath: string, isWatched: boolean): Promise<void> {

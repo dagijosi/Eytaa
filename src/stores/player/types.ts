@@ -204,9 +204,13 @@ export interface SettingsSlice {
   setQueueOnPlayMode: (mode: "replace" | "append" | "ask") => Promise<void>;
   edgeHoverPlaylistEnabled: boolean;
   setEdgeHoverPlaylistEnabled: (enabled: boolean) => Promise<void>;
+  edgeHoverPlaylistTrigger: "fullscreen" | "always" | "button_only" | "click_only";
+  setEdgeHoverPlaylistTrigger: (trigger: "fullscreen" | "always" | "button_only" | "click_only") => Promise<void>;
 }
 
 export interface UiSlice {
+  isFullscreen: boolean;
+  setIsFullscreen: (isFullscreen: boolean) => void;
   osdMessage: string | null;
   osdTimer: number | null;
   showOSD: (text: string) => void;

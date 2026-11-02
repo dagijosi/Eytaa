@@ -3,7 +3,7 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
-  Sparkles,
+  ArrowUpCircle,
   ArrowRight,
   X,
 } from "lucide-react";
@@ -49,7 +49,7 @@ export function UpdateCheckToast() {
         };
       case "available":
         return {
-          icon: <Sparkles className="w-4 h-4 animate-pulse" />,
+          icon: <ArrowUpCircle className="w-4 h-4" />,
           title: "Update Available",
           subtitle: `Version v${updateCheckToast.version} is ready to install`,
           color: accentColor,

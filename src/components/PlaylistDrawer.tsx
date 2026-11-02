@@ -33,6 +33,7 @@ import { usePlayerStore, PlaylistItem } from "../stores/playerStore";
 import { useThemeStore } from "../stores/themeStore";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { libraryService } from "../services/library/libraryService";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 export function PlaylistDrawer() {
   const {
@@ -45,6 +46,9 @@ export function PlaylistDrawer() {
     isPlaylistPinned,
     setPlaylistPinned,
     edgeHoverPlaylistEnabled,
+    edgeHoverPlaylistTrigger,
+    isFullscreen,
+    setIsFullscreen,
     addToPlaylist,
     removeFromPlaylist,
     reorderPlaylist,
@@ -74,6 +78,17 @@ export function PlaylistDrawer() {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const activeRowRef = useRef<HTMLDivElement | null>(null);
+  const drawerPanelRef = useRef<HTMLElement | null>(null);
+
+  // Sync fullscreen state
+  useEffect(() => {
+    getCurrentWindow()
+      .isFullscreen()
+      .then((fs) => {
+        setIsFullscreen(fs);
+      })
+      .catch(() => {});
+  }, [setIsFullscreen]);
 
   // Edge hover gesture state
   const [isNearRightEdge, setIsNearRightEdge] = useState(false);
@@ -183,62 +198,112 @@ export function PlaylistDrawer() {
   useEffect(() => {
     if (!edgeHoverPlaylistEnabled) return;
 
+    const clearDwellTimer = () => {
+      if (hoverDwellTimerRef.current) {
+        window.clearTimeout(hoverDwellTimerRef.current);
+        hoverDwellTimerRef.current = null;
+      }
+    };
+
+    const clearExitTimer = () => {
+      if (hoverExitTimerRef.current) {
+        window.clearTimeout(hoverExitTimerRef.current);
+        hoverExitTimerRef.current = null;
+      }
+    };
+
+    // Auto-reveal the full drawer when touching the edge only if permitted
+    // (Fullscreen only by default, or always if configured)
+    const canEdgeAutoOpen =
+      edgeHoverPlaylistTrigger === "always" ||
+      (edgeHoverPlaylistTrigger === "fullscreen" && isFullscreen);
+
     const handleMouseMove = (e: MouseEvent) => {
       const windowWidth = window.innerWidth;
       const x = e.clientX;
-      const isRightZone = x >= windowWidth - 20;
-      const isLeftZone = x <= 20;
 
-      setIsNearRightEdge(isRightZone || x >= windowWidth - 50);
-      setIsNearLeftEdge(isLeftZone || x <= 50);
+      // Reveal edge tabs when within 48px of window edges
+      const isRightZone = x >= windowWidth - 48;
+      const isLeftZone = x <= 48;
 
-      // If drawer is closed, trigger peek open when mouse lingers near either edge
+      setIsNearRightEdge(isRightZone);
+      setIsNearLeftEdge(isLeftZone);
+
       if (!isPlaylistOpen) {
-        if (isRightZone || isLeftZone) {
+        // Only start auto-open dwell timer if touching the very right edge and allowed by trigger mode
+        const isTouchingRightEdge = x >= windowWidth - 12;
+        if (canEdgeAutoOpen && isTouchingRightEdge) {
           if (!hoverDwellTimerRef.current) {
             hoverDwellTimerRef.current = window.setTimeout(() => {
               setIsHoverPeeked(true);
               togglePlaylistDrawer(true);
               hoverDwellTimerRef.current = null;
-            }, 220);
+            }, 260);
           }
         } else {
-          if (hoverDwellTimerRef.current) {
-            window.clearTimeout(hoverDwellTimerRef.current);
-            hoverDwellTimerRef.current = null;
-          }
+          clearDwellTimer();
         }
       } else if (isPlaylistOpen && isHoverPeeked && !isPlaylistPinned) {
-        // Auto-close when cursor moves out of the drawer back into video area
-        const drawerLeft = windowWidth - 400;
-        if (x < drawerLeft) {
+        // Auto-close when cursor moves out of the drawer area back into player
+        const drawerWidth = drawerPanelRef.current?.offsetWidth || (windowWidth >= 640 ? 384 : 320);
+        const drawerLeftEdge = windowWidth - drawerWidth;
+        if (x < drawerLeftEdge - 16) {
           if (!hoverExitTimerRef.current) {
             hoverExitTimerRef.current = window.setTimeout(() => {
               togglePlaylistDrawer(false);
               setIsHoverPeeked(false);
               hoverExitTimerRef.current = null;
-            }, 550);
+            }, 250);
           }
         } else {
-          if (hoverExitTimerRef.current) {
-            window.clearTimeout(hoverExitTimerRef.current);
-            hoverExitTimerRef.current = null;
-          }
+          clearExitTimer();
         }
       }
     };
 
+    const handleMouseLeave = (e: MouseEvent) => {
+      // User moved mouse outside the window or document (e.g. to another folder/window)
+      if (!e.relatedTarget) {
+        clearDwellTimer();
+        clearExitTimer();
+        setIsNearRightEdge(false);
+        setIsNearLeftEdge(false);
+        if (isPlaylistOpen && isHoverPeeked && !isPlaylistPinned) {
+          togglePlaylistDrawer(false);
+          setIsHoverPeeked(false);
+        }
+      }
+    };
+
+    const handleWindowBlur = () => {
+      clearDwellTimer();
+      clearExitTimer();
+      setIsNearRightEdge(false);
+      setIsNearLeftEdge(false);
+      if (isPlaylistOpen && isHoverPeeked && !isPlaylistPinned) {
+        togglePlaylistDrawer(false);
+        setIsHoverPeeked(false);
+      }
+    };
+
     window.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseleave", handleMouseLeave);
+    window.addEventListener("blur", handleWindowBlur);
+
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
-      if (hoverDwellTimerRef.current) window.clearTimeout(hoverDwellTimerRef.current);
-      if (hoverExitTimerRef.current) window.clearTimeout(hoverExitTimerRef.current);
+      document.removeEventListener("mouseleave", handleMouseLeave);
+      window.removeEventListener("blur", handleWindowBlur);
+      clearDwellTimer();
+      clearExitTimer();
     };
   }, [
     isPlaylistOpen,
     isHoverPeeked,
     isPlaylistPinned,
     edgeHoverPlaylistEnabled,
+    edgeHoverPlaylistTrigger,
+    isFullscreen,
     togglePlaylistDrawer,
   ]);
 
@@ -427,15 +492,27 @@ export function PlaylistDrawer() {
       {!isPlaylistOpen && edgeHoverPlaylistEnabled && (
         <div
           onMouseEnter={() => {
-            if (!hoverDwellTimerRef.current) {
-              hoverDwellTimerRef.current = window.setTimeout(() => {
-                setIsHoverPeeked(true);
-                togglePlaylistDrawer(true);
-                hoverDwellTimerRef.current = null;
-              }, 180);
+            if (edgeHoverPlaylistTrigger !== "click_only") {
+              if (!hoverDwellTimerRef.current) {
+                hoverDwellTimerRef.current = window.setTimeout(() => {
+                  setIsHoverPeeked(true);
+                  togglePlaylistDrawer(true);
+                  hoverDwellTimerRef.current = null;
+                }, 280);
+              }
+            }
+          }}
+          onMouseLeave={() => {
+            if (hoverDwellTimerRef.current) {
+              window.clearTimeout(hoverDwellTimerRef.current);
+              hoverDwellTimerRef.current = null;
             }
           }}
           onClick={() => {
+            if (hoverDwellTimerRef.current) {
+              window.clearTimeout(hoverDwellTimerRef.current);
+              hoverDwellTimerRef.current = null;
+            }
             setIsHoverPeeked(false);
             togglePlaylistDrawer(true);
           }}
@@ -444,7 +521,11 @@ export function PlaylistDrawer() {
               ? "translate-x-0 opacity-100"
               : "translate-x-full opacity-0 pointer-events-none"
           }`}
-          title="Playlist Queue (Hover edge to reveal)"
+          title={
+            edgeHoverPlaylistTrigger === "click_only"
+              ? "Playlist Queue (Click to open)"
+              : "Playlist Queue (Hover or click to open)"
+          }
         >
           <ChevronLeft className="w-3.5 h-3.5 text-neutral-400" />
           <ListVideo className="w-4 h-4 text-white" />
@@ -487,6 +568,13 @@ export function PlaylistDrawer() {
 
       {/* Main Drawer Panel */}
       <aside
+        ref={drawerPanelRef}
+        onMouseEnter={() => {
+          if (hoverExitTimerRef.current) {
+            window.clearTimeout(hoverExitTimerRef.current);
+            hoverExitTimerRef.current = null;
+          }
+        }}
         className={`fixed inset-y-0 right-0 w-80 sm:w-96 max-w-full ui-glass-bar border-l border-white/10 shadow-2xl flex flex-col z-50 transition-transform duration-300 ease-out transform ${
           isPlaylistOpen ? "translate-x-0" : "translate-x-full"
         }`}

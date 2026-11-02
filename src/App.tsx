@@ -35,6 +35,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { playerService } from "./services/player/mpvPlayerService";
 import { localShortcutsService } from "./services/shortcuts/localShortcutsService";
+import { globalShortcutsService } from "./services/shortcuts/globalShortcutsService";
 import { toggleWindowFullscreen } from "./utils/windowControls";
 import { libraryService } from "./services/library/libraryService";
 
@@ -78,6 +79,7 @@ export default function App() {
     pauseOnSystemSleep,
     showOSD,
     scrollVolumeEnabled,
+    setIsFullscreen: setIsFullscreenStore,
     toggleUrlModal,
     takeScreenshot,
     toggleStats,
@@ -89,6 +91,8 @@ export default function App() {
     setAbLoopB,
     clearAbLoop,
     toggleCommandPalette,
+    playNext,
+    playPrevious,
   } = usePlayerStore(
     useShallow((s) => ({
       isInitialized: s.isInitialized,
@@ -129,6 +133,7 @@ export default function App() {
       pauseOnSystemSleep: s.pauseOnSystemSleep,
       showOSD: s.showOSD,
       scrollVolumeEnabled: s.scrollVolumeEnabled,
+      setIsFullscreen: s.setIsFullscreen,
       changeSubDelay: s.changeSubDelay,
       setSubDelay: s.setSubDelay,
       changeAudioDelay: s.changeAudioDelay,
@@ -140,6 +145,8 @@ export default function App() {
       setAbLoopB: s.setAbLoopB,
       clearAbLoop: s.clearAbLoop,
       toggleCommandPalette: s.toggleCommandPalette,
+      playNext: s.playNext,
+      playPrevious: s.playPrevious,
     })),
   );
 
@@ -259,7 +266,9 @@ export default function App() {
     const checkFullscreen = async () => {
       try {
         const appWindow = getCurrentWindow();
-        setIsFullscreen(await appWindow.isFullscreen());
+        const fs = await appWindow.isFullscreen();
+        setIsFullscreen(fs);
+        setIsFullscreenStore(fs);
       } catch (e) {
         console.warn("Fullscreen check error:", e);
       }
@@ -278,7 +287,7 @@ export default function App() {
     return () => {
       if (unlistenResize) unlistenResize();
     };
-  }, []);
+  }, [setIsFullscreenStore]);
 
   // System Sleep / Wake Detector: auto-pauses when PC sleeps/resumes
   useEffect(() => {
@@ -392,10 +401,45 @@ export default function App() {
   }, [handleDroppedPaths]);
 
   // Fullscreen toggle helper
-  const handleToggleFullscreen = async () => {
+  const handleToggleFullscreen = useCallback(async () => {
     const newFs = await toggleWindowFullscreen();
     setIsFullscreen(newFs);
-  };
+    setIsFullscreenStore(newFs);
+  }, [setIsFullscreenStore]);
+
+  // System-wide Global Background Media Keys (Play/Pause, Next, Prev, Stop, Mute, Volume)
+  useEffect(() => {
+    globalShortcutsService.setHandler((action) => {
+      switch (action) {
+        case "play-pause":
+          togglePlayback();
+          break;
+        case "next":
+          playNext();
+          break;
+        case "previous":
+          playPrevious();
+          break;
+        case "volume-up":
+          changeVolume(5);
+          break;
+        case "volume-down":
+          changeVolume(-5);
+          break;
+        case "mute":
+          toggleMute();
+          break;
+      }
+    });
+
+    globalShortcutsService.applyShortcuts().catch((err) => {
+      console.warn("Global shortcuts registration error:", err);
+    });
+
+    return () => {
+      globalShortcutsService.dispose();
+    };
+  }, [togglePlayback, playNext, playPrevious, changeVolume, toggleMute]);
 
   // Global Keyboard Shortcuts (rebindable via localShortcutsService)
   useEffect(() => {
@@ -440,6 +484,13 @@ export default function App() {
         } catch (err) {
           console.error("Open new window error:", err);
         }
+        return;
+      }
+
+      // Picture-in-Picture Floating Mini Player shortcut (Ctrl+Shift+P / Cmd+Shift+P)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        togglePiP();
         return;
       }
 
@@ -681,6 +732,7 @@ export default function App() {
     setAbLoopB,
     clearAbLoop,
     toggleCommandPalette,
+    handleToggleFullscreen,
     showOSD,
   ]);
 

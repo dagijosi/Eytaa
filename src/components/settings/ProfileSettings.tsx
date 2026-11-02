@@ -13,7 +13,7 @@ import {
   Tv,
   Moon,
   Flame,
-  Sparkles,
+  SunMedium,
   Copy,
   Download,
   Upload,
@@ -126,7 +126,7 @@ export function ProfileSettings({
       case "tv":
         return <Tv style={accentStyle} className={size} />;
       case "sparkles":
-        return <Sparkles className={`${size} ${tone("text-amber-300")}`} />;
+        return <SunMedium className={`${size} ${tone("text-amber-300")}`} />;
       case "moon":
         return <Moon className={`${size} ${tone("text-indigo-400")}`} />;
       case "flame":
@@ -490,7 +490,7 @@ export function ProfileSettings({
               {([
                 { id: "tv", label: "Anime / TV", icon: <Tv className="w-3.5 h-3.5" /> },
                 { id: "film", label: "Film / Movie", icon: <Film className="w-3.5 h-3.5 text-rose-400" /> },
-                { id: "sparkles", label: "HDR Vivid", icon: <Sparkles className="w-3.5 h-3.5 text-amber-300" /> },
+                { id: "sparkles", label: "HDR Vivid", icon: <SunMedium className="w-3.5 h-3.5 text-amber-300" /> },
                 { id: "flame", label: "Action", icon: <Flame className="w-3.5 h-3.5 text-rose-500" /> },
                 { id: "moon", label: "Night Shift", icon: <Moon className="w-3.5 h-3.5 text-indigo-400" /> },
                 { id: "headphones", label: "Music", icon: <Headphones className="w-3.5 h-3.5 text-sky-400" /> },

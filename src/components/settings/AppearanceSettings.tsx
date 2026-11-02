@@ -4,7 +4,6 @@ import {
   Eye,
   Play,
   RotateCcw,
-  Sparkles,
   Type,
   Layout,
   Download,
@@ -526,7 +525,7 @@ export function AppearanceSettings(_props?: AppearanceSettingsProps) {
           <div className="space-y-3 p-4 rounded-2xl bg-white/[0.02] border border-white/5">
             <div>
               <div className="flex items-center gap-1.5 text-xs font-bold text-white uppercase tracking-wider">
-                <Sparkles className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                <Palette className="w-3.5 h-3.5" style={{ color: accentColor }} />
                 <span>Curated Design Skins</span>
               </div>
               <p className="text-xs text-neutral-400 mt-0.5">

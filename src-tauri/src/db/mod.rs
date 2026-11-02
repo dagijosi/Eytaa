@@ -155,7 +155,28 @@ pub fn init_db(app: &AppHandle) -> Result<DbState, String> {
             added_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS series_metadata (
+            series_key TEXT PRIMARY KEY,
+            series_name TEXT NOT NULL,
+            tmdb_id INTEGER,
+            overview TEXT,
+            tagline TEXT,
+            rating REAL,
+            vote_count INTEGER,
+            genres TEXT,
+            status TEXT,
+            networks TEXT,
+            first_air_date TEXT,
+            last_air_date TEXT,
+            backdrop_url TEXT,
+            poster_url TEXT,
+            created_by TEXT,
+            content_rating TEXT,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
         -- Performance Indexes for fast searching, filtering, and joins
+        CREATE INDEX IF NOT EXISTS idx_series_metadata_key ON series_metadata (series_key);
         CREATE INDEX IF NOT EXISTS idx_library_items_folder ON library_items (folder_path);
         CREATE INDEX IF NOT EXISTS idx_library_items_type ON library_items (media_type);
         CREATE INDEX IF NOT EXISTS idx_library_items_title ON library_items (title COLLATE NOCASE);

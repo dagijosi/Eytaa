@@ -11,12 +11,17 @@ import {
   RectangleVertical,
   Search,
   X,
+  Pencil,
+  Star,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useThemeStore } from "../../stores/themeStore";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   LibraryItem,
   libraryService,
+  SeriesMetadata,
 } from "../../services/library/libraryService";
 import { normalizeSeriesKey } from "../../utils/mediaTitle";
 import { pickPosterItem } from "../../utils/mediaPoster";
@@ -38,6 +43,7 @@ interface SeriesDetailViewProps {
   onDelete?: (item: LibraryItem) => void;
   onToggleFavorite: (filePath: string) => void;
   onRefreshData: () => Promise<void>;
+  onEditSeries?: (seriesName: string, sampleItem: LibraryItem, episodesCount: number) => void;
 }
 
 export function SeriesDetailView({
@@ -54,6 +60,7 @@ export function SeriesDetailView({
   onDelete,
   onToggleFavorite,
   onRefreshData,
+  onEditSeries,
 }: SeriesDetailViewProps) {
   const { accentColor, accentText } = useThemeStore();
   const [unfilteredEpisodes, setUnfilteredEpisodes] = useState<LibraryItem[]>([]);
@@ -132,6 +139,32 @@ export function SeriesDetailView({
     posterItem?.file_path,
   );
   const hasCustomCover = Boolean(posterItem?.custom_poster?.trim());
+
+  // Stored TMDb rich series metadata (synopsis, tagline, rating, genres, networks, status)
+  const [seriesMetadata, setSeriesMetadata] = useState<SeriesMetadata | null>(null);
+  const [isOverviewExpanded, setIsOverviewExpanded] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    libraryService.getSeriesMetadata(seriesKey).then((meta) => {
+      if (isMounted) setSeriesMetadata(meta);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [seriesKey, items]);
+
+  const genreList = useMemo(() => {
+    if (!seriesMetadata?.genres) return [];
+    try {
+      const parsed = JSON.parse(seriesMetadata.genres);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+    return seriesMetadata.genres.split(",").map((s) => s.trim()).filter(Boolean);
+  }, [seriesMetadata?.genres]);
+
+  // Cinematic ambient backdrop (prefers wide landscape backdrop URL over poster)
+  const heroBackdrop = seriesMetadata?.backdrop_url || heroThumb;
 
   // Helper to play an episode and automatically enqueue subsequent episodes in playlist
   const handlePlayEpisodeWithQueue = (targetPath: string) => {
@@ -405,6 +438,18 @@ export function SeriesDetailView({
             </div>
           )}
 
+          {onEditSeries && posterItem && (
+            <button
+              type="button"
+              onClick={() => onEditSeries(seriesName, posterItem, seriesEpisodes.length)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-neutral-300 hover:text-white transition cursor-pointer"
+              title="Edit TV series details and scrape metadata/artwork from TMDb"
+            >
+              <Pencil className="w-3.5 h-3.5 text-neutral-400" />
+              <span>Edit Series Info</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={handleChangeCover}
@@ -449,9 +494,9 @@ export function SeriesDetailView({
         />
 
         {/* Cinematic Ambient Backdrop from series artwork */}
-        {heroThumb && (
+        {heroBackdrop && (
           <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
-            <img src={heroThumb} alt="" className="w-full h-full object-cover blur-3xl scale-125" />
+            <img src={heroBackdrop} alt="" className="w-full h-full object-cover blur-3xl scale-125" />
           </div>
         )}
 
@@ -487,40 +532,162 @@ export function SeriesDetailView({
             />
           )}
 
-          {/* Interactive hover overlay to click-and-change cover */}
-          <button
-            type="button"
-            onClick={handleChangeCover}
-            disabled={isChangingCover}
-            className="absolute inset-0 bg-black/60 backdrop-blur-xs opacity-0 group-hover/poster:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 text-white cursor-pointer z-10"
-            title="Click to change series cover"
-          >
-            <div className="p-2.5 rounded-full bg-white/20 border border-white/20 hover:bg-white/30 transition duration-150">
-              <Camera className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-[11px] font-bold">Change Cover</span>
-          </button>
+          {/* Interactive hover overlay with TMDb edit and local file pick */}
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-xs opacity-0 group-hover/poster:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white z-10 p-2">
+            {onEditSeries && (
+              <button
+                type="button"
+                onClick={() => onEditSeries(seriesName, posterItem, seriesEpisodes.length)}
+                className="flex flex-col items-center gap-1 px-2.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 border border-white/20 transition cursor-pointer"
+                title="Edit TV series metadata and artwork from TMDb"
+              >
+                <Pencil className="w-4 h-4 text-neutral-200" />
+                <span className="text-[10px] font-bold">Edit Show</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleChangeCover}
+              disabled={isChangingCover}
+              className="flex flex-col items-center gap-1 px-2.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 border border-white/20 transition cursor-pointer"
+              title="Pick local image file"
+            >
+              <Camera className="w-4 h-4 text-white" />
+              <span className="text-[10px] font-bold">Choose File</span>
+            </button>
+          </div>
         </div>
 
         {/* Series Info & Actions */}
         <div className="flex-1 flex flex-col justify-between space-y-4">
           <div>
-            <div className="flex items-center gap-2 text-xs font-mono font-bold tracking-wider text-neutral-400 uppercase mb-1">
-              <Tv className="w-3.5 h-3.5" style={{ color: accentColor }} />
-              <span>TV SERIES</span>
+            <div className="flex flex-wrap items-center gap-2 text-xs font-mono font-bold tracking-wider text-neutral-400 uppercase mb-1">
+              <span className="flex items-center gap-1">
+                <Tv className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                <span>TV SERIES</span>
+              </span>
               <span>•</span>
-              <span>
+              <span className="tabular-nums">
                 {seasons.length} {seasons.length === 1 ? "Season" : "Seasons"}
               </span>
               <span>•</span>
-              <span>
+              <span className="tabular-nums">
                 {totalCount} {totalCount === 1 ? "Episode" : "Episodes"}
               </span>
+              {seriesMetadata?.first_air_date ? (
+                <>
+                  <span>•</span>
+                  <span className="tabular-nums text-neutral-300 font-semibold">
+                    {seriesMetadata.first_air_date.slice(0, 4)}
+                    {seriesMetadata.last_air_date && seriesMetadata.status === "Ended" && seriesMetadata.last_air_date.slice(0, 4) !== seriesMetadata.first_air_date.slice(0, 4)
+                      ? ` – ${seriesMetadata.last_air_date.slice(0, 4)}`
+                      : seriesMetadata.status !== "Ended"
+                      ? " – Present"
+                      : ""}
+                  </span>
+                </>
+              ) : posterItem?.year ? (
+                <>
+                  <span>•</span>
+                  <span className="tabular-nums text-neutral-300 font-semibold">{posterItem.year}</span>
+                </>
+              ) : null}
+
+              {seriesMetadata?.content_rating && (
+                <>
+                  <span>•</span>
+                  <span className="px-1.5 py-0.2 rounded bg-white/10 border border-white/15 text-[10px] text-white font-bold">
+                    {seriesMetadata.content_rating}
+                  </span>
+                </>
+              )}
+
+              {typeof seriesMetadata?.rating === "number" && seriesMetadata.rating > 0 && (
+                <>
+                  <span>•</span>
+                  <span className="flex items-center gap-1 text-[11px] font-bold text-amber-400">
+                    <Star className="w-3 h-3 fill-current" />
+                    <span className="tabular-nums">{seriesMetadata.rating.toFixed(1)}</span>
+                  </span>
+                </>
+              )}
+
+              {seriesMetadata?.status && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-white/5 border border-white/10 text-neutral-300">
+                  {seriesMetadata.status}
+                </span>
+              )}
+
+              {seriesMetadata?.networks && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-white/10 border border-white/15 text-neutral-200 font-semibold">
+                  {seriesMetadata.networks}
+                </span>
+              )}
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              {seriesName}
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                {seriesName}
+              </h1>
+              {onEditSeries && posterItem && (
+                <button
+                  type="button"
+                  onClick={() => onEditSeries(seriesName, posterItem, seriesEpisodes.length)}
+                  className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white border border-white/10 transition cursor-pointer"
+                  title="Edit Series Details & Artwork"
+                >
+                  <Pencil className="w-3.5 h-3.5 text-neutral-400" />
+                </button>
+              )}
+            </div>
+
+            {/* Tagline */}
+            {seriesMetadata?.tagline && (
+              <p className="text-xs text-neutral-400 italic tracking-wide mt-1 font-serif">
+                "{seriesMetadata.tagline}"
+              </p>
+            )}
+
+            {/* Genres */}
+            {genreList.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2.5">
+                {genreList.map((g) => (
+                  <span
+                    key={g}
+                    className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/10 text-[10px] font-medium text-neutral-300"
+                  >
+                    {g}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Synopsis / Storyline Overview */}
+            {seriesMetadata?.overview && (
+              <div className="mt-3 max-w-2xl">
+                <p
+                  className={`text-xs text-neutral-300 leading-relaxed font-normal ${
+                    isOverviewExpanded ? "" : "line-clamp-3"
+                  }`}
+                >
+                  {seriesMetadata.overview}
+                </p>
+                {seriesMetadata.overview.length > 180 && (
+                  <button
+                    type="button"
+                    onClick={() => setIsOverviewExpanded(!isOverviewExpanded)}
+                    className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-neutral-400 hover:text-white transition cursor-pointer"
+                  >
+                    <span>{isOverviewExpanded ? "Show Less" : "Read Full Synopsis"}</span>
+                    {isOverviewExpanded ? (
+                      <ChevronUp className="w-3 h-3" />
+                    ) : (
+                      <ChevronDown className="w-3 h-3" />
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Overall Watch Progress Bar */}
             <div className="mt-4 max-w-md space-y-1.5">

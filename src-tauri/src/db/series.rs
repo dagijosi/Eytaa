@@ -198,3 +198,125 @@ pub fn db_get_series_overview(
 
     Ok(out)
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SeriesMetadataDto {
+    pub series_key: String,
+    pub series_name: String,
+    pub tmdb_id: Option<i64>,
+    pub overview: Option<String>,
+    pub tagline: Option<String>,
+    pub rating: Option<f64>,
+    pub vote_count: Option<i64>,
+    pub genres: Option<String>,
+    pub status: Option<String>,
+    pub networks: Option<String>,
+    pub first_air_date: Option<String>,
+    pub last_air_date: Option<String>,
+    pub backdrop_url: Option<String>,
+    pub poster_url: Option<String>,
+    pub created_by: Option<String>,
+    pub content_rating: Option<String>,
+}
+
+#[tauri::command]
+pub fn db_get_series_metadata(
+    state: tauri::State<'_, DbState>,
+    series_key: String,
+) -> Result<Option<SeriesMetadataDto>, String> {
+    let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+    let key = crate::library::normalize_series_key(&series_key);
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT series_key, series_name, tmdb_id, overview, tagline, rating, vote_count,
+                    genres, status, networks, first_air_date, last_air_date,
+                    backdrop_url, poster_url, created_by, content_rating
+             FROM series_metadata
+             WHERE series_key = ?1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let item = stmt
+        .query_row(params![key], |row| {
+            Ok(SeriesMetadataDto {
+                series_key: row.get(0)?,
+                series_name: row.get(1)?,
+                tmdb_id: row.get(2)?,
+                overview: row.get(3)?,
+                tagline: row.get(4)?,
+                rating: row.get(5)?,
+                vote_count: row.get(6)?,
+                genres: row.get(7)?,
+                status: row.get(8)?,
+                networks: row.get(9)?,
+                first_air_date: row.get(10)?,
+                last_air_date: row.get(11)?,
+                backdrop_url: row.get(12)?,
+                poster_url: row.get(13)?,
+                created_by: row.get(14)?,
+                content_rating: row.get(15)?,
+            })
+        })
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    Ok(item)
+}
+
+#[tauri::command]
+pub fn db_save_series_metadata(
+    state: tauri::State<'_, DbState>,
+    metadata: SeriesMetadataDto,
+) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+    let key = crate::library::normalize_series_key(&metadata.series_key);
+
+    conn.execute(
+        "INSERT INTO series_metadata (
+            series_key, series_name, tmdb_id, overview, tagline, rating, vote_count,
+            genres, status, networks, first_air_date, last_air_date,
+            backdrop_url, poster_url, created_by, content_rating, updated_at
+        ) VALUES (
+            ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, CURRENT_TIMESTAMP
+        )
+        ON CONFLICT(series_key) DO UPDATE SET
+            series_name = excluded.series_name,
+            tmdb_id = COALESCE(excluded.tmdb_id, tmdb_id),
+            overview = COALESCE(excluded.overview, overview),
+            tagline = COALESCE(excluded.tagline, tagline),
+            rating = COALESCE(excluded.rating, rating),
+            vote_count = COALESCE(excluded.vote_count, vote_count),
+            genres = COALESCE(excluded.genres, genres),
+            status = COALESCE(excluded.status, status),
+            networks = COALESCE(excluded.networks, networks),
+            first_air_date = COALESCE(excluded.first_air_date, first_air_date),
+            last_air_date = COALESCE(excluded.last_air_date, last_air_date),
+            backdrop_url = COALESCE(excluded.backdrop_url, backdrop_url),
+            poster_url = COALESCE(excluded.poster_url, poster_url),
+            created_by = COALESCE(excluded.created_by, created_by),
+            content_rating = COALESCE(excluded.content_rating, content_rating),
+            updated_at = CURRENT_TIMESTAMP",
+        params![
+            key,
+            metadata.series_name,
+            metadata.tmdb_id,
+            metadata.overview,
+            metadata.tagline,
+            metadata.rating,
+            metadata.vote_count,
+            metadata.genres,
+            metadata.status,
+            metadata.networks,
+            metadata.first_air_date,
+            metadata.last_air_date,
+            metadata.backdrop_url,
+            metadata.poster_url,
+            metadata.created_by,
+            metadata.content_rating,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}

@@ -22,6 +22,8 @@ export const createUiSlice: StateCreator<
   settingsInitialTab: null,
 
   // Window & TopNav Quick Controls
+  isFullscreen: false,
+  setIsFullscreen: (isFullscreen: boolean) => set({ isFullscreen }),
   isAlwaysOnTop: false,
 
   // Picture-in-Picture State

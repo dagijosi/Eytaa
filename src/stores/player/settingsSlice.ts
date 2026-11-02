@@ -30,6 +30,7 @@ export const createSettingsSlice: StateCreator<
   autoPlayNext: true,
   queueOnPlayMode: "replace",
   edgeHoverPlaylistEnabled: true,
+  edgeHoverPlaylistTrigger: "fullscreen",
 
   setQueueOnPlayMode: async (mode: "replace" | "append" | "ask") => {
     set({ queueOnPlayMode: mode });
@@ -40,7 +41,19 @@ export const createSettingsSlice: StateCreator<
   setEdgeHoverPlaylistEnabled: async (enabled: boolean) => {
     set({ edgeHoverPlaylistEnabled: enabled });
     await storageService.setPreference("edgeHoverPlaylistEnabled", enabled);
-    get().showOSD(`Edge Hover Playlist: ${enabled ? "Enabled" : "Disabled"}`);
+    get().showOSD(`Edge Reveal Tab: ${enabled ? "Enabled" : "Disabled"}`);
+  },
+
+  setEdgeHoverPlaylistTrigger: async (trigger: "fullscreen" | "always" | "button_only" | "click_only") => {
+    set({ edgeHoverPlaylistTrigger: trigger });
+    await storageService.setPreference("edgeHoverPlaylistTrigger", trigger);
+    const labels: Record<string, string> = {
+      fullscreen: "Fullscreen Only",
+      always: "Always",
+      button_only: "Button Hover Only",
+      click_only: "Click Button Only",
+    };
+    get().showOSD(`Edge Reveal: ${labels[trigger] || trigger}`);
   },
 
   toggleAutoPlayNext: async (enabled?: boolean) => {
@@ -359,6 +372,8 @@ export const createSettingsSlice: StateCreator<
       pauseOnSystemSleep: true,
       repeatMode: "off",
       muted: false,
+      edgeHoverPlaylistEnabled: true,
+      edgeHoverPlaylistTrigger: "fullscreen",
     });
 
     await storageService.setPreference("autoPlayNext", true);
@@ -373,6 +388,8 @@ export const createSettingsSlice: StateCreator<
     await storageService.setPreference("repeatMode", "off");
     await storageService.setPreference("volume", 100);
     await storageService.setPreference("muted", false);
+    await storageService.setPreference("edgeHoverPlaylistEnabled", true);
+    await storageService.setPreference("edgeHoverPlaylistTrigger", "fullscreen");
     set({ autoCheckUpdates: true });
     await localShortcutsService.resetAll();
 

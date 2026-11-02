@@ -19,7 +19,7 @@ import {
   Settings,
   Link2,
   Trash2,
-  Sparkles,
+  Copy,
   Sliders,
   History,
   Music,
@@ -207,7 +207,7 @@ export function CommandPalette() {
         id: "screenshot-clipboard",
         title: "Copy Video Frame to Clipboard",
         category: "Playback",
-        icon: Sparkles,
+        icon: Copy,
         shortcut: "Shift+S",
         keywords: ["copy", "clipboard", "screenshot", "paste"],
         action: async () => {

@@ -159,6 +159,7 @@ export const createPlaybackSlice: StateCreator<
         savedRepeatMode,
         savedQueueOnPlayMode,
         savedEdgeHover,
+        savedEdgeHoverTrigger,
         savedSession,
       ] = await Promise.all([
         storageService.getPreference<number>("volume"),
@@ -176,6 +177,7 @@ export const createPlaybackSlice: StateCreator<
         storageService.getPreference<RepeatMode>("repeatMode"),
         storageService.getPreference<"replace" | "append" | "ask">("queueOnPlayMode"),
         storageService.getPreference<boolean>("edgeHoverPlaylistEnabled"),
+        storageService.getPreference<"fullscreen" | "always" | "button_only" | "click_only">("edgeHoverPlaylistTrigger"),
         storageService.getPreference<{
           items: Array<{ filePath: string; title: string }>;
           index: number;
@@ -187,6 +189,9 @@ export const createPlaybackSlice: StateCreator<
       }
       if (savedEdgeHover !== null && savedEdgeHover !== undefined) {
         set({ edgeHoverPlaylistEnabled: savedEdgeHover });
+      }
+      if (savedEdgeHoverTrigger) {
+        set({ edgeHoverPlaylistTrigger: savedEdgeHoverTrigger });
       }
 
       // Restore repeat / loop mode

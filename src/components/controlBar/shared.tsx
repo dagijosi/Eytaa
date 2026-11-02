@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { Tv, Layers, Film, Headphones, Mic, Sliders, Moon, Flame, Sparkles } from "lucide-react";
+import { Tv, Layers, Film, Headphones, Mic, Sliders, Moon, Flame, SunMedium } from "lucide-react";
 
 export function formatSeconds(seconds: number): string {
   if (isNaN(seconds) || seconds < 0) return "00:00";
@@ -42,7 +42,7 @@ export function getProfileIcon(
     case "tv":
       return <Tv style={accentStyle} className="w-3.5 h-3.5" />;
     case "sparkles":
-      return <Sparkles className={`w-3.5 h-3.5 ${tone("text-amber-300")}`} />;
+      return <SunMedium className={`w-3.5 h-3.5 ${tone("text-amber-300")}`} />;
     case "moon":
       return <Moon className={`w-3.5 h-3.5 ${tone("text-indigo-400")}`} />;
     case "flame":

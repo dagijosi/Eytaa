@@ -338,7 +338,17 @@ export function MediaLibraryModal() {
 
   // Editing metadata modal state
   const [editingItem, setEditingItem] = useState<LibraryItem | null>(null);
+  const [editingSeriesInfo, setEditingSeriesInfo] = useState<{
+    seriesName: string;
+    sampleItem: LibraryItem;
+    episodesCount?: number;
+  } | null>(null);
   const [deletingItem, setDeletingItem] = useState<LibraryItem | null>(null);
+
+  const handleCloseEdit = useCallback(() => {
+    setEditingItem(null);
+    setEditingSeriesInfo(null);
+  }, []);
 
   // Recently added filtering & limits on Hub
   const [recentFilter, setRecentFilter] = useState<"all" | "movie" | "series" | "audio">("all");
@@ -495,7 +505,7 @@ export function MediaLibraryModal() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isLibraryOpen) {
         if (editingItem) {
-          setEditingItem(null);
+          handleCloseEdit();
         } else if (inspectingSeriesName) {
           setInspectingSeriesName(null);
         } else {
@@ -505,7 +515,7 @@ export function MediaLibraryModal() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isLibraryOpen, editingItem, inspectingSeriesName, toggleLibraryModal]);
+  }, [isLibraryOpen, editingItem, inspectingSeriesName, toggleLibraryModal, handleCloseEdit]);
 
   // Derived media groups
   const movies = useMemo(() => {
@@ -1600,7 +1610,18 @@ export function MediaLibraryModal() {
             onBack={() => setInspectingSeriesName(null)}
             onPlay={handlePlayItem}
             onQueue={handleQueueItem}
-            onEdit={(item) => setEditingItem(item)}
+            onEdit={(item) => {
+              setEditingSeriesInfo(null);
+              setEditingItem(item);
+            }}
+            onEditSeries={(sName, sampleItem, epCount) => {
+              setEditingSeriesInfo({
+                seriesName: sName,
+                sampleItem,
+                episodesCount: epCount,
+              });
+              setEditingItem(sampleItem);
+            }}
             onDelete={setDeletingItem}
             onToggleFavorite={handleToggleFavorite}
             onRefreshData={loadData}
@@ -1935,7 +1956,14 @@ export function MediaLibraryModal() {
                       viewFormat={cardFormat}
                       onClick={() => setInspectingSeriesName(group.seriesName)}
                       onCoverChange={handlePickSeriesCover}
-                      onEdit={() => setEditingItem(group.sampleItem)}
+                      onEdit={() => {
+                      setEditingSeriesInfo({
+                        seriesName: group.seriesName,
+                        sampleItem: group.sampleItem,
+                        episodesCount: group.episodesCount,
+                      });
+                      setEditingItem(group.sampleItem);
+                    }}
                     />
                   ))}
                 </div>
@@ -2239,7 +2267,14 @@ export function MediaLibraryModal() {
                     viewFormat={cardFormat}
                     onClick={() => setInspectingSeriesName(group.seriesName)}
                     onCoverChange={handlePickSeriesCover}
-                    onEdit={() => setEditingItem(group.sampleItem)}
+                    onEdit={() => {
+                      setEditingSeriesInfo({
+                        seriesName: group.seriesName,
+                        sampleItem: group.sampleItem,
+                        episodesCount: group.episodesCount,
+                      });
+                      setEditingItem(group.sampleItem);
+                    }}
                     onDelete={setDeletingItem}
                   />
                 )}
@@ -2519,9 +2554,17 @@ export function MediaLibraryModal() {
       <EditMetadataModal
         item={editingItem}
         isOpen={!!editingItem}
-        onClose={() => setEditingItem(null)}
-        onSaved={loadData}
+        onClose={handleCloseEdit}
+        onSaved={(renamed) => {
+          loadData();
+          if (renamed && inspectingSeriesName === renamed.oldName) {
+            setInspectingSeriesName(renamed.newName);
+          }
+        }}
         existingSeriesNames={existingSeriesNames}
+        seriesMode={Boolean(editingSeriesInfo)}
+        seriesName={editingSeriesInfo?.seriesName}
+        episodesCount={editingSeriesInfo?.episodesCount}
       />
     </div>
   );

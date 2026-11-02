@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { PictureInPicture2, Sliders, Camera, FolderOpen, RotateCcw } from "lucide-react";
+import { PictureInPicture2, Sliders, Camera, FolderOpen, RotateCcw, Globe } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { playerService } from "../../services/player/mpvPlayerService";
 import { storageService } from "../../services/storage/storageService";
+import { metadataScraperService } from "../../services/metadata/metadataScraperService";
 import { SimpleModeCallout } from "./shared";
 import type { SettingsMode } from "./types";
 import { SelectDropdown, SelectDropdownOption } from "../common/SelectDropdown";
@@ -26,6 +27,33 @@ const QUEUE_ON_PLAY_OPTIONS: SelectDropdownOption<"replace" | "append" | "ask">[
     label: "Always Ask",
     shortLabel: "Always Ask",
     desc: "Prompts whether to replace or append when queue has items",
+  },
+];
+
+const EDGE_HOVER_TRIGGER_OPTIONS: SelectDropdownOption<"fullscreen" | "always" | "button_only" | "click_only">[] = [
+  {
+    value: "fullscreen",
+    label: "Fullscreen Only",
+    shortLabel: "Fullscreen Only (Recommended)",
+    desc: "Auto-peeks on edge in fullscreen; in windowed mode, requires hovering or clicking the edge button",
+  },
+  {
+    value: "always",
+    label: "Always (Windowed & Fullscreen)",
+    shortLabel: "Always",
+    desc: "Hovering the screen edge auto-peeks open the playlist in both windowed and fullscreen display",
+  },
+  {
+    value: "button_only",
+    label: "Button Hover Only",
+    shortLabel: "Button Hover",
+    desc: "Only hovering directly over the edge button tab opens the drawer, preventing edge misfires",
+  },
+  {
+    value: "click_only",
+    label: "Click Button Only",
+    shortLabel: "Click Button Only",
+    desc: "Only clicking the edge button opens the drawer; never expands automatically on hover",
   },
 ];
 
@@ -110,11 +138,14 @@ export function PlaybackSettings({
     setQueueOnPlayMode,
     edgeHoverPlaylistEnabled,
     setEdgeHoverPlaylistEnabled,
+    edgeHoverPlaylistTrigger,
+    setEdgeHoverPlaylistTrigger,
     autoplayNextEpisodeEnabled,
     setAutoplayNextEpisodeEnabled,
   } = usePlayerStore();
 
   const [screenshotDir, setScreenshotDir] = useState<string>("");
+  const [tmdbApiKey, setTmdbApiKey] = useState<string>("");
 
   useEffect(() => {
     storageService.getPreference<string>("screenshotDirectory").then((dir) => {
@@ -126,7 +157,16 @@ export function PlaybackSettings({
         } catch {}
       }
     });
+
+    storageService.getPreference<string>("tmdbApiKey").then((key) => {
+      if (key) setTmdbApiKey(key);
+    });
   }, []);
+
+  const handleSaveTmdbApiKey = async (val: string) => {
+    setTmdbApiKey(val);
+    await metadataScraperService.setApiKey(val);
+  };
 
   const handlePickScreenshotDir = async () => {
     try {
@@ -300,10 +340,10 @@ export function PlaybackSettings({
       <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
         <div>
           <span className="font-medium text-neutral-200 text-xs">
-            Edge Hover Playlist Reveal
+            Edge Reveal Playlist Tab
           </span>
           <p className="text-xs text-neutral-500">
-            Hover your mouse against the right screen edge during playback to smoothly slide open the playlist without clicking
+            Show the edge indicator tab when your mouse approaches the right screen edge
           </p>
         </div>
         <input
@@ -314,6 +354,26 @@ export function PlaybackSettings({
           className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
         />
       </div>
+
+      {edgeHoverPlaylistEnabled && (
+        <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
+          <div>
+            <span className="font-medium text-neutral-200 text-xs">
+              Auto-Open Full Drawer
+            </span>
+            <p className="text-xs text-neutral-500">
+              Control when the playlist drawer automatically expands vs requiring button interaction
+            </p>
+          </div>
+          <SelectDropdown<"fullscreen" | "always" | "button_only" | "click_only">
+            value={edgeHoverPlaylistTrigger}
+            onChange={setEdgeHoverPlaylistTrigger}
+            options={EDGE_HOVER_TRIGGER_OPTIONS}
+            menuHeader="Auto-Open Trigger"
+            width="w-64"
+          />
+        </div>
+      )}
 
       {/* Show Skip Indicators */}
       <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
@@ -393,6 +453,56 @@ export function PlaybackSettings({
           ) : (
             <span className="text-neutral-500 italic">Default: Alongside active media file (or Pictures/EYTAA Screenshots for streams)</span>
           )}
+        </div>
+      </div>
+
+      {/* TMDb Online Metadata & Artwork Scraper Key */}
+      <div className="p-3.5 rounded-xl bg-white/5 border border-white/5 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Globe className="w-4 h-4 text-neutral-300" />
+            <div>
+              <span className="font-medium text-neutral-200 text-xs">
+                TMDb Scraper API Key
+              </span>
+              <p className="text-xs text-neutral-500">
+                Powers automatic movie and TV artwork, release years, and synopses in the library editor
+              </p>
+            </div>
+          </div>
+          <span
+            className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+              tmdbApiKey
+                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                : "bg-white/10 text-neutral-400 border-white/10"
+            }`}
+          >
+            {tmdbApiKey ? "Custom Key Active" : "Default Key Active"}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            type="password"
+            value={tmdbApiKey}
+            onChange={(e) => handleSaveTmdbApiKey(e.target.value)}
+            placeholder="Paste personal TMDb API Key (v3)..."
+            className="flex-1 px-3 py-1.5 rounded-lg bg-black/40 border border-white/10 focus:border-white/30 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none"
+          />
+          {tmdbApiKey && (
+            <button
+              onClick={() => handleSaveTmdbApiKey("")}
+              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white transition cursor-pointer border border-white/10"
+              title="Reset to default key"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between text-[11px] text-neutral-500">
+          <span>Leave blank to use the built-in community read-only key.</span>
+          <span className="text-neutral-400">Get a free key at themoviedb.org/settings/api</span>
         </div>
       </div>
 

@@ -247,6 +247,61 @@ pub fn db_update_media_metadata(
 }
 
 #[tauri::command]
+pub fn db_update_series_metadata(
+    state: tauri::State<'_, DbState>,
+    series_name: String,
+    new_series_name: Option<String>,
+    year: Option<String>,
+    custom_poster: Option<String>,
+) -> Result<usize, String> {
+    let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+    let key = crate::library::normalize_series_key(&series_name);
+    let new_name = new_series_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(&series_name);
+    let new_key = crate::library::normalize_series_key(new_name);
+
+    let rows_affected = if let Some(poster) = custom_poster {
+        let poster_val = if poster.trim().is_empty() {
+            None
+        } else {
+            Some(poster.trim().to_string())
+        };
+        conn.execute(
+            "UPDATE library_items SET
+                series_name = ?1,
+                series_key = ?2,
+                year = COALESCE(?3, year),
+                custom_poster = ?4
+             WHERE series_key = ?5 OR series_name = ?6",
+            params![new_name, new_key, year, poster_val, key, series_name],
+        )
+        .map_err(|e| e.to_string())?
+    } else {
+        conn.execute(
+            "UPDATE library_items SET
+                series_name = ?1,
+                series_key = ?2,
+                year = COALESCE(?3, year)
+             WHERE series_key = ?4 OR series_name = ?5",
+            params![new_name, new_key, year, key, series_name],
+        )
+        .map_err(|e| e.to_string())?
+    };
+
+    if new_key != key {
+        let _ = conn.execute(
+            "UPDATE series_metadata SET series_key = ?1, series_name = ?2 WHERE series_key = ?3",
+            params![new_key, new_name, key],
+        );
+    }
+
+    Ok(rows_affected)
+}
+
+#[tauri::command]
 pub fn db_set_watched_status(
     state: tauri::State<'_, DbState>,
     file_path: String,
