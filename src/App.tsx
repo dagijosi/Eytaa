@@ -24,6 +24,7 @@ const MediaLibraryModal = lazy(() =>
 import { UpdateCheckToast } from "./components/UpdateCheckToast";
 import { ScreenshotToast } from "./components/ScreenshotToast";
 import { NextEpisodeOverlay } from "./components/NextEpisodeOverlay";
+import { CommandPalette } from "./components/CommandPalette";
 import { ContextMenu } from "./components/ContextMenu";
 import { TooltipLayer } from "./components/TooltipLayer";
 import { StatsOverlay } from "./components/StatsOverlay";
@@ -87,6 +88,7 @@ export default function App() {
     setAbLoopA,
     setAbLoopB,
     clearAbLoop,
+    toggleCommandPalette,
   } = usePlayerStore(
     useShallow((s) => ({
       isInitialized: s.isInitialized,
@@ -137,6 +139,7 @@ export default function App() {
       setAbLoopA: s.setAbLoopA,
       setAbLoopB: s.setAbLoopB,
       clearAbLoop: s.clearAbLoop,
+      toggleCommandPalette: s.toggleCommandPalette,
     })),
   );
 
@@ -440,6 +443,13 @@ export default function App() {
         return;
       }
 
+      // Spotlight Command Palette shortcut (Ctrl+K / Cmd+K)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        toggleCommandPalette();
+        return;
+      }
+
       // Clipboard Screenshot shortcut (Ctrl+Shift+S / Cmd+Shift+S or Ctrl+S)
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
@@ -670,6 +680,7 @@ export default function App() {
     setAbLoopA,
     setAbLoopB,
     clearAbLoop,
+    toggleCommandPalette,
     showOSD,
   ]);
 
@@ -909,6 +920,9 @@ export default function App() {
 
       {/* Network Stream / URL Opener */}
       <OpenUrlModal />
+
+      {/* Spotlight Command Palette (Ctrl+K / Cmd+K) */}
+      <CommandPalette />
 
       {/* Custom Right-Click Context Menu */}
       {contextMenu && (

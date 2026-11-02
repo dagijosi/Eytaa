@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   Film,
   PlusSquare,
+  Search,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { usePlayerStore } from "../stores/playerStore";
@@ -50,6 +51,7 @@ export function TopBar() {
     togglePlaylistDrawer,
     toggleSettingsModal,
     toggleLibraryModal,
+    toggleCommandPalette,
     isAlwaysOnTop,
     toggleAlwaysOnTop,
     showOSD,
@@ -554,6 +556,19 @@ export function TopBar() {
 
       {/* Right: Window Controls */}
       <div className="flex items-center gap-1 shrink-0 -mr-1">
+        {/* Quick Spotlight Command Palette Button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleCommandPalette();
+          }}
+          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/5 hover:bg-white/15 text-neutral-300 hover:text-white text-xs font-medium transition cursor-pointer mr-0.5"
+          title="Spotlight Command Palette (Ctrl+K)"
+        >
+          <Search className="w-3.5 h-3.5" style={{ color: accentColor }} />
+          <span className="hidden lg:inline text-[10px] font-mono opacity-60">Ctrl+K</span>
+        </button>
+
         {/* Quick Media Library Button */}
         <button
           onClick={(e) => {

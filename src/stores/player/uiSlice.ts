@@ -17,6 +17,7 @@ export const createUiSlice: StateCreator<
   isPlaylistOpen: false,
   isSettingsOpen: false,
   isLibraryOpen: false,
+  isCommandPaletteOpen: false,
   videoFitMode: "fit",
   settingsInitialTab: null,
 
@@ -64,6 +65,12 @@ export const createUiSlice: StateCreator<
   toggleLibraryModal: (open?: boolean) => {
     set((s) => ({
       isLibraryOpen: open !== undefined ? open : !s.isLibraryOpen,
+    }));
+  },
+
+  toggleCommandPalette: (open?: boolean) => {
+    set((s) => ({
+      isCommandPaletteOpen: open !== undefined ? open : !s.isCommandPaletteOpen,
     }));
   },
 

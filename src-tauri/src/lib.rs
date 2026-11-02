@@ -273,6 +273,7 @@ pub fn run() {
             db::db_get_watched_archive,
             db::db_delete_archive_item,
             thumbnailer::get_thumbnail,
+            thumbnailer::get_video_scrub_frame,
             thumbnailer::get_thumbnail_cache_stats,
             thumbnailer::clean_thumbnail_cache,
             pip::enter_pip,

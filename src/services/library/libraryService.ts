@@ -449,6 +449,37 @@ class LibraryService {
     return promise;
   }
 
+  private scrubCache = new Map<string, string>();
+
+  /**
+   * Fetches an on-demand video preview frame at the targeted timecode for hover scrubbing.
+   * Bucketed to 2-second windows with in-memory caching.
+   */
+  public async getScrubFrame(filePath: string, timestampSeconds: number): Promise<string | null> {
+    const bucket = Math.round(Math.max(0, timestampSeconds) / 2) * 2;
+    const cacheKey = `${filePath}_${bucket}`;
+    if (this.scrubCache.has(cacheKey)) {
+      return this.scrubCache.get(cacheKey)!;
+    }
+
+    try {
+      const frame = await invoke<string | null>("get_video_scrub_frame", {
+        filePath,
+        timestampSeconds: bucket,
+      });
+      if (frame) {
+        if (this.scrubCache.size > 200) {
+          const firstKey = this.scrubCache.keys().next().value;
+          if (firstKey) this.scrubCache.delete(firstKey);
+        }
+        this.scrubCache.set(cacheKey, frame);
+      }
+      return frame;
+    } catch {
+      return null;
+    }
+  }
+
   public async getThumbnailCacheStats(): Promise<ThumbnailCacheStats> {
     try {
       return await invoke<ThumbnailCacheStats>("get_thumbnail_cache_stats");

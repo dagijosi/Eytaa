@@ -416,3 +416,112 @@ pub async fn clean_thumbnail_cache(app: AppHandle, clean_mode: String) -> Result
     .await
     .map_err(|e| e.to_string())?
 }
+
+pub fn generate_scrub_frame(
+    app: &AppHandle,
+    file_path: &str,
+    timestamp_seconds: f64,
+) -> Result<Option<String>, String> {
+    let clean_path = file_path
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim_start_matches("file:///")
+        .trim_start_matches("file://");
+    let path = Path::new(clean_path);
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_lowercase())
+        .unwrap_or_default();
+
+    let valid_exts = ["mp4", "mkv", "webm", "avi", "mov", "ts", "m2ts", "flv", "wmv"];
+    if !valid_exts.contains(&ext.as_str()) {
+        return Ok(None);
+    }
+
+    let cache_dir = get_thumbnail_cache_dir(app)?;
+    let scrub_dir = cache_dir.join("scrub");
+    if !scrub_dir.exists() {
+        let _ = fs::create_dir_all(&scrub_dir);
+    }
+
+    let bucket = (timestamp_seconds.max(0.0) / 2.0).round() as u64 * 2;
+    let file_hash = hash_path(clean_path);
+    let output_frame = scrub_dir.join(format!("{}_{}.jpg", file_hash, bucket));
+
+    if output_frame.exists() {
+        if let Ok(metadata) = fs::metadata(&output_frame) {
+            if metadata.len() > 0 {
+                if let Ok(bytes) = fs::read(&output_frame) {
+                    let b64 = general_purpose::STANDARD.encode(&bytes);
+                    return Ok(Some(format!("data:image/jpeg;base64,{}", b64)));
+                }
+            }
+        }
+    }
+
+    let _guard = get_limiter().acquire();
+
+    if output_frame.exists() {
+        if let Ok(metadata) = fs::metadata(&output_frame) {
+            if metadata.len() > 0 {
+                if let Ok(bytes) = fs::read(&output_frame) {
+                    let b64 = general_purpose::STANDARD.encode(&bytes);
+                    return Ok(Some(format!("data:image/jpeg;base64,{}", b64)));
+                }
+            }
+        }
+    }
+
+    let output_path_str = output_frame.to_string_lossy().to_string();
+    let hours = bucket / 3600;
+    let mins = (bucket % 3600) / 60;
+    let secs = bucket % 60;
+    let time_str = format!("{:02}:{:02}:{:02}", hours, mins, secs);
+
+    let mut cmd = std::process::Command::new(resolve_ffmpeg_binary());
+    cmd.arg("-nostdin")
+        .arg("-loglevel")
+        .arg("error")
+        .arg("-ss")
+        .arg(&time_str)
+        .arg("-i")
+        .arg(clean_path)
+        .arg("-vframes")
+        .arg("1")
+        .arg("-vf")
+        .arg("scale=280:-1")
+        .arg("-q:v")
+        .arg("4")
+        .arg(&output_path_str)
+        .arg("-y");
+
+    if run_ffmpeg_with_timeout(cmd, 3) && output_frame.exists() {
+        if let Ok(bytes) = fs::read(&output_frame) {
+            if !bytes.is_empty() {
+                let b64 = general_purpose::STANDARD.encode(&bytes);
+                return Ok(Some(format!("data:image/jpeg;base64,{}", b64)));
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+#[tauri::command]
+pub async fn get_video_scrub_frame(
+    app: AppHandle,
+    file_path: String,
+    timestamp_seconds: f64,
+) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        generate_scrub_frame(&app, &file_path, timestamp_seconds)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

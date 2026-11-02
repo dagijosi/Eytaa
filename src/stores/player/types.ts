@@ -221,6 +221,8 @@ export interface UiSlice {
   toggleSettingsModal: (open?: boolean | unknown, initialTab?: string) => void;
   isLibraryOpen: boolean;
   toggleLibraryModal: (open?: boolean) => void;
+  isCommandPaletteOpen: boolean;
+  toggleCommandPalette: (open?: boolean) => void;
   videoFitMode: "fit" | "fill" | "stretch";
   setVideoFitMode: (mode: "fit" | "fill" | "stretch") => Promise<void>;
   cycleVideoFitMode: () => Promise<void>;
