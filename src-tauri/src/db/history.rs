@@ -46,6 +46,7 @@ pub fn db_set_resume_position(
         if dur > 60.0 && (position >= dur * 0.92 || position >= dur - 20.0) {
             let _ = conn.execute("DELETE FROM resume_positions WHERE file_path = ?1", params![file_path]);
             let _ = conn.execute("UPDATE library_items SET is_watched = 1 WHERE file_path = ?1", params![file_path]);
+            let _ = crate::db::archive_watched_by_path(&conn, &file_path);
             return Ok(());
         }
     }

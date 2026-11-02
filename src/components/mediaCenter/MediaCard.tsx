@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, memo } from "react";
-import { Play, Plus, Heart, CheckCircle2, Circle, Edit3, Clock } from "lucide-react";
+import { Play, Plus, Heart, CheckCircle2, Circle, Edit3, Clock, Trash2 } from "lucide-react";
 import { useThemeStore } from "../../stores/themeStore";
 import { LibraryItem } from "../../services/library/libraryService";
 import { useResolvedPoster } from "../../hooks/useResolvedPoster";
@@ -11,6 +11,7 @@ interface MediaCardProps {
   onPlay: (filePath: string) => void;
   onQueue: (filePath: string) => void;
   onEdit: (item: LibraryItem) => void;
+  onDelete?: (item: LibraryItem) => void;
   onToggleFavorite: (filePath: string) => void;
   onToggleWatched: (filePath: string, currentWatched: boolean) => void;
   badge?: string;
@@ -56,6 +57,7 @@ function MediaCardBase({
   onPlay,
   onQueue,
   onEdit,
+  onDelete,
   onToggleFavorite,
   onToggleWatched,
   badge,
@@ -278,6 +280,18 @@ function MediaCardBase({
           >
             <Edit3 className="w-3.5 h-3.5" />
           </button>
+
+          {/* Delete File */}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={() => onDelete(item)}
+              title="Delete File..."
+              className="p-1.5 rounded-md text-neutral-400 hover:text-rose-400 hover:bg-rose-500/20 transition duration-150 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         {/* Progress Bar (Bottom of artwork) */}

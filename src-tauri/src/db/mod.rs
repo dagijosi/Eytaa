@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 
+pub mod archive;
 mod favorites;
 mod history;
 mod library;
@@ -13,6 +14,7 @@ mod playlists;
 mod preferences;
 mod series;
 
+pub use archive::*;
 pub use favorites::*;
 pub use history::*;
 pub use library::*;
@@ -164,6 +166,10 @@ pub fn init_db(app: &AppHandle) -> Result<DbState, String> {
         "#,
     )
     .map_err(|e| format!("Failed to initialize database schema: {}", e))?;
+
+    // Initialize watched archive schema and perform initial sync
+    archive::init_archive_schema(&conn)
+        .map_err(|e| format!("Failed to initialize archive schema: {}", e))?;
 
     // Schema migrations for backward compatibility (run before creating column indexes)
     let _ = conn.execute("ALTER TABLE resume_positions ADD COLUMN duration REAL", []);

@@ -95,9 +95,9 @@ export function ContextMenu({ x, y, onClose }: ContextMenuProps) {
       if (!selected) return;
       const paths = Array.isArray(selected) ? selected : [selected];
       if (paths.length === 1) {
-        await openFile(paths[0]);
+        await openFile(paths[0], { clearQueue: true });
       } else if (paths.length > 1) {
-        await openMultipleFiles(paths);
+        await openMultipleFiles(paths, { clearQueue: true });
       }
     } catch (err) {
       console.error("Open file error:", err);

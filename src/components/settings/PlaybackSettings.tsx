@@ -3,6 +3,56 @@ import { playerService } from "../../services/player/mpvPlayerService";
 import { storageService } from "../../services/storage/storageService";
 import { SimpleModeCallout } from "./shared";
 import type { SettingsMode } from "./types";
+import { SelectDropdown, SelectDropdownOption } from "../common/SelectDropdown";
+import { usePlayerStore } from "../../stores/playerStore";
+
+const QUEUE_ON_PLAY_OPTIONS: SelectDropdownOption<"replace" | "append" | "ask">[] = [
+  {
+    value: "replace",
+    label: "Start Fresh Queue",
+    shortLabel: "Fresh Queue (Recommended)",
+    desc: "Clears previous media queue when opening a new movie or show",
+  },
+  {
+    value: "append",
+    label: "Append to Existing Queue",
+    shortLabel: "Append to Queue",
+    desc: "Keeps existing items and adds new media to the end",
+  },
+  {
+    value: "ask",
+    label: "Always Ask",
+    shortLabel: "Always Ask",
+    desc: "Prompts whether to replace or append when queue has items",
+  },
+];
+
+const HWDEC_OPTIONS: SelectDropdownOption<string>[] = [
+  {
+    value: "auto-safe",
+    label: "auto-safe",
+    shortLabel: "auto-safe (Recommended)",
+    desc: "Safe hardware decoding fallback (Recommended)",
+  },
+  {
+    value: "auto",
+    label: "auto",
+    shortLabel: "auto (Aggressive)",
+    desc: "Aggressive hardware acceleration on all formats",
+  },
+  {
+    value: "d3d11va",
+    label: "d3d11va",
+    shortLabel: "d3d11va (Windows Direct3D)",
+    desc: "DirectX 11 Video Acceleration",
+  },
+  {
+    value: "no",
+    label: "no",
+    shortLabel: "no (Software CPU)",
+    desc: "Software decoding via CPU only",
+  },
+];
 
 interface PlaybackSettingsProps {
   accentColor: string;
@@ -53,6 +103,12 @@ export function PlaybackSettings({
   allowMultipleWindows,
   handleToggleMultipleWindows,
 }: PlaybackSettingsProps) {
+  const {
+    queueOnPlayMode,
+    setQueueOnPlayMode,
+    edgeHoverPlaylistEnabled,
+    setEdgeHoverPlaylistEnabled,
+  } = usePlayerStore();
   return (
     <div className="space-y-4">
       {/* Picture-in-Picture Quick Launch */}
@@ -155,6 +211,44 @@ export function PlaybackSettings({
         />
       </div>
 
+      {/* Queue Strategy when Opening Media */}
+      <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
+        <div>
+          <span className="font-medium text-neutral-200 text-xs">
+            Queue Behavior on Open
+          </span>
+          <p className="text-xs text-neutral-500">
+            Choose whether opening a new movie or video starts a fresh queue or appends to your existing list
+          </p>
+        </div>
+        <SelectDropdown<"replace" | "append" | "ask">
+          value={queueOnPlayMode}
+          onChange={setQueueOnPlayMode}
+          options={QUEUE_ON_PLAY_OPTIONS}
+          menuHeader="When Opening Media"
+          width="w-64"
+        />
+      </div>
+
+      {/* Edge Hover Playlist Peek */}
+      <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
+        <div>
+          <span className="font-medium text-neutral-200 text-xs">
+            Edge Hover Playlist Reveal
+          </span>
+          <p className="text-xs text-neutral-500">
+            Hover your mouse against the right screen edge during playback to smoothly slide open the playlist without clicking
+          </p>
+        </div>
+        <input
+          type="checkbox"
+          checked={edgeHoverPlaylistEnabled}
+          onChange={(e) => setEdgeHoverPlaylistEnabled(e.target.checked)}
+          style={{ accentColor }}
+          className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+        />
+      </div>
+
       {/* Show Skip Indicators */}
       <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
         <div>
@@ -228,22 +322,18 @@ export function PlaybackSettings({
                 Utilize NVIDIA, Intel, or AMD GPU for silky 4K/60fps HEVC/AV1 playback
               </p>
             </div>
-            <select
+            <SelectDropdown<string>
               value={hwdec}
-              onChange={async (e) => {
-                const val = e.target.value;
+              onChange={async (val) => {
                 setHwdec(val);
                 await storageService.setPreference("hwdec", val);
                 await playerService.setMpvProperty("hwdec", val);
                 showOSD(`Hardware Decoding: ${val}`);
               }}
-              className="bg-neutral-800 border border-white/10 rounded-lg px-2.5 py-1 text-xs text-neutral-200 focus:outline-none cursor-pointer font-mono"
-            >
-              <option value="auto-safe">auto-safe (Recommended)</option>
-              <option value="auto">auto (Aggressive)</option>
-              <option value="d3d11va">d3d11va (Windows Direct3D)</option>
-              <option value="no">no (Software CPU)</option>
-            </select>
+              options={HWDEC_OPTIONS}
+              menuHeader="Hardware Decoding Mode"
+              width="w-72"
+            />
           </div>
 
           {/* Multiple Windows Mode */}

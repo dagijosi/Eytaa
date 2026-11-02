@@ -42,8 +42,15 @@ export const createUiSlice: StateCreator<
     set({ isControlsVisible: visible });
   },
 
-  togglePlaylistDrawer: () => {
-    set((s) => ({ isPlaylistOpen: !s.isPlaylistOpen }));
+  isPlaylistPinned: false,
+  setPlaylistPinned: (pinned: boolean) => {
+    set({ isPlaylistPinned: pinned });
+  },
+
+  togglePlaylistDrawer: (open?: boolean) => {
+    set((s) => ({
+      isPlaylistOpen: typeof open === "boolean" ? open : !s.isPlaylistOpen,
+    }));
   },
 
   toggleSettingsModal: (open?: boolean | unknown, initialTab?: string) => {

@@ -50,6 +50,70 @@ export interface SeriesOverview {
   custom_poster?: string;
 }
 
+export interface WatchReportSummary {
+  total_movies_watched: number;
+  total_movie_duration_seconds: number;
+  total_series_count: number;
+  total_episodes_watched: number;
+  total_series_duration_seconds: number;
+  total_music_listened: number;
+  total_music_duration_seconds: number;
+  total_watch_time_seconds: number;
+  total_disk_space_reclaimed_bytes: number;
+}
+
+export interface SeasonReportItem {
+  season_number: number;
+  episodes_watched: number;
+}
+
+export interface SeriesReportItem {
+  series_key: string;
+  series_name: string;
+  custom_poster?: string;
+  sample_file_path?: string;
+  year?: string;
+  total_episodes_watched: number;
+  total_seasons_watched: number;
+  seasons_breakdown: SeasonReportItem[];
+  last_watched_at?: string;
+}
+
+export interface ActivityTrendItem {
+  period: string;
+  movies_count: number;
+  episodes_count: number;
+  music_count: number;
+}
+
+export interface WatchedArchiveItem {
+  id: number;
+  media_key: string;
+  file_path?: string;
+  file_name?: string;
+  title: string;
+  media_type: string;
+  category: string;
+  series_name?: string;
+  series_key?: string;
+  season_number?: number;
+  episode_number?: number;
+  episode_title?: string;
+  year?: string;
+  duration?: number;
+  file_size?: number;
+  custom_poster?: string;
+  watched_at: string;
+  watch_count: number;
+  is_still_on_disk: boolean;
+}
+
+export interface FullWatchReport {
+  summary: WatchReportSummary;
+  series: SeriesReportItem[];
+  recent_activity: ActivityTrendItem[];
+}
+
 export interface FavoriteItem {
   file_path: string;
   title?: string;
@@ -435,6 +499,67 @@ class LibraryService {
       title: r.title,
     }));
   }
+  public async deleteMediaFile(
+    filePath: string,
+    toRecycleBin = true,
+    keepInArchive = true,
+  ): Promise<void> {
+    await invoke<void>("db_delete_media_file", {
+      filePath,
+      toRecycleBin,
+      keepInArchive,
+    });
+    this.clearThumbnailCacheFor(filePath);
+    this.notifyLibraryChanged();
+  }
+
+  public async getWatchReport(): Promise<FullWatchReport> {
+    try {
+      return await invoke<FullWatchReport>("db_get_watch_report");
+    } catch (e) {
+      console.error("Failed to get watch report:", e);
+      return {
+        summary: {
+          total_movies_watched: 0,
+          total_movie_duration_seconds: 0,
+          total_series_count: 0,
+          total_episodes_watched: 0,
+          total_series_duration_seconds: 0,
+          total_music_listened: 0,
+          total_music_duration_seconds: 0,
+          total_watch_time_seconds: 0,
+          total_disk_space_reclaimed_bytes: 0,
+        },
+        series: [],
+        recent_activity: [],
+      };
+    }
+  }
+
+  public async getWatchedArchive(filter?: {
+    category?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<WatchedArchiveItem[]> {
+    try {
+      return await invoke<WatchedArchiveItem[]>("db_get_watched_archive", {
+        category: filter?.category || null,
+        search: filter?.search || null,
+        limit: filter?.limit ?? null,
+        offset: filter?.offset ?? null,
+      });
+    } catch (e) {
+      console.error("Failed to get watched archive:", e);
+      return [];
+    }
+  }
+
+  public async deleteArchiveItem(id: number): Promise<void> {
+    await invoke<void>("db_delete_archive_item", { id });
+    this.notifyLibraryChanged();
+  }
+
 }
 
 export const libraryService = new LibraryService();

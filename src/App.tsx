@@ -331,9 +331,13 @@ export default function App() {
       }
 
       if (mode === "play") {
-        await openFile(paths[0]);
-        if (paths.length > 1) {
-          addToPlaylist(paths.slice(1));
+        if (paths.length === 1) {
+          await openFile(paths[0], { clearQueue: true });
+        } else {
+          await openFile(paths[0], {
+            clearQueue: true,
+            queueEpisodes: paths.slice(1),
+          });
         }
       } else {
         addToPlaylist(paths);

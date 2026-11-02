@@ -35,6 +35,7 @@ interface SeriesDetailViewProps {
   onPlay: (filePath: string, queueEpisodes?: string[]) => void;
   onQueue: (filePath: string) => void;
   onEdit: (item: LibraryItem) => void;
+  onDelete?: (item: LibraryItem) => void;
   onToggleFavorite: (filePath: string) => void;
   onRefreshData: () => Promise<void>;
 }
@@ -50,6 +51,7 @@ export function SeriesDetailView({
   onPlay,
   onQueue,
   onEdit,
+  onDelete,
   onToggleFavorite,
   onRefreshData,
 }: SeriesDetailViewProps) {
@@ -686,6 +688,7 @@ export function SeriesDetailView({
             onPlay={handlePlayEpisodeWithQueue}
             onQueue={onQueue}
             onEdit={onEdit}
+            onDelete={onDelete}
             onToggleFavorite={onToggleFavorite}
             onToggleWatched={handleToggleWatched}
           />

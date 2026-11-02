@@ -6,6 +6,7 @@ export interface PlaylistItem {
   id: string;
   filePath: string;
   title: string;
+  duration?: number;
 }
 
 export interface WindowGeometry {
@@ -40,8 +41,18 @@ export interface SavedPlaylistMeta {
 
 export interface PlaybackSlice extends PlayerState {
   initialize: () => Promise<void>;
-  openFile: (path: string) => Promise<void>;
-  openMultipleFiles: (paths: string[]) => Promise<void>;
+  openFile: (
+    path: string,
+    options?: {
+      preserveQueue?: boolean;
+      clearQueue?: boolean;
+      queueEpisodes?: string[];
+    },
+  ) => Promise<void>;
+  openMultipleFiles: (
+    paths: string[],
+    options?: { clearQueue?: boolean },
+  ) => Promise<void>;
   play: () => Promise<void>;
   pause: () => Promise<void>;
   togglePlayback: () => Promise<void>;
@@ -100,6 +111,8 @@ export interface PlaylistSlice {
   saveCurrentPlaylist: (name: string, playlistId?: number) => Promise<void>;
   loadSavedPlaylist: (playlistId: number) => Promise<void>;
   deleteSavedPlaylist: (playlistId: number) => Promise<void>;
+  lastClearedPlaylist: PlaylistItem[] | null;
+  undoClearPlaylist: () => void;
 }
 
 export interface LibrarySlice {
@@ -146,6 +159,10 @@ export interface SettingsSlice {
   repeatMode: RepeatMode;
   setRepeatMode: (mode: RepeatMode) => Promise<void>;
   cycleRepeatMode: () => Promise<void>;
+  queueOnPlayMode: "replace" | "append" | "ask";
+  setQueueOnPlayMode: (mode: "replace" | "append" | "ask") => Promise<void>;
+  edgeHoverPlaylistEnabled: boolean;
+  setEdgeHoverPlaylistEnabled: (enabled: boolean) => Promise<void>;
 }
 
 export interface UiSlice {
@@ -155,7 +172,9 @@ export interface UiSlice {
   isControlsVisible: boolean;
   setControlsVisible: (visible: boolean) => void;
   isPlaylistOpen: boolean;
-  togglePlaylistDrawer: () => void;
+  togglePlaylistDrawer: (open?: boolean) => void;
+  isPlaylistPinned: boolean;
+  setPlaylistPinned: (pinned: boolean) => void;
   isSettingsOpen: boolean;
   settingsInitialTab: string | null;
   toggleSettingsModal: (open?: boolean | unknown, initialTab?: string) => void;

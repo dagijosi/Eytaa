@@ -111,7 +111,7 @@ pub fn db_get_series_overview(
                               li2.title COLLATE NOCASE ASC
                      LIMIT 1) as custom_poster
              FROM library_items li
-             WHERE COALESCE(li.series_key,'') != ''
+             WHERE COALESCE(li.series_key,'') != '' AND COALESCE(li.is_available, 1) = 1
              GROUP BY li.series_key",
         )
         .map_err(|e| e.to_string())?;
@@ -126,7 +126,7 @@ pub fn db_get_series_overview(
         .prepare(
             "SELECT series_key, series_name, COUNT(*) as cnt
              FROM library_items
-             WHERE COALESCE(series_key,'') != '' AND series_name IS NOT NULL AND series_name != ''
+             WHERE COALESCE(series_key,'') != '' AND series_name IS NOT NULL AND series_name != '' AND COALESCE(is_available, 1) = 1
              GROUP BY series_key, series_name",
         )
         .map_err(|e| e.to_string())?;

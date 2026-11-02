@@ -23,6 +23,11 @@ import {
   MoreVertical,
   ListVideo,
   GripVertical,
+  Pin,
+  PinOff,
+  ChevronLeft,
+  ChevronRight,
+  RotateCcw,
 } from "lucide-react";
 import { usePlayerStore, PlaylistItem } from "../stores/playerStore";
 import { useThemeStore } from "../stores/themeStore";
@@ -33,8 +38,13 @@ export function PlaylistDrawer() {
   const {
     playlist,
     currentPlaylistIndex,
+    lastClearedPlaylist,
+    undoClearPlaylist,
     isPlaylistOpen,
     togglePlaylistDrawer,
+    isPlaylistPinned,
+    setPlaylistPinned,
+    edgeHoverPlaylistEnabled,
     addToPlaylist,
     removeFromPlaylist,
     reorderPlaylist,
@@ -64,6 +74,26 @@ export function PlaylistDrawer() {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const activeRowRef = useRef<HTMLDivElement | null>(null);
+
+  // Edge hover gesture state
+  const [isNearRightEdge, setIsNearRightEdge] = useState(false);
+  const [isNearLeftEdge, setIsNearLeftEdge] = useState(false);
+  const [isHoverPeeked, setIsHoverPeeked] = useState(false);
+  const hoverDwellTimerRef = useRef<number | null>(null);
+  const hoverExitTimerRef = useRef<number | null>(null);
+
+  // Calculate total playlist duration if items have duration
+  const totalQueueDuration = useMemo(() => {
+    return playlist.reduce((acc, item) => acc + (item.duration || 0), 0);
+  }, [playlist]);
+
+  const formatTotalTime = (secs: number) => {
+    if (!secs || secs <= 0) return "";
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
+  };
 
   const computeTargetIndex = (clientY: number): number | null => {
     const container = listRef.current;
@@ -148,6 +178,69 @@ export function PlaylistDrawer() {
       refreshSavedPlaylists().catch(() => {});
     }
   }, [isPlaylistOpen, activeTab, refreshSavedPlaylists]);
+
+  // Edge hover reveal & auto-close logic
+  useEffect(() => {
+    if (!edgeHoverPlaylistEnabled) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const windowWidth = window.innerWidth;
+      const x = e.clientX;
+      const isRightZone = x >= windowWidth - 20;
+      const isLeftZone = x <= 20;
+
+      setIsNearRightEdge(isRightZone || x >= windowWidth - 50);
+      setIsNearLeftEdge(isLeftZone || x <= 50);
+
+      // If drawer is closed, trigger peek open when mouse lingers near either edge
+      if (!isPlaylistOpen) {
+        if (isRightZone || isLeftZone) {
+          if (!hoverDwellTimerRef.current) {
+            hoverDwellTimerRef.current = window.setTimeout(() => {
+              setIsHoverPeeked(true);
+              togglePlaylistDrawer(true);
+              hoverDwellTimerRef.current = null;
+            }, 220);
+          }
+        } else {
+          if (hoverDwellTimerRef.current) {
+            window.clearTimeout(hoverDwellTimerRef.current);
+            hoverDwellTimerRef.current = null;
+          }
+        }
+      } else if (isPlaylistOpen && isHoverPeeked && !isPlaylistPinned) {
+        // Auto-close when cursor moves out of the drawer back into video area
+        const drawerLeft = windowWidth - 400;
+        if (x < drawerLeft) {
+          if (!hoverExitTimerRef.current) {
+            hoverExitTimerRef.current = window.setTimeout(() => {
+              togglePlaylistDrawer(false);
+              setIsHoverPeeked(false);
+              hoverExitTimerRef.current = null;
+            }, 550);
+          }
+        } else {
+          if (hoverExitTimerRef.current) {
+            window.clearTimeout(hoverExitTimerRef.current);
+            hoverExitTimerRef.current = null;
+          }
+        }
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      if (hoverDwellTimerRef.current) window.clearTimeout(hoverDwellTimerRef.current);
+      if (hoverExitTimerRef.current) window.clearTimeout(hoverExitTimerRef.current);
+    };
+  }, [
+    isPlaylistOpen,
+    isHoverPeeked,
+    isPlaylistPinned,
+    edgeHoverPlaylistEnabled,
+    togglePlaylistDrawer,
+  ]);
 
   const handleAddFiles = async () => {
     try {
@@ -330,11 +423,65 @@ export function PlaylistDrawer() {
 
   return (
     <>
+      {/* Edge Peeking Tab (Right Edge - slides open on hover/click) */}
+      {!isPlaylistOpen && edgeHoverPlaylistEnabled && (
+        <div
+          onMouseEnter={() => {
+            if (!hoverDwellTimerRef.current) {
+              hoverDwellTimerRef.current = window.setTimeout(() => {
+                setIsHoverPeeked(true);
+                togglePlaylistDrawer(true);
+                hoverDwellTimerRef.current = null;
+              }, 180);
+            }
+          }}
+          onClick={() => {
+            setIsHoverPeeked(false);
+            togglePlaylistDrawer(true);
+          }}
+          className={`fixed right-0 top-1/2 -translate-y-1/2 z-40 flex items-center gap-1.5 pl-2.5 pr-1.5 py-4 rounded-l-2xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white border-l border-y border-white/20 shadow-2xl backdrop-blur-md cursor-pointer transition-all duration-200 select-none ${
+            isNearRightEdge
+              ? "translate-x-0 opacity-100"
+              : "translate-x-full opacity-0 pointer-events-none"
+          }`}
+          title="Playlist Queue (Hover edge to reveal)"
+        >
+          <ChevronLeft className="w-3.5 h-3.5 text-neutral-400" />
+          <ListVideo className="w-4 h-4 text-white" />
+        </div>
+      )}
+
+      {/* Edge Peeking Tab (Left Edge - assists users who reach for the left side) */}
+      {!isPlaylistOpen && edgeHoverPlaylistEnabled && (
+        <div
+          onClick={() => {
+            setIsHoverPeeked(false);
+            togglePlaylistDrawer(true);
+          }}
+          className={`fixed left-0 top-1/2 -translate-y-1/2 z-40 flex items-center gap-1.5 pl-1.5 pr-2.5 py-4 rounded-r-2xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white border-r border-y border-white/20 shadow-2xl backdrop-blur-md cursor-pointer transition-all duration-200 select-none ${
+            isNearLeftEdge
+              ? "translate-x-0 opacity-100"
+              : "-translate-x-full opacity-0 pointer-events-none"
+          }`}
+          title="Open Playlist"
+        >
+          <ListVideo className="w-4 h-4 text-white" />
+          <ChevronRight className="w-3.5 h-3.5 text-neutral-400" />
+        </div>
+      )}
+
       {/* Backdrop Dimmer Overlay for Smooth Dismiss */}
       <div
-        onClick={togglePlaylistDrawer}
-        className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity duration-300 ease-out ${
-          isPlaylistOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        onClick={() => {
+          setIsHoverPeeked(false);
+          togglePlaylistDrawer(false);
+        }}
+        className={`fixed inset-0 z-40 transition-opacity duration-300 ease-out ${
+          isPlaylistOpen
+            ? isHoverPeeked && !isPlaylistPinned
+              ? "bg-black/25 opacity-100 pointer-events-auto"
+              : "bg-black/60 backdrop-blur-sm opacity-100 pointer-events-auto"
+            : "opacity-0 pointer-events-none"
         }`}
       />
 
@@ -345,10 +492,11 @@ export function PlaylistDrawer() {
         }`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/10 shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-sm tracking-wide text-neutral-100">
-              {activeTab === "queue" ? "Playlist" : "Saved Playlists"}
+        <div className="flex items-center justify-between px-3.5 py-3 border-b border-white/10 shrink-0 bg-neutral-950/60">
+          <div className="flex items-center gap-2 min-w-0">
+            <ListVideo className="w-4 h-4 shrink-0" style={{ color: accentColor }} />
+            <span className="font-bold text-sm tracking-wide text-neutral-100 truncate">
+              {activeTab === "queue" ? "Playlist Queue" : "Saved Playlists"}
             </span>
             <span
               style={{
@@ -356,19 +504,68 @@ export function PlaylistDrawer() {
                 color: "var(--accent-text)",
                 borderColor: accentColor,
               }}
-              className="text-xs border px-2 py-0.5 rounded-full font-mono font-bold"
+              className="text-[11px] border px-2 py-0.5 rounded-full font-mono font-bold shrink-0"
             >
               {activeTab === "queue" ? playlist.length : savedPlaylists.length}
             </span>
+            {activeTab === "queue" && totalQueueDuration > 0 && (
+              <span className="text-[10px] font-mono text-neutral-400 shrink-0 hidden sm:inline">
+                • {formatTotalTime(totalQueueDuration)}
+              </span>
+            )}
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
+            {/* Quick Shuffle */}
+            {activeTab === "queue" && playlist.length > 1 && (
+              <button
+                onClick={shufflePlaylist}
+                className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition active:scale-95 cursor-pointer"
+                title="Shuffle Queue"
+              >
+                <Shuffle className="w-3.5 h-3.5" />
+              </button>
+            )}
+
+            {/* Quick Clear Queue */}
+            {activeTab === "queue" && playlist.length > 0 && (
+              <button
+                onClick={clearPlaylist}
+                className="p-1.5 rounded-lg text-neutral-400 hover:text-rose-400 hover:bg-rose-500/10 transition active:scale-95 cursor-pointer"
+                title="Clear Entire Queue"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+
+            {/* Add Files */}
             <button
               onClick={handleAddFiles}
-              className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition active:scale-95"
-              title="Add Files (+)"
+              className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition active:scale-95 cursor-pointer"
+              title="Add Media Files (+)"
             >
               <Plus className="w-4 h-4" />
+            </button>
+
+            {/* Pin Toggle */}
+            <button
+              onClick={() => setPlaylistPinned(!isPlaylistPinned)}
+              className={`p-1.5 rounded-lg transition active:scale-95 cursor-pointer ${
+                isPlaylistPinned
+                  ? "bg-white/15 text-white shadow-xs"
+                  : "text-neutral-400 hover:text-white hover:bg-white/10"
+              }`}
+              title={
+                isPlaylistPinned
+                  ? "Pinned Open (Click to allow auto-close on mouse leave)"
+                  : "Auto-close on mouse leave enabled (Click to pin open)"
+              }
+            >
+              {isPlaylistPinned ? (
+                <PinOff className="w-3.5 h-3.5" />
+              ) : (
+                <Pin className="w-3.5 h-3.5" />
+              )}
             </button>
 
             {/* Overflow Options Menu */}
@@ -376,12 +573,12 @@ export function PlaylistDrawer() {
               <button
                 onClick={() => setShowSortMenu(!showSortMenu)}
                 style={{ color: showSortMenu ? accentColor : undefined }}
-                className={`p-1.5 rounded-lg transition active:scale-95 ${
+                className={`p-1.5 rounded-lg transition active:scale-95 cursor-pointer ${
                   showSortMenu
-                    ? "bg-white/10"
+                    ? "bg-white/10 text-white"
                     : "text-neutral-400 hover:text-white hover:bg-white/10"
                 }`}
-                title="More options"
+                title="More Playlist Actions"
               >
                 <MoreVertical className="w-4 h-4" />
               </button>
@@ -398,7 +595,7 @@ export function PlaylistDrawer() {
                           sortPlaylist("natural");
                           setShowSortMenu(false);
                         }}
-                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 transition text-left"
+                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 transition text-left cursor-pointer"
                       >
                         <ListOrdered style={{ color: accentColor }} className="w-3.5 h-3.5" />
                         <span>Episode / Natural (1, 2, 10...)</span>
@@ -408,7 +605,7 @@ export function PlaylistDrawer() {
                           sortPlaylist("az");
                           setShowSortMenu(false);
                         }}
-                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 transition text-left"
+                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 transition text-left cursor-pointer"
                       >
                         <ArrowDownAZ className="w-3.5 h-3.5 text-sky-400" />
                         <span>Name (A → Z)</span>
@@ -418,7 +615,7 @@ export function PlaylistDrawer() {
                           sortPlaylist("za");
                           setShowSortMenu(false);
                         }}
-                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 transition text-left"
+                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 transition text-left cursor-pointer"
                       >
                         <ArrowUpZA className="w-3.5 h-3.5 text-sky-400" />
                         <span>Name (Z → A)</span>
@@ -428,7 +625,7 @@ export function PlaylistDrawer() {
                           sortPlaylist("reverse");
                           setShowSortMenu(false);
                         }}
-                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 transition text-left"
+                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 transition text-left cursor-pointer"
                       >
                         <ArrowUpDown className="w-3.5 h-3.5 text-emerald-400" />
                         <span>Reverse Order</span>
@@ -438,7 +635,7 @@ export function PlaylistDrawer() {
                           shufflePlaylist();
                           setShowSortMenu(false);
                         }}
-                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 transition text-left"
+                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 transition text-left cursor-pointer"
                       >
                         <Shuffle style={{ color: accentColor }} className="w-3.5 h-3.5" />
                         <span>Random Shuffle</span>
@@ -453,7 +650,7 @@ export function PlaylistDrawer() {
                         addAllEpisodesFromFolder();
                         setShowSortMenu(false);
                       }}
-                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 transition text-left"
+                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 transition text-left cursor-pointer"
                     >
                       <ListPlus style={{ color: accentColor }} className="w-3.5 h-3.5" />
                       <span>Add Episodes from Folder</span>
@@ -465,7 +662,7 @@ export function PlaylistDrawer() {
                       handleImportPlaylist();
                       setShowSortMenu(false);
                     }}
-                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 transition text-left"
+                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 transition text-left cursor-pointer"
                   >
                     <FileUp className="w-3.5 h-3.5 text-neutral-400" />
                     <span>Import Playlist…</span>
@@ -477,7 +674,7 @@ export function PlaylistDrawer() {
                       setShowSortMenu(false);
                     }}
                     disabled={playlist.length === 0}
-                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 transition text-left disabled:opacity-40 disabled:pointer-events-none"
+                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-neutral-200 hover:text-white hover:bg-white/10 transition text-left disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
                   >
                     <FileDown className="w-3.5 h-3.5 text-neutral-400" />
                     <span>Export Playlist…</span>
@@ -491,7 +688,7 @@ export function PlaylistDrawer() {
                       saveCurrentPlaylist(name).catch(() => {});
                     }}
                     disabled={playlist.length === 0}
-                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-neutral-200 hover:text-emerald-300 hover:bg-white/10 transition text-left disabled:opacity-40 disabled:pointer-events-none"
+                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-neutral-200 hover:text-emerald-300 hover:bg-white/10 transition text-left disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
                   >
                     <BookMarked className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Save Playlist…</span>
@@ -505,7 +702,7 @@ export function PlaylistDrawer() {
                           clearPlaylist();
                           setShowSortMenu(false);
                         }}
-                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-rose-300 hover:text-rose-200 hover:bg-rose-500/10 transition text-left"
+                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-rose-300 hover:text-rose-200 hover:bg-rose-500/10 transition text-left cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         <span>Clear Playlist</span>
@@ -516,15 +713,35 @@ export function PlaylistDrawer() {
               )}
             </div>
 
+            {/* Close Button */}
             <button
-              onClick={togglePlaylistDrawer}
-              className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition active:scale-95 ml-1"
-              title="Close (Esc / P)"
+              onClick={() => {
+                setIsHoverPeeked(false);
+                togglePlaylistDrawer(false);
+              }}
+              className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition active:scale-95 ml-0.5 cursor-pointer"
+              title="Close Playlist (Esc / P)"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
+
+        {/* Undo Clear Banner */}
+        {activeTab === "queue" && playlist.length === 0 && lastClearedPlaylist && lastClearedPlaylist.length > 0 && (
+          <div className="mx-3 mt-2.5 px-3 py-2 rounded-xl bg-neutral-900 border border-white/15 flex items-center justify-between gap-2 shadow-lg animate-in fade-in slide-in-from-top-2 duration-150">
+            <span className="text-[11px] font-mono text-neutral-300">
+              Queue cleared ({lastClearedPlaylist.length} items)
+            </span>
+            <button
+              onClick={undoClearPlaylist}
+              className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-mono text-[11px] font-semibold transition cursor-pointer flex items-center gap-1.5 active:scale-95"
+            >
+              <RotateCcw className="w-3 h-3 text-emerald-400" />
+              <span>Restore Queue</span>
+            </button>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex items-center gap-1 px-3 pt-2.5 shrink-0">

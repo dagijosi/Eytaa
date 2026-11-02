@@ -28,6 +28,20 @@ export const createSettingsSlice: StateCreator<
   showSkipIndicators: true,
   scrollVolumeEnabled: true,
   autoPlayNext: true,
+  queueOnPlayMode: "replace",
+  edgeHoverPlaylistEnabled: true,
+
+  setQueueOnPlayMode: async (mode: "replace" | "append" | "ask") => {
+    set({ queueOnPlayMode: mode });
+    await storageService.setPreference("queueOnPlayMode", mode);
+    get().showOSD(`Queue Behavior: ${mode === "replace" ? "Start Fresh Queue" : mode === "append" ? "Append to Queue" : "Ask"}`);
+  },
+
+  setEdgeHoverPlaylistEnabled: async (enabled: boolean) => {
+    set({ edgeHoverPlaylistEnabled: enabled });
+    await storageService.setPreference("edgeHoverPlaylistEnabled", enabled);
+    get().showOSD(`Edge Hover Playlist: ${enabled ? "Enabled" : "Disabled"}`);
+  },
 
   toggleAutoPlayNext: async (enabled?: boolean) => {
     const next = enabled !== undefined ? enabled : !get().autoPlayNext;

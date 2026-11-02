@@ -7,7 +7,7 @@ import { EytaaLogo } from "./EytaaLogo";
 import { libraryService, LibraryItem } from "../services/library/libraryService";
 
 export function WelcomeScreen() {
-  const { openFile, recentFiles, toggleLibraryModal, addToPlaylist, isLibraryOpen } = usePlayerStore();
+  const { openFile, recentFiles, toggleLibraryModal, isLibraryOpen } = usePlayerStore();
   const { accentColor, accentText } = useThemeStore();
 
   const [inProgressItem, setInProgressItem] = useState<LibraryItem | null>(null);
@@ -122,7 +122,7 @@ export function WelcomeScreen() {
       });
 
       if (selected && typeof selected === "string") {
-        await openFile(selected);
+        await openFile(selected, { clearQueue: true });
       }
     } catch (err) {
       console.error("Open file error:", err);
@@ -131,16 +131,17 @@ export function WelcomeScreen() {
 
   const handlePlayUpNext = async () => {
     if (!upNextEpisode) return;
-    await openFile(upNextEpisode.episode.file_path);
     const idx = upNextEpisode.allEpisodes.findIndex(
       (e) => e.file_path === upNextEpisode.episode.file_path,
     );
-    if (idx !== -1 && idx + 1 < upNextEpisode.allEpisodes.length) {
-      const remaining = upNextEpisode.allEpisodes
-        .slice(idx + 1)
-        .map((e) => e.file_path);
-      addToPlaylist(remaining);
-    }
+    const remaining =
+      idx !== -1 && idx + 1 < upNextEpisode.allEpisodes.length
+        ? upNextEpisode.allEpisodes.slice(idx + 1).map((e) => e.file_path)
+        : [];
+    await openFile(upNextEpisode.episode.file_path, {
+      clearQueue: true,
+      queueEpisodes: remaining,
+    });
   };
 
   const latestRecent = recentFiles.length > 0 ? recentFiles[0] : null;
@@ -199,7 +200,7 @@ export function WelcomeScreen() {
           {/* Continue Watching Highlight Card */}
           {inProgressItem && (
             <button
-              onClick={() => openFile(inProgressItem.file_path)}
+              onClick={() => openFile(inProgressItem.file_path, { clearQueue: true })}
               className="group flex flex-col p-3 rounded-xl bg-neutral-900/60 hover:bg-neutral-900/90 border border-white/[0.08] hover:border-white/[0.18] transition duration-150 cursor-pointer w-full text-left overflow-hidden"
             >
               <div className="flex items-center justify-between text-[11px] mb-2 font-mono">
@@ -312,7 +313,7 @@ export function WelcomeScreen() {
           {/* Fallback to latest recent file if neither in-progress nor up-next exists */}
           {!inProgressItem && !upNextEpisode && latestRecent && (
             <button
-              onClick={() => openFile(latestRecent.filePath)}
+              onClick={() => openFile(latestRecent.filePath, { clearQueue: true })}
               className="group flex items-center gap-2 px-3.5 py-2 rounded-xl bg-neutral-900/50 hover:bg-neutral-900/80 border border-white/[0.08] hover:border-white/[0.16] transition duration-150 cursor-pointer max-w-full text-left mx-auto"
               title={latestRecent.filePath}
             >

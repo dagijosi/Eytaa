@@ -16,6 +16,7 @@ export const createPlaylistSlice: StateCreator<
 > = (set, get) => ({
   playlist: [],
   currentPlaylistIndex: -1,
+  lastClearedPlaylist: null,
   detectedSiblings: null,
   showSiblingPrompt: false,
   savedPlaylists: [],
@@ -228,15 +229,24 @@ export const createPlaylistSlice: StateCreator<
   },
 
   clearPlaylist: () => {
-    set({ playlist: [], currentPlaylistIndex: -1 });
+    const prev = get().playlist;
+    set({ playlist: [], currentPlaylistIndex: -1, lastClearedPlaylist: prev });
     get().showOSD("Playlist cleared");
+  },
+
+  undoClearPlaylist: () => {
+    const prev = get().lastClearedPlaylist;
+    if (prev && prev.length > 0) {
+      set({ playlist: prev, lastClearedPlaylist: null });
+      get().showOSD(`Restored ${prev.length} item${prev.length === 1 ? "" : "s"} to playlist`);
+    }
   },
 
   playPlaylistItem: async (index: number) => {
     const items = get().playlist;
     if (index >= 0 && index < items.length) {
       set({ currentPlaylistIndex: index });
-      await get().openFile(items[index].filePath);
+      await get().openFile(items[index].filePath, { preserveQueue: true });
     }
   },
 

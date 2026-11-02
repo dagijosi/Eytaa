@@ -220,7 +220,10 @@ fn process_batch(app: &AppHandle, paths: &[PathBuf]) {
         };
         removed = missing
             .iter()
-            .filter(|p| db::mark_item_missing(&conn, p) > 0)
+            .filter(|p| {
+                let _ = crate::db::archive_watched_by_path(&conn, p);
+                db::mark_item_missing(&conn, p) > 0
+            })
             .count();
     }
 
@@ -295,6 +298,7 @@ fn run_catch_up(app: AppHandle, roots: Vec<String>) {
         };
         let mut removed = 0;
         for path in &stale {
+            let _ = crate::db::archive_watched_by_path(&conn, path);
             removed += db::mark_item_missing(&conn, path);
         }
         (saved, removed)

@@ -105,6 +105,8 @@ export const createPlaybackSlice: StateCreator<
         savedScrollVolume,
         savedAutoCheck,
         savedRepeatMode,
+        savedQueueOnPlayMode,
+        savedEdgeHover,
         savedSession,
       ] = await Promise.all([
         storageService.getPreference<number>("volume"),
@@ -120,11 +122,20 @@ export const createPlaybackSlice: StateCreator<
         storageService.getPreference<boolean>("scrollVolumeEnabled"),
         storageService.getPreference<boolean>("autoCheckUpdates"),
         storageService.getPreference<RepeatMode>("repeatMode"),
+        storageService.getPreference<"replace" | "append" | "ask">("queueOnPlayMode"),
+        storageService.getPreference<boolean>("edgeHoverPlaylistEnabled"),
         storageService.getPreference<{
           items: Array<{ filePath: string; title: string }>;
           index: number;
         }>("sessionPlaylist"),
       ]);
+
+      if (savedQueueOnPlayMode) {
+        set({ queueOnPlayMode: savedQueueOnPlayMode });
+      }
+      if (savedEdgeHover !== null && savedEdgeHover !== undefined) {
+        set({ edgeHoverPlaylistEnabled: savedEdgeHover });
+      }
 
       // Restore repeat / loop mode
       if (savedRepeatMode === "off" || savedRepeatMode === "all" || savedRepeatMode === "one") {
@@ -305,7 +316,14 @@ export const createPlaybackSlice: StateCreator<
       }
     },
 
-    openFile: async (path: string) => {
+    openFile: async (
+      path: string,
+      options?: {
+        preserveQueue?: boolean;
+        clearQueue?: boolean;
+        queueEpisodes?: string[];
+      },
+    ) => {
       const seq = ++activeLoadSequence;
 
       // Save progress of currently playing media before opening a new file
@@ -348,24 +366,59 @@ export const createPlaybackSlice: StateCreator<
       const recent = await storageService.getRecentFiles(15);
       if (seq !== activeLoadSequence) return;
 
-      // Add to playlist if not already present
+      // Queue Management: Decide whether to start fresh queue or append/navigate
       const currentPlaylist = get().playlist;
-      const existingIdx = currentPlaylist.findIndex(
-        (item) => item.filePath === path,
-      );
-      if (existingIdx === -1) {
-        const newItem: PlaylistItem = {
-          id: `${Date.now()}-${Math.random()}`,
-          filePath: path,
-          title,
-        };
+      const queueMode = get().queueOnPlayMode || "replace";
+      const shouldClearQueue =
+        options?.clearQueue === true ||
+        (!options?.preserveQueue && queueMode === "replace");
+
+      if (shouldClearQueue) {
+        // Save previous playlist for one-click undo if it had more than 1 item
+        if (currentPlaylist.length > 1) {
+          set({ lastClearedPlaylist: currentPlaylist });
+        }
+        const extraEpisodes: PlaylistItem[] = (options?.queueEpisodes || []).map((epPath, idx) => ({
+          id: `${Date.now()}-${idx + 1}-${Math.random()}`,
+          filePath: epPath,
+          title: formatMediaTitle(epPath.split(/[/\\]/).pop() || epPath, epPath),
+        }));
+        const freshPlaylist: PlaylistItem[] = [
+          {
+            id: `${Date.now()}-0-${Math.random()}`,
+            filePath: path,
+            title,
+          },
+          ...extraEpisodes,
+        ];
         set({
-          playlist: [...currentPlaylist, newItem],
-          currentPlaylistIndex: currentPlaylist.length,
+          playlist: freshPlaylist,
+          currentPlaylistIndex: 0,
           recentFiles: recent,
         });
       } else {
-        set({ currentPlaylistIndex: existingIdx, recentFiles: recent });
+        const existingIdx = currentPlaylist.findIndex(
+          (item) => item.filePath === path,
+        );
+        if (existingIdx === -1) {
+          const newItem: PlaylistItem = {
+            id: `${Date.now()}-${Math.random()}`,
+            filePath: path,
+            title,
+          };
+          const extraEpisodes: PlaylistItem[] = (options?.queueEpisodes || []).map((epPath, idx) => ({
+            id: `${Date.now()}-${idx + 1}-${Math.random()}`,
+            filePath: epPath,
+            title: formatMediaTitle(epPath.split(/[/\\]/).pop() || epPath, epPath),
+          }));
+          set({
+            playlist: [...currentPlaylist, newItem, ...extraEpisodes],
+            currentPlaylistIndex: currentPlaylist.length,
+            recentFiles: recent,
+          });
+        } else {
+          set({ currentPlaylistIndex: existingIdx, recentFiles: recent });
+        }
       }
 
       get().showOSD(title);
@@ -397,18 +450,27 @@ export const createPlaybackSlice: StateCreator<
       }
     },
 
-    openMultipleFiles: async (paths: string[]) => {
+    openMultipleFiles: async (paths: string[], options?: { clearQueue?: boolean }) => {
       if (paths.length === 0) return;
-      const newItems: PlaylistItem[] = paths.map((p) => ({
-        id: `${Date.now()}-${Math.random()}`,
+      const newItems: PlaylistItem[] = paths.map((p, idx) => ({
+        id: `${Date.now()}-${idx}-${Math.random()}`,
         filePath: p,
         title: formatMediaTitle(p.split(/[/\\]/).pop() || p, p),
       }));
-      set((state) => ({
-        playlist: [...state.playlist, ...newItems],
-        currentPlaylistIndex: state.playlist.length,
-      }));
-      await get().openFile(paths[0]);
+      const clear = options?.clearQueue !== false;
+      if (clear) {
+        const prev = get().playlist;
+        if (prev.length > 1) {
+          set({ lastClearedPlaylist: prev });
+        }
+        set({ playlist: newItems, currentPlaylistIndex: 0 });
+      } else {
+        set((state) => ({
+          playlist: [...state.playlist, ...newItems],
+          currentPlaylistIndex: state.playlist.length,
+        }));
+      }
+      await get().openFile(paths[0], { preserveQueue: true });
     },
 
     play: async () => {

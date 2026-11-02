@@ -106,7 +106,7 @@ pub fn db_get_library_items(
         sql.push_str("AND (SELECT COUNT(*) FROM library_items dup WHERE dup.quick_hash = li.quick_hash AND dup.quick_hash IS NOT NULL AND dup.quick_hash != '') > 1 ");
     }
 
-    if available_only == Some(true) {
+    if available_only != Some(false) {
         sql.push_str("AND COALESCE(li.is_available, 1) = 1 ");
     }
 
@@ -263,6 +263,9 @@ pub fn db_set_watched_status(
 
     if is_watched {
         let _ = conn.execute("DELETE FROM resume_positions WHERE file_path = ?1", params![file_path]);
+        let _ = crate::db::archive_watched_by_path(&conn, &file_path);
+    } else {
+        let _ = crate::db::unarchive_watched_by_path(&conn, &file_path);
     }
 
     Ok(())
@@ -293,6 +296,9 @@ pub fn db_set_series_watched_status(
                 )",
                 params![key, season],
             );
+            let _ = crate::db::archive_series_watched(&conn, &key, Some(season));
+        } else {
+            let _ = crate::db::unarchive_series_watched(&conn, &key, Some(season));
         }
     } else {
         conn.execute(
@@ -308,6 +314,9 @@ pub fn db_set_series_watched_status(
                 )",
                 params![key],
             );
+            let _ = crate::db::archive_series_watched(&conn, &key, None);
+        } else {
+            let _ = crate::db::unarchive_series_watched(&conn, &key, None);
         }
     }
 
