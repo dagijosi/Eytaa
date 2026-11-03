@@ -493,7 +493,7 @@ export function PlaybackSettings({
             <button
               onClick={() => handleSaveTmdbApiKey("")}
               className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white transition cursor-pointer border border-white/10"
-              title="Reset to default key"
+              title="Clear API key"
             >
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
@@ -501,7 +501,7 @@ export function PlaybackSettings({
         </div>
 
         <div className="flex items-center justify-between text-[11px] text-neutral-500">
-          <span>Leave blank to use the built-in community read-only key.</span>
+          <span>Required for online movie and TV series metadata fetching.</span>
           <span className="text-neutral-400">Get a free key at themoviedb.org/settings/api</span>
         </div>
       </div>

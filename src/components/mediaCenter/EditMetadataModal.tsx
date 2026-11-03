@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Save, Film, Tv, Music, Video, FolderOpen, Globe, Search, Star, Check, Image as ImageIcon } from "lucide-react";
+import { X, Save, Film, Tv, Music, Video, FolderOpen, Globe, Search, Star, Check, AlertCircle, Image as ImageIcon } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useThemeStore } from "../../stores/themeStore";
 import { libraryService, LibraryItem } from "../../services/library/libraryService";
@@ -61,6 +61,7 @@ function EditMetadataModalContent({
   const [scraperResults, setScraperResults] = useState<ScrapedMediaResult[]>([]);
   const [isSearchingScraper, setIsSearchingScraper] = useState(false);
   const [scraperSearched, setScraperSearched] = useState(false);
+  const [scraperError, setScraperError] = useState<string | null>(null);
   const [showKeyConfig, setShowKeyConfig] = useState(false);
   const [customApiKey, setCustomApiKey] = useState("");
   const [hasCustomKey, setHasCustomKey] = useState(false);
@@ -121,33 +122,37 @@ function EditMetadataModalContent({
   }, [seriesMode, initialSeriesNameProp, item.series_name]);
 
   // Pre-fill query with smart cleaned filename or show name
-  const handleOpenScraper = () => {
+  const handleOpenScraper = async () => {
     if (!isScraperOpen) {
-      metadataScraperService.getApiKey().then(() => {
-        import("../../services/storage/storageService").then(({ storageService }) => {
-          storageService.getPreference<string>("tmdbApiKey").then((saved) => {
-            if (saved) {
-              setCustomApiKey(saved);
-              setHasCustomKey(true);
-            }
-          });
-        });
-      });
+      setScraperError(null);
+      const savedKey = await metadataScraperService.getApiKey();
+      const hasKey = Boolean(savedKey.trim());
+      setCustomApiKey(savedKey);
+      setHasCustomKey(hasKey);
+      if (!hasKey) {
+        setShowKeyConfig(true);
+      }
+
       const queryInit = seriesMode
         ? (initialSeriesNameProp || seriesName || title).trim()
         : metadataScraperService.parseFilename(item.file_name).cleanTitle || title || item.file_name;
       setScraperQuery(queryInit);
       setIsScraperOpen(true);
-      performScraperSearch(queryInit);
+      if (queryInit) {
+        performScraperSearch(queryInit);
+      }
     } else {
       setIsScraperOpen(false);
     }
   };
 
   const handleSaveCustomKey = async () => {
-    await metadataScraperService.setApiKey(customApiKey.trim());
-    setHasCustomKey(Boolean(customApiKey.trim()));
+    const trimmed = customApiKey.trim();
+    await metadataScraperService.setApiKey(trimmed);
+    const hasKey = Boolean(trimmed);
+    setHasCustomKey(hasKey);
     setShowKeyConfig(false);
+    setScraperError(null);
     if (scraperQuery) {
       performScraperSearch(scraperQuery);
     }
@@ -159,6 +164,7 @@ function EditMetadataModalContent({
 
     setIsSearchingScraper(true);
     setScraperSearched(true);
+    setScraperError(null);
     try {
       const searchCategory = seriesMode
         ? "series"
@@ -169,8 +175,10 @@ function EditMetadataModalContent({
             : "all";
       const results = await metadataScraperService.searchMedia(q, searchCategory);
       setScraperResults(results);
-    } catch {
+    } catch (err: unknown) {
       setScraperResults([]);
+      const msg = err instanceof Error ? err.message : "Failed to search TMDb.";
+      setScraperError(msg);
     } finally {
       setIsSearchingScraper(false);
     }
@@ -503,8 +511,8 @@ function EditMetadataModalContent({
               <div className="flex items-center justify-between text-[10px] text-neutral-400 font-mono px-0.5">
                 <span>
                   Key:{" "}
-                  <strong className={hasCustomKey ? "text-emerald-400 font-semibold" : "text-neutral-300"}>
-                    {hasCustomKey ? "Custom Key Active" : "Default Community Key Active"}
+                  <strong className={hasCustomKey ? "text-emerald-400 font-semibold" : "text-amber-400 font-semibold"}>
+                    {hasCustomKey ? "API Key Configured" : "No API Key Set"}
                   </strong>
                 </span>
                 <button
@@ -512,7 +520,7 @@ function EditMetadataModalContent({
                   onClick={() => setShowKeyConfig(!showKeyConfig)}
                   className="text-neutral-400 hover:text-white underline transition cursor-pointer"
                 >
-                  {showKeyConfig ? "Hide Key Input" : "Configure API Key"}
+                  {showKeyConfig ? "Hide Key Input" : hasCustomKey ? "Change API Key" : "Configure API Key"}
                 </button>
               </div>
 
@@ -538,6 +546,23 @@ function EditMetadataModalContent({
                   <div className="text-[10px] text-neutral-500">
                     Get a free personal API key at <span className="text-neutral-400">themoviedb.org/settings/api</span>
                   </div>
+                </div>
+              )}
+
+              {/* Scraper Error Notification */}
+              {scraperError && (
+                <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-200 text-xs flex items-center justify-between gap-2 animate-in fade-in">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span className="truncate">{scraperError}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowKeyConfig(true)}
+                    className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-100 text-[10px] font-semibold shrink-0 transition cursor-pointer"
+                  >
+                    Configure Key
+                  </button>
                 </div>
               )}
 
@@ -604,7 +629,7 @@ function EditMetadataModalContent({
                       </button>
                     </div>
                   ))
-                ) : scraperSearched ? (
+                ) : scraperSearched && !scraperError ? (
                   <div className="py-4 text-center text-neutral-500 text-xs">
                     No results found on TMDb for "{scraperQuery}"
                   </div>

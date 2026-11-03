@@ -4,6 +4,15 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ---
 
+## [0.2.14] - 2026-11-03
+
+### 🌐 TMDb Production Connectivity & In-App Error Diagnostics
+- **Content Security Policy (`connect-src`) Fix**: Whitelisted `https://api.themoviedb.org`, `https://*.themoviedb.org`, and `https://image.tmdb.org` in Tauri production CSP directives, resolving the issue where installed production builds were blocked by WebView2 from reaching TMDb.
+- **In-App Real-Time Error Reporting**: Replaced silent error swallows with an inline obsidian alert banner in the metadata editor that surfaces specific issues (invalid API key 401, offline connection, rate limiting) with an instant 1-click "Configure Key" action.
+- **Explicit API Key Onboarding**: Removed the invalid community fallback key and added real-time key state detection (`API Key Configured` vs `No API Key Set`) that auto-expands the key input when opening online search if no key is configured.
+
+---
+
 ## [0.2.13] - 2026-11-02
 
 ### 🎬 Scrubber Hover Frame Thumbnail Preview (`F-06`)

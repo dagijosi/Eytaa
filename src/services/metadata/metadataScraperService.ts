@@ -52,8 +52,6 @@ export interface ParsedFilenameInfo {
   detectedType: "movie" | "series";
 }
 
-// Default community read-only TMDb discovery key
-const DEFAULT_TMDB_KEY = "453829794cb30d39e66fcb0a3359d3e4";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 
@@ -124,7 +122,8 @@ class MetadataScraperService {
 
   public async getApiKey(): Promise<string> {
     const custom = await storageService.getPreference<string>("tmdbApiKey");
-    return custom?.trim() || DEFAULT_TMDB_KEY;
+    if (!custom) return "";
+    return String(custom).trim();
   }
 
   public async setApiKey(key: string): Promise<void> {
@@ -142,6 +141,10 @@ class MetadataScraperService {
     if (!trimmed) return [];
 
     const apiKey = await this.getApiKey();
+    if (!apiKey) {
+      throw new Error("No TMDb API key configured. Enter your free personal API key below to search.");
+    }
+
     const endpoint =
       type === "movie"
         ? `${TMDB_BASE_URL}/search/movie`
@@ -158,7 +161,16 @@ class MetadataScraperService {
     try {
       const res = await fetch(url.toString());
       if (!res.ok) {
-        throw new Error(`TMDb request failed: ${res.status}`);
+        if (res.status === 401) {
+          throw new Error("Invalid TMDb API Key (401 Unauthorized). Please check your key.");
+        }
+        if (res.status === 404) {
+          throw new Error("TMDb search endpoint not found (404).");
+        }
+        if (res.status === 429) {
+          throw new Error("TMDb rate limit exceeded (429). Please wait a moment.");
+        }
+        throw new Error(`TMDb request failed (HTTP ${res.status}).`);
       }
 
       const data = await res.json();
@@ -208,9 +220,12 @@ class MetadataScraperService {
             mediaType: isTv ? "series" : "movie",
           };
         });
-    } catch (err) {
-      console.warn("[MetadataScraper] Search error:", err);
-      return [];
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn("[MetadataScraper] Search error:", msg);
+      const error = new Error(msg);
+      (error as { cause?: unknown }).cause = err;
+      throw error;
     }
   }
 
@@ -222,6 +237,8 @@ class MetadataScraperService {
     type: "movie" | "series",
   ): Promise<{ posters: string[]; backdrops: string[] }> {
     const apiKey = await this.getApiKey();
+    if (!apiKey) return { posters: [], backdrops: [] };
+
     const endpoint = `${TMDB_BASE_URL}/${type === "series" ? "tv" : "movie"}/${id}/images`;
     const url = new URL(endpoint);
     url.searchParams.set("api_key", apiKey);
@@ -257,6 +274,8 @@ class MetadataScraperService {
    */
   public async fetchSeriesDetails(tmdbId: number): Promise<ScrapedSeriesDetails | null> {
     const apiKey = await this.getApiKey();
+    if (!apiKey) return null;
+
     const endpoint = `${TMDB_BASE_URL}/tv/${tmdbId}`;
     const url = new URL(endpoint);
     url.searchParams.set("api_key", apiKey);
