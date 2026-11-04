@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import ApexCharts from "apexcharts";
 import {
   Film,
   Tv,
@@ -23,6 +22,7 @@ import {
   WatchedArchiveItem,
   SeriesReportItem,
   LibraryItem,
+  ActivityTrendItem,
 } from "../../services/library/libraryService";
 import { useResolvedPoster } from "../../hooks/useResolvedPoster";
 import { ProceduralPoster } from "./ProceduralPoster";
@@ -126,6 +126,315 @@ function archiveItemToLibraryItem(item: WatchedArchiveItem): LibraryItem {
     custom_poster: item.custom_poster,
     series_key: item.series_key,
   };
+}
+
+function MediaDistributionDonut({
+  moviesCount,
+  seriesEpisodesCount,
+  musicCount,
+  totalItems,
+}: {
+  moviesCount: number;
+  seriesEpisodesCount: number;
+  musicCount: number;
+  totalItems: number;
+}) {
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+
+  const radius = 52;
+  const strokeWidth = 14;
+  const circumference = 2 * Math.PI * radius; // ~326.72
+
+  const segments = useMemo(() => {
+    if (totalItems <= 0) return [];
+    const items = [
+      { name: "Movies", count: moviesCount, color: "#f43f5e" },
+      { name: "TV Episodes", count: seriesEpisodesCount, color: "#8b5cf6" },
+      { name: "Music", count: musicCount, color: "#f59e0b" },
+    ].filter((s) => s.count > 0);
+
+    let currentOffset = 0;
+    return items.map((item, idx) => {
+      const pct = item.count / totalItems;
+      const strokeDasharray = `${pct * circumference} ${circumference}`;
+      const strokeDashoffset = -currentOffset;
+      currentOffset += pct * circumference;
+      return {
+        ...item,
+        idx,
+        pct: Math.round(pct * 100),
+        strokeDasharray,
+        strokeDashoffset,
+      };
+    });
+  }, [moviesCount, seriesEpisodesCount, musicCount, totalItems, circumference]);
+
+  return (
+    <div className="flex flex-col items-center justify-between w-full h-full min-h-[170px] py-1 select-none">
+      {/* SVG Donut */}
+      <div className="relative w-32 h-32 flex items-center justify-center shrink-0">
+        <svg viewBox="0 0 130 130" className="w-full h-full -rotate-90">
+          {/* Background Track */}
+          <circle
+            cx="65"
+            cy="65"
+            r={radius}
+            fill="transparent"
+            stroke="#262626"
+            strokeWidth={strokeWidth}
+          />
+          {segments.map((seg) => (
+            <circle
+              key={seg.name}
+              cx="65"
+              cy="65"
+              r={radius}
+              fill="transparent"
+              stroke={seg.color}
+              strokeWidth={hoveredIdx === seg.idx ? strokeWidth + 2 : strokeWidth}
+              strokeDasharray={seg.strokeDasharray}
+              strokeDashoffset={seg.strokeDashoffset}
+              strokeLinecap="butt"
+              className="transition-all duration-150 cursor-pointer"
+              onMouseEnter={() => setHoveredIdx(seg.idx)}
+              onMouseLeave={() => setHoveredIdx(null)}
+            />
+          ))}
+        </svg>
+
+        {/* Center Label */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <span className="text-[9px] font-mono tracking-wider text-neutral-500 uppercase">
+            {hoveredIdx !== null && segments[hoveredIdx]
+              ? segments[hoveredIdx].name
+              : "Completed"}
+          </span>
+          <span className="text-lg font-bold font-mono text-white tabular-nums leading-tight">
+            {hoveredIdx !== null && segments[hoveredIdx]
+              ? segments[hoveredIdx].count
+              : totalItems}
+          </span>
+          {hoveredIdx !== null && segments[hoveredIdx] && (
+            <span className="text-[9px] font-mono text-neutral-400">
+              {segments[hoveredIdx].pct}%
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Legend Ribbon */}
+      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 mt-2 w-full">
+        <div
+          onMouseEnter={() => setHoveredIdx(0)}
+          onMouseLeave={() => setHoveredIdx(null)}
+          className={`flex items-center gap-1.5 text-[10px] font-mono transition cursor-default ${
+            hoveredIdx === 0 ? "text-white" : "text-neutral-400"
+          }`}
+        >
+          <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+          <span>Movies</span>
+          <span className="text-neutral-500 tabular-nums">({moviesCount})</span>
+        </div>
+        <div
+          onMouseEnter={() => setHoveredIdx(1)}
+          onMouseLeave={() => setHoveredIdx(null)}
+          className={`flex items-center gap-1.5 text-[10px] font-mono transition cursor-default ${
+            hoveredIdx === 1 ? "text-white" : "text-neutral-400"
+          }`}
+        >
+          <span className="w-2 h-2 rounded-full bg-violet-500 shrink-0" />
+          <span>Episodes</span>
+          <span className="text-neutral-500 tabular-nums">({seriesEpisodesCount})</span>
+        </div>
+        <div
+          onMouseEnter={() => setHoveredIdx(2)}
+          onMouseLeave={() => setHoveredIdx(null)}
+          className={`flex items-center gap-1.5 text-[10px] font-mono transition cursor-default ${
+            hoveredIdx === 2 ? "text-white" : "text-neutral-400"
+          }`}
+        >
+          <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+          <span>Music</span>
+          <span className="text-neutral-500 tabular-nums">({musicCount})</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WatchVolumeTrendChart({
+  activity,
+  totalRuntimeSeconds,
+}: {
+  activity: ActivityTrendItem[];
+  totalRuntimeSeconds?: number;
+}) {
+  const [hoveredDay, setHoveredDay] = useState<ActivityTrendItem | null>(null);
+
+  // Compute maximum daily total for proportional heights
+  const maxDayCount = useMemo(() => {
+    let max = 0;
+    for (const a of activity) {
+      const dayTotal = (a.movies_count || 0) + (a.episodes_count || 0) + (a.music_count || 0);
+      if (dayTotal > max) max = dayTotal;
+    }
+    return Math.max(max, 4);
+  }, [activity]);
+
+  // Y-axis grid marks
+  const yTicks = useMemo(() => {
+    const step = Math.ceil(maxDayCount / 4);
+    return [step * 4, step * 3, step * 2, step * 1];
+  }, [maxDayCount]);
+
+  return (
+    <div className="flex flex-col justify-between w-full h-full min-h-[170px] select-none">
+      {/* Header Bar with Legend */}
+      <div className="flex items-center justify-between pb-1">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-mono font-medium text-neutral-300 uppercase tracking-wider">
+            Watch Volume Trend
+          </span>
+          {totalRuntimeSeconds !== undefined && (
+            <span className="text-[10px] font-mono text-neutral-500 hidden sm:inline">
+              Total runtime: {formatDuration(totalRuntimeSeconds)}
+            </span>
+          )}
+        </div>
+
+        {/* Legend */}
+        <div className="flex items-center gap-3 text-[10px] font-mono text-neutral-400">
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-rose-500" />
+            <span>Movies</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-violet-500" />
+            <span>Episodes</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
+            <span>Music</span>
+          </span>
+        </div>
+      </div>
+
+      {/* Bar Chart Area */}
+      {activity.length === 0 ? (
+        <div className="h-32 flex items-center justify-center text-xs font-mono text-neutral-600">
+          No watch activity recorded in this period
+        </div>
+      ) : (
+        <div className="relative h-32 flex flex-col justify-end mt-2">
+          {/* Subtle horizontal grid lines */}
+          <div className="absolute inset-0 flex flex-col justify-between pointer-events-none pb-5">
+            {yTicks.map((tick) => (
+              <div
+                key={tick}
+                className="w-full border-b border-white/[0.04] flex items-center justify-between"
+              >
+                <span className="text-[8px] font-mono text-neutral-600 -mt-2">
+                  {tick}
+                </span>
+              </div>
+            ))}
+            <div className="w-full border-b border-white/[0.08]" />
+          </div>
+
+          {/* Stacked Bars Columns */}
+          <div className="relative z-10 flex items-end justify-around gap-2 h-full pb-5 pl-6 pr-1">
+            {activity.map((item) => {
+              const total =
+                (item.movies_count || 0) +
+                (item.episodes_count || 0) +
+                (item.music_count || 0);
+
+              const maxScale = yTicks[0] || maxDayCount;
+              const moviesH = ((item.movies_count || 0) / maxScale) * 100;
+              const episodesH = ((item.episodes_count || 0) / maxScale) * 100;
+              const musicH = ((item.music_count || 0) / maxScale) * 100;
+
+              const label = item.period.length > 5 ? item.period.slice(5) : item.period; // MM-DD
+              const isHovered = hoveredDay?.period === item.period;
+
+              return (
+                <div
+                  key={item.period}
+                  onMouseEnter={() => setHoveredDay(item)}
+                  onMouseLeave={() => setHoveredDay(null)}
+                  className="flex-1 max-w-[48px] h-full flex flex-col justify-end items-center group cursor-pointer relative"
+                >
+                  {/* Stacked Bar */}
+                  <div
+                    className={`w-full max-w-[28px] rounded-t-sm overflow-hidden flex flex-col-reverse transition-all duration-150 ${
+                      isHovered ? "brightness-125 scale-x-105" : "hover:brightness-110"
+                    }`}
+                    style={{
+                      height: `${Math.min(100, Math.max(total > 0 ? 6 : 2, moviesH + episodesH + musicH))}%`,
+                    }}
+                  >
+                    {item.movies_count > 0 && (
+                      <div
+                        style={{ height: `${(moviesH / (moviesH + episodesH + musicH)) * 100}%` }}
+                        className="w-full bg-rose-500 min-h-[2px]"
+                      />
+                    )}
+                    {item.episodes_count > 0 && (
+                      <div
+                        style={{ height: `${(episodesH / (moviesH + episodesH + musicH)) * 100}%` }}
+                        className="w-full bg-violet-500 min-h-[2px]"
+                      />
+                    )}
+                    {item.music_count > 0 && (
+                      <div
+                        style={{ height: `${(musicH / (moviesH + episodesH + musicH)) * 100}%` }}
+                        className="w-full bg-amber-500 min-h-[2px]"
+                      />
+                    )}
+                    {total === 0 && (
+                      <div className="w-full h-[2px] bg-white/[0.08]" />
+                    )}
+                  </div>
+
+                  {/* Date Label on X-Axis */}
+                  <span
+                    className={`absolute -bottom-4.5 text-[9px] font-mono transition ${
+                      isHovered ? "text-white font-bold" : "text-neutral-500"
+                    }`}
+                  >
+                    {label}
+                  </span>
+
+                  {/* Hover Tooltip Card */}
+                  {isHovered && (
+                    <div className="absolute bottom-full mb-2 z-30 px-2.5 py-1.5 rounded-lg bg-neutral-900 border border-white/20 shadow-xl pointer-events-none whitespace-nowrap text-left animate-in fade-in duration-150">
+                      <div className="text-[10px] font-mono font-bold text-white border-b border-white/10 pb-1 mb-1">
+                        {item.period}
+                      </div>
+                      <div className="space-y-0.5 text-[9px] font-mono">
+                        <div className="flex items-center justify-between gap-3 text-rose-300">
+                          <span>Movies:</span>
+                          <span className="font-bold">{item.movies_count || 0}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 text-violet-300">
+                          <span>Episodes:</span>
+                          <span className="font-bold">{item.episodes_count || 0}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 text-amber-300">
+                          <span>Music:</span>
+                          <span className="font-bold">{item.music_count || 0}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function TrackerSeriesCard({
@@ -244,10 +553,6 @@ export function WatchReportDashboard({ onPlayFile, onDeleteFile }: WatchReportDa
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const trendChartRef = useRef<HTMLDivElement | null>(null);
-  const donutChartRef = useRef<HTMLDivElement | null>(null);
-  const trendChartInstance = useRef<ApexCharts | null>(null);
-  const donutChartInstance = useRef<ApexCharts | null>(null);
 
   // Compute query search taking into account series filtering
   const effectiveSearch = useMemo(() => {
@@ -390,177 +695,6 @@ export function WatchReportDashboard({ onPlayFile, onDeleteFile }: WatchReportDa
     return list;
   }, [archiveItems, storageFilter, sortBy]);
 
-  // Initialize & update ApexCharts for Media Distribution Donut
-  useEffect(() => {
-    if (!donutChartRef.current) return;
-
-    if (donutChartInstance.current) {
-      donutChartInstance.current.destroy();
-      donutChartInstance.current = null;
-    }
-
-    const seriesData = totalItems > 0 ? [moviesCount, seriesEpisodesCount, musicCount] : [1];
-    const labels = totalItems > 0 ? ["Movies", "TV Episodes", "Music"] : ["No Data"];
-    const colors = totalItems > 0 ? ["#f43f5e", "#8b5cf6", "#f59e0b"] : ["#262626"];
-
-    const options: ApexCharts.ApexOptions = {
-      series: seriesData,
-      labels,
-      chart: {
-        type: "donut",
-        height: 160,
-        sparkline: { enabled: false },
-        animations: { enabled: true, speed: 250 },
-        background: "transparent",
-      },
-      theme: { mode: "dark" },
-      colors,
-      stroke: { width: 1, colors: ["#171717"] },
-      plotOptions: {
-        pie: {
-          donut: {
-            size: "74%",
-            labels: {
-              show: true,
-              name: {
-                show: true,
-                fontSize: "11px",
-                fontFamily: "monospace",
-                color: "#a3a3a3",
-                offsetY: -4,
-              },
-              value: {
-                show: true,
-                fontSize: "16px",
-                fontFamily: "monospace",
-                fontWeight: 700,
-                color: "#ffffff",
-                offsetY: 2,
-                formatter: (val: string) => (totalItems > 0 ? val : "0"),
-              },
-              total: {
-                show: true,
-                label: "COMPLETED",
-                color: "#737373",
-                fontSize: "9px",
-                fontFamily: "monospace",
-                formatter: () => `${totalItems}`,
-              },
-            },
-          },
-        },
-      },
-      legend: {
-        show: true,
-        position: "bottom",
-        horizontalAlign: "center",
-        fontSize: "11px",
-        fontFamily: "monospace",
-        labels: { colors: "#a3a3a3" },
-        markers: { shape: "circle", size: 4 },
-        itemMargin: { horizontal: 6, vertical: 0 },
-      },
-      dataLabels: { enabled: false },
-      tooltip: {
-        theme: "dark",
-        style: { fontSize: "11px", fontFamily: "monospace" },
-        y: { formatter: (val) => `${val} items` },
-      },
-    };
-
-    donutChartInstance.current = new ApexCharts(donutChartRef.current, options);
-    donutChartInstance.current.render();
-
-    return () => {
-      donutChartInstance.current?.destroy();
-      donutChartInstance.current = null;
-    };
-  }, [moviesCount, seriesEpisodesCount, musicCount, totalItems]);
-
-  // Initialize & update ApexCharts for Activity Trend
-  useEffect(() => {
-    if (!trendChartRef.current) return;
-
-    if (trendChartInstance.current) {
-      trendChartInstance.current.destroy();
-      trendChartInstance.current = null;
-    }
-
-    const activity = report?.recent_activity || [];
-    const categories = activity.map((a) => a.period.slice(5)); // MM-DD
-    const movieSeries = activity.map((a) => a.movies_count);
-    const episodeSeries = activity.map((a) => a.episodes_count);
-    const musicSeries = activity.map((a) => a.music_count);
-
-    const options: ApexCharts.ApexOptions = {
-      series: [
-        { name: "Movies", data: movieSeries.length ? movieSeries : [0] },
-        { name: "Episodes", data: episodeSeries.length ? episodeSeries : [0] },
-        { name: "Music", data: musicSeries.length ? musicSeries : [0] },
-      ],
-      chart: {
-        type: "bar",
-        height: 160,
-        stacked: true,
-        toolbar: { show: false },
-        animations: { enabled: true, speed: 250 },
-        background: "transparent",
-      },
-      theme: { mode: "dark" },
-      colors: ["#f43f5e", "#8b5cf6", "#f59e0b"],
-      plotOptions: {
-        bar: {
-          horizontal: false,
-          columnWidth: "35%",
-          borderRadius: 2,
-        },
-      },
-      dataLabels: { enabled: false },
-      stroke: { width: 0 },
-      grid: {
-        borderColor: "rgba(255,255,255,0.06)",
-        strokeDashArray: 3,
-        padding: { left: 0, right: 0, top: -10, bottom: -5 },
-      },
-      xaxis: {
-        categories: categories.length ? categories : ["No activity"],
-        labels: {
-          style: { colors: "#737373", fontSize: "10px", fontFamily: "monospace" },
-        },
-        axisBorder: { show: false },
-        axisTicks: { show: false },
-      },
-      yaxis: {
-        labels: {
-          style: { colors: "#737373", fontSize: "10px", fontFamily: "monospace" },
-          formatter: (v) => Math.round(v).toString(),
-        },
-      },
-      legend: {
-        show: true,
-        position: "top",
-        horizontalAlign: "right",
-        fontSize: "11px",
-        fontFamily: "monospace",
-        labels: { colors: "#a3a3a3" },
-        markers: { shape: "circle", size: 4 },
-        itemMargin: { horizontal: 6, vertical: 0 },
-      },
-      tooltip: {
-        theme: "dark",
-        style: { fontSize: "11px", fontFamily: "monospace" },
-      },
-    };
-
-    trendChartInstance.current = new ApexCharts(trendChartRef.current, options);
-    trendChartInstance.current.render();
-
-    return () => {
-      trendChartInstance.current?.destroy();
-      trendChartInstance.current = null;
-    };
-  }, [report?.recent_activity]);
-
   return (
     <div
       ref={scrollContainerRef}
@@ -656,30 +790,30 @@ export function WatchReportDashboard({ onPlayFile, onDeleteFile }: WatchReportDa
         </div>
       </div>
 
-      {/* Side-by-Side Compact ApexCharts */}
+      {/* Side-by-Side Responsive Analytics Visualizations */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {/* Media Distribution Donut */}
         <div className="p-3 rounded-xl bg-neutral-900/60 border border-white/[0.08] flex flex-col justify-between">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-1">
             <span className="text-[11px] font-mono font-medium text-neutral-300 uppercase tracking-wider">
               Ratio
             </span>
             <span className="text-[10px] font-mono text-neutral-500">{totalItems} items</span>
           </div>
-          <div ref={donutChartRef} className="w-full flex items-center justify-center my-auto min-h-[160px]" />
+          <MediaDistributionDonut
+            moviesCount={moviesCount}
+            seriesEpisodesCount={seriesEpisodesCount}
+            musicCount={musicCount}
+            totalItems={totalItems}
+          />
         </div>
 
         {/* Activity Timeline Bar Chart */}
         <div className="md:col-span-2 p-3 rounded-xl bg-neutral-900/60 border border-white/[0.08] flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-mono font-medium text-neutral-300 uppercase tracking-wider">
-              Watch Volume Trend
-            </span>
-            <span className="text-[10px] font-mono text-neutral-500">
-              Total runtime: {formatDuration(summary?.total_watch_time_seconds)}
-            </span>
-          </div>
-          <div ref={trendChartRef} className="w-full min-h-[160px]" />
+          <WatchVolumeTrendChart
+            activity={report?.recent_activity || []}
+            totalRuntimeSeconds={summary?.total_watch_time_seconds}
+          />
         </div>
       </div>
 

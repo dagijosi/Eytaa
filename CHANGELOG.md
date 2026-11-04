@@ -4,6 +4,16 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ---
 
+## [0.2.15] - 2026-11-04
+
+### 📈 Responsive Watch Analytics & Native SVG Visualizations
+- **Eradicated ApexCharts Glitches**: Replaced external ApexCharts with native, zero-dependency React SVG charts (`MediaDistributionDonut` and `WatchVolumeTrendChart`), permanently fixing the Tailwind CSS v4 SVG marker blowout (giant white/pink discs) and detached legend labels floating across the dashboard.
+- **Fluid Multi-Resolution Responsiveness**: Re-engineered the Watch Report analytics grid and cards to scale seamlessly across compact laptop screens, standard desktop displays, and ultra-wide/4K monitors without layout spillover or viewport clipping.
+- **Interactive Analytics Tooltips & Hover States**: Added smooth hover states, category breakdown percentages, and detailed day-by-day playback volume inspection cards to the activity timeline.
+- **Bundle Footprint Optimization**: Removed the heavy `apexcharts` dependency, slimming down the frontend production bundle by over 2MB.
+
+---
+
 ## [0.2.14] - 2026-11-03
 
 ### 🌐 TMDb Production Connectivity & In-App Error Diagnostics
