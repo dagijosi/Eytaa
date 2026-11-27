@@ -16,6 +16,7 @@ import {
 import { usePlayerStore } from "../stores/playerStore";
 import { useThemeStore, DEFAULT_THEME } from "../stores/themeStore";
 import { playerService } from "../services/player/mpvPlayerService";
+import { composeAudioFilter } from "../services/player/audioFilter";
 import { storageService } from "../services/storage/storageService";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { PlaybackProfile } from "../services/player/profileTypes";
@@ -267,8 +268,12 @@ export function SettingsModal() {
   const handleToggleAudioNormalize = async () => {
     const next = !audioNormalize;
     setAudioNormalize(next);
-    await playerService.setMpvProperty("af", next ? "lavfi=[loudnorm]" : "");
-    showOSD(next ? "Night Mode / Loudness EQ: On" : "Audio Normalization: Off");
+    const composed = composeAudioFilter(
+      next ? "lavfi=[loudnorm]" : "",
+      isNightListening,
+    );
+    await playerService.setMpvProperty("af", composed);
+    showOSD(next ? "Audio Normalization (Loudnorm): On" : "Audio Normalization: Off");
   };
 
   const handleAudioDelayChange = async (ms: number) => {

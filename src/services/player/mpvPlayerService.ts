@@ -191,8 +191,14 @@ export class MpvPlayerService implements MediaPlayerService {
         break;
       }
       case "duration": {
-        if (typeof data === "number") {
-          this.updateState({ duration: Math.max(0, data) });
+        if (typeof data === "number" && Number.isFinite(data)) {
+          const dur = Math.max(0, data);
+          const nextMeta = this.state.mediaMetadata
+            ? { ...this.state.mediaMetadata, duration: dur }
+            : this.state.mediaMetadata;
+          this.updateState({ duration: dur, mediaMetadata: nextMeta });
+        } else if (data === null || data === "none") {
+          this.updateState({ duration: 0 });
         }
         break;
       }
@@ -294,12 +300,22 @@ export class MpvPlayerService implements MediaPlayerService {
       case "start-file":
         this.hasFiredEofForCurrent = false;
         this.lastTimePosDispatch = 0;
-        this.updateState({ status: "loading", error: null });
+        this.updateState({ status: "loading", error: null, currentTime: 0, duration: 0 });
         break;
       case "file-loaded":
         this.hasFiredEofForCurrent = false;
         this.lastTimePosDispatch = 0;
         this.updateState({ status: "playing", error: null });
+        void getProperty("duration", "double")
+          .then((dur) => {
+            if (typeof dur === "number" && Number.isFinite(dur) && dur >= 0) {
+              const nextMeta = this.state.mediaMetadata
+                ? { ...this.state.mediaMetadata, duration: dur }
+                : this.state.mediaMetadata;
+              this.updateState({ duration: dur, mediaMetadata: nextMeta });
+            }
+          })
+          .catch(() => {});
         this.scheduleAutoSubtitleSelection();
         break;
       case "end-file": {
@@ -454,10 +470,12 @@ export class MpvPlayerService implements MediaPlayerService {
       this.autoSelectGeneration++;
       for (const timer of this.autoSelectTimers) clearTimeout(timer);
       this.autoSelectTimers = [];
+      this.lastTimePosDispatch = 0;
       this.updateState({
         status: "loading",
         error: null,
         currentTime: 0,
+        duration: 0,
         audioTracks: [],
         subtitleTracks: [],
         currentAudioTrackId: undefined,
@@ -512,10 +530,12 @@ export class MpvPlayerService implements MediaPlayerService {
       this.hasFiredEofForCurrent = false;
       this.lastLoadedPath = url;
       this.hwdecFallbackAttempted = false;
+      this.lastTimePosDispatch = 0;
       this.updateState({
         status: "loading",
         error: null,
         currentTime: 0,
+        duration: 0,
         mediaMetadata: { filePath: url, duration: 0, title: url },
       });
       await command("loadfile", [url, "replace"]);
@@ -557,7 +577,8 @@ export class MpvPlayerService implements MediaPlayerService {
     await this.ensureInitialized();
     try {
       await command("stop", []);
-      this.updateState({ status: "stopped", currentTime: 0 });
+      this.lastTimePosDispatch = 0;
+      this.updateState({ status: "stopped", currentTime: 0, duration: 0 });
     } catch (err) {
       console.warn("Stop command failed, attempting pause fallback", err);
       await this.pause();

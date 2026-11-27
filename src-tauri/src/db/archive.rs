@@ -128,10 +128,52 @@ pub fn move_file_to_trash(path: &Path) -> std::io::Result<()> {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 pub fn move_file_to_trash(path: &Path) -> std::io::Result<()> {
-    // Fallback on non-windows: remove directly
-    std::fs::remove_file(path)
+    let abs = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let escaped = abs.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
+    let script = format!(
+        "tell application \"Finder\" to delete POSIX file \"{}\"",
+        escaped
+    );
+    let status = std::process::Command::new("osascript")
+        .args(["-e", &script])
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Finder failed to move file to Trash",
+        ))
+    }
+}
+
+#[cfg(all(not(windows), not(target_os = "macos")))]
+pub fn move_file_to_trash(path: &Path) -> std::io::Result<()> {
+    if let Ok(status) = std::process::Command::new("gio")
+        .arg("trash")
+        .arg(path)
+        .status()
+    {
+        if status.success() {
+            return Ok(());
+        }
+    }
+    if let Ok(status) = std::process::Command::new("kioclient5")
+        .arg("move")
+        .arg(path)
+        .arg("trash:/")
+        .status()
+    {
+        if status.success() {
+            return Ok(());
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "No system trash utility (gio/kioclient5) available; refusing permanent delete",
+    ))
 }
 
 /// Ensures watched_archive table and indexes exist
@@ -470,25 +512,6 @@ pub fn db_get_watch_report(state: tauri::State<'_, DbState>) -> Result<FullWatch
         .filter_map(Result::ok)
         .collect();
 
-    let mut space_reclaimed: i64 = 0;
-    for (p, sz) in candidate_rows {
-        if !Path::new(&p).exists() {
-            space_reclaimed += sz;
-        }
-    }
-
-    let summary = WatchReportSummary {
-        total_movies_watched: movies_count,
-        total_movie_duration_seconds: movies_duration,
-        total_series_count: series_count,
-        total_episodes_watched: episodes_count,
-        total_series_duration_seconds: series_duration,
-        total_music_listened: music_count,
-        total_music_duration_seconds: music_duration,
-        total_watch_time_seconds: movies_duration + series_duration + music_duration,
-        total_disk_space_reclaimed_bytes: space_reclaimed,
-    };
-
     // 5. TV Series breakdown
     let mut s_stmt = conn
         .prepare(
@@ -524,29 +547,36 @@ pub fn db_get_watch_report(state: tauri::State<'_, DbState>) -> Result<FullWatch
         .filter_map(Result::ok)
         .collect();
 
-    let mut series_breakdown = Vec::new();
+    let mut sea_stmt = conn
+        .prepare(
+            "SELECT series_key, COALESCE(season_number, 1) as s_num, COUNT(*) as c
+             FROM watched_archive
+             WHERE COALESCE(series_key, '') != ''
+             GROUP BY series_key, COALESCE(season_number, 1)
+             ORDER BY s_num ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let mut seasons_by_series: std::collections::HashMap<String, Vec<SeasonReportItem>> =
+        std::collections::HashMap::new();
+    let season_rows = sea_stmt
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                SeasonReportItem {
+                    season_number: r.get(1)?,
+                    episodes_watched: r.get(2)?,
+                },
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+    for (s_key, item) in season_rows.filter_map(Result::ok) {
+        seasons_by_series.entry(s_key).or_default().push(item);
+    }
+
+    let mut series_breakdown = Vec::with_capacity(series_rows.len());
     for (s_key, s_name, s_poster, ep_count, season_count, last_watched, sample_path, year) in series_rows {
-        let mut sea_stmt = conn
-            .prepare(
-                "SELECT COALESCE(season_number, 1) as s_num, COUNT(*) as c
-                 FROM watched_archive
-                 WHERE series_key = ?1
-                 GROUP BY COALESCE(season_number, 1)
-                 ORDER BY s_num ASC",
-            )
-            .map_err(|e| e.to_string())?;
-
-        let seasons_data: Vec<SeasonReportItem> = sea_stmt
-            .query_map(params![s_key], |r| {
-                Ok(SeasonReportItem {
-                    season_number: r.get(0)?,
-                    episodes_watched: r.get(1)?,
-                })
-            })
-            .map_err(|e| e.to_string())?
-            .filter_map(Result::ok)
-            .collect();
-
+        let seasons_data = seasons_by_series.remove(&s_key).unwrap_or_default();
         series_breakdown.push(SeriesReportItem {
             series_key: s_key,
             series_name: s_name,
@@ -587,6 +617,32 @@ pub fn db_get_watch_report(state: tauri::State<'_, DbState>) -> Result<FullWatch
         .filter_map(Result::ok)
         .collect();
     recent_activity.reverse(); // chronological order for graphs
+
+    // Release SQLite lock before performing filesystem stat checks
+    drop(act_stmt);
+    drop(sea_stmt);
+    drop(s_stmt);
+    drop(stmt);
+    drop(conn);
+
+    let mut space_reclaimed: i64 = 0;
+    for (p, sz) in candidate_rows {
+        if !Path::new(&p).exists() {
+            space_reclaimed += sz;
+        }
+    }
+
+    let summary = WatchReportSummary {
+        total_movies_watched: movies_count,
+        total_movie_duration_seconds: movies_duration,
+        total_series_count: series_count,
+        total_episodes_watched: episodes_count,
+        total_series_duration_seconds: series_duration,
+        total_music_listened: music_count,
+        total_music_duration_seconds: music_duration,
+        total_watch_time_seconds: movies_duration + series_duration + music_duration,
+        total_disk_space_reclaimed_bytes: space_reclaimed,
+    };
 
     Ok(FullWatchReport {
         summary,
@@ -651,10 +707,9 @@ pub fn db_get_watched_archive(
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rusqlite_params: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|b| b.as_ref()).collect();
 
-    let items = stmt
+    let mut items: Vec<WatchedArchiveItem> = stmt
         .query_map(&rusqlite_params[..], |r| {
             let fp: Option<String> = r.get(2)?;
-            let is_on_disk = fp.as_ref().map(|p| Path::new(p).exists()).unwrap_or(false);
 
             Ok(WatchedArchiveItem {
                 id: r.get(0)?,
@@ -675,12 +730,23 @@ pub fn db_get_watched_archive(
                 custom_poster: r.get(15)?,
                 watched_at: r.get(16)?,
                 watch_count: r.get(17)?,
-                is_still_on_disk: is_on_disk,
+                is_still_on_disk: false,
             })
         })
         .map_err(|e| e.to_string())?
         .filter_map(Result::ok)
         .collect();
+
+    drop(stmt);
+    drop(conn);
+
+    for item in &mut items {
+        item.is_still_on_disk = item
+            .file_path
+            .as_ref()
+            .map(|p| Path::new(p).exists())
+            .unwrap_or(false);
+    }
 
     Ok(items)
 }

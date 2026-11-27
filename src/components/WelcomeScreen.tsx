@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { FolderOpen, Play, Clock, LayoutDashboard, Tv } from "lucide-react";
+import { getVersion } from "@tauri-apps/api/app";
 import { usePlayerStore } from "../stores/playerStore";
 import { useThemeStore } from "../stores/themeStore";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -10,6 +11,7 @@ export function WelcomeScreen() {
   const { openFile, recentFiles, toggleLibraryModal, isLibraryOpen } = usePlayerStore();
   const { accentColor, accentText } = useThemeStore();
 
+  const [appVersion, setAppVersion] = useState<string>("");
   const [inProgressItem, setInProgressItem] = useState<LibraryItem | null>(null);
   const [upNextEpisode, setUpNextEpisode] = useState<{
     seriesName: string;
@@ -85,6 +87,9 @@ export function WelcomeScreen() {
 
   useEffect(() => {
     refreshData();
+    getVersion()
+      .then((v) => setAppVersion(v))
+      .catch(() => {});
 
     // Dynamically react whenever library is changed anywhere (watch toggled, metadata edited, etc.)
     const unsubscribe = libraryService.onLibraryChange(() => {
@@ -162,7 +167,7 @@ export function WelcomeScreen() {
             EYTAA
           </h1>
           <p className="text-[11px] font-medium tracking-wide text-neutral-400 font-mono">
-            Desktop Media Player • v2.0
+            Desktop Media Player{appVersion ? ` • v${appVersion}` : ""}
           </p>
         </div>
 

@@ -26,9 +26,9 @@ impl ConcurrencyLimiter {
     }
 
     fn acquire(&self) -> PermitGuard<'_> {
-        let mut count = self.permits.lock().unwrap();
+        let mut count = self.permits.lock().unwrap_or_else(|e| e.into_inner());
         while *count == 0 {
-            count = self.cvar.wait(count).unwrap();
+            count = self.cvar.wait(count).unwrap_or_else(|e| e.into_inner());
         }
         *count -= 1;
         PermitGuard { limiter: self }
@@ -41,7 +41,7 @@ struct PermitGuard<'a> {
 
 impl<'a> Drop for PermitGuard<'a> {
     fn drop(&mut self) {
-        let mut count = self.limiter.permits.lock().unwrap();
+        let mut count = self.limiter.permits.lock().unwrap_or_else(|e| e.into_inner());
         *count += 1;
         self.limiter.cvar.notify_one();
     }
@@ -293,7 +293,7 @@ pub fn generate_or_load_thumbnail(app: &AppHandle, file_path: &str) -> Result<Op
             .arg("-loglevel")
             .arg("error")
             .arg("-i")
-            .arg(file_path)
+            .arg(clean_path)
             .arg("-an")
             .arg("-vcodec")
             .arg("copy")
@@ -310,7 +310,7 @@ pub fn generate_or_load_thumbnail(app: &AppHandle, file_path: &str) -> Result<Op
                 .arg("-ss")
                 .arg(seek_pos)
                 .arg("-i")
-                .arg(file_path)
+                .arg(clean_path)
                 .arg("-vframes")
                 .arg("1")
                 .arg("-vf")
@@ -364,12 +364,14 @@ pub async fn get_thumbnail_cache_stats(app: AppHandle) -> Result<ThumbnailCacheS
         let cache_dir = get_thumbnail_cache_dir(&app)?;
         let mut count = 0;
         let mut total_bytes = 0;
-        if let Ok(entries) = fs::read_dir(&cache_dir) {
-            for entry in entries.flatten() {
-                if let Ok(meta) = entry.metadata() {
-                    if meta.is_file() {
-                        count += 1;
-                        total_bytes += meta.len();
+        for dir in [&cache_dir, &cache_dir.join("scrub")] {
+            if let Ok(entries) = fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    if let Ok(meta) = entry.metadata() {
+                        if meta.is_file() {
+                            count += 1;
+                            total_bytes += meta.len();
+                        }
                     }
                 }
             }
@@ -389,24 +391,24 @@ pub async fn clean_thumbnail_cache(app: AppHandle, clean_mode: String) -> Result
     tauri::async_runtime::spawn_blocking(move || {
         let cache_dir = get_thumbnail_cache_dir(&app)?;
         let mut removed = 0;
-        if let Ok(entries) = fs::read_dir(&cache_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_file() {
-                    let should_remove = if clean_mode == "all" {
-                        true
-                    } else if clean_mode == "markers" {
-                        path.extension().map_or(false, |e| e == "no_thumb")
-                    } else {
-                        if let Ok(meta) = path.metadata() {
+        for dir in [&cache_dir, &cache_dir.join("scrub")] {
+            if let Ok(entries) = fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_file() {
+                        let should_remove = if clean_mode == "all" {
+                            true
+                        } else if clean_mode == "markers" {
+                            path.extension().map_or(false, |e| e == "no_thumb")
+                        } else if let Ok(meta) = path.metadata() {
                             meta.len() == 0 || path.extension().map_or(false, |e| e == "no_thumb")
                         } else {
                             false
-                        }
-                    };
+                        };
 
-                    if should_remove && fs::remove_file(&path).is_ok() {
-                        removed += 1;
+                        if should_remove && fs::remove_file(&path).is_ok() {
+                            removed += 1;
+                        }
                     }
                 }
             }

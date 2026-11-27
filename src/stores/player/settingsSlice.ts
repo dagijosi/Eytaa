@@ -1,6 +1,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { StateCreator } from "zustand";
 import { playerService } from "../../services/player/mpvPlayerService";
+import { composeAudioFilter } from "../../services/player/audioFilter";
 import { storageService } from "../../services/storage/storageService";
 import {
   PlaybackProfile,
@@ -224,21 +225,17 @@ export const createSettingsSlice: StateCreator<
   setNightListening: async (enabled: boolean) => {
     set({ isNightListening: enabled });
     await storageService.setPreference("nightListening", enabled);
-    if (enabled) {
-      // Night Mode: dialogue booster & peak dynamic range compression
-      await playerService.setMpvProperty(
-        "af",
-        "lavfi=[dynaudnorm=f=150:g=15:m=10.0:r=0.9:b=1]",
-      );
-      get().showOSD("Night Mode: ON (Dialogue Boosted)");
-    } else {
-      const activeProf = get().profiles.find(
-        (p) => p.id === get().activeProfileId,
-      );
-      const filter = activeProf?.settings.audioFilter || "";
-      await playerService.setMpvProperty("af", filter);
-      get().showOSD("Night Mode: OFF");
-    }
+    const activeProf = get().profiles.find(
+      (p) => p.id === get().activeProfileId,
+    );
+    const baseFilter =
+      activeProf?.settings.audioFilter ||
+      (activeProf?.settings.audioNormalize ? "lavfi=[loudnorm]" : "");
+    const composed = composeAudioFilter(baseFilter, enabled);
+    await playerService.setMpvProperty("af", composed);
+    get().showOSD(
+      enabled ? "Night Mode: ON (Dialogue Boosted)" : "Night Mode: OFF",
+    );
   },
 
   toggleNightListening: async () => {
@@ -271,13 +268,12 @@ export const createSettingsSlice: StateCreator<
       await playerService.setMpvProperty("gamma", s.gamma);
       await playerService.setMpvProperty("deinterlace", s.deinterlace ? "yes" : "no");
 
-      // Apply audio filter if night listening is not overriding it
-      if (!get().isNightListening) {
-        await playerService.setMpvProperty(
-          "af",
-          s.audioFilter || (s.audioNormalize ? "lavfi=[loudnorm]" : ""),
-        );
-      }
+      const baseFilter =
+        s.audioFilter || (s.audioNormalize ? "lavfi=[loudnorm]" : "");
+      await playerService.setMpvProperty(
+        "af",
+        composeAudioFilter(baseFilter, get().isNightListening),
+      );
 
       await playerService.setMpvProperty("audio-delay", s.audioDelay / 1000);
       await playerService.setMpvProperty("sub-font-size", s.subFontSize);

@@ -94,12 +94,12 @@ export function computeIdealWindowGeometry(monitor: Monitor): WindowGeometry {
   const minWidth = Math.min(workArea.size.width, Math.round(MIN_LOGICAL_WIDTH * scale));
   const minHeight = Math.min(workArea.size.height, Math.round(MIN_LOGICAL_HEIGHT * scale));
 
-  // Never exceed 80% width or 76% height on first launch
-  const maxAllowedWidth = Math.round(workArea.size.width * 0.80);
-  const maxAllowedHeight = Math.round(workArea.size.height * 0.76);
+  // Never exceed 78% width or 74% height on first launch so it never touches the taskbar
+  const maxAllowedWidth = Math.round(workArea.size.width * 0.78);
+  const maxAllowedHeight = Math.round(workArea.size.height * 0.74);
 
-  let targetWidth = Math.round(workArea.size.width * 0.68);
-  const targetHeight = Math.round(workArea.size.height * 0.66);
+  let targetWidth = Math.round(workArea.size.width * 0.65);
+  const targetHeight = Math.round(workArea.size.height * 0.65);
 
   // If the screen is ultra-wide (e.g. 21:9 or 32:9), balance width to widescreen 16:9
   // so it doesn't stretch across the entire ultra-wide desk.
@@ -178,6 +178,7 @@ async function applyStoredGeometry(geometry: WindowGeometry): Promise<void> {
   const appWindow = getCurrentWindow();
   await appWindow.setSize(new PhysicalSize(Math.round(geometry.width), Math.round(geometry.height)));
   await appWindow.setPosition(new PhysicalPosition(Math.round(geometry.x), Math.round(geometry.y)));
+  lastKnownGeometry = geometry;
 }
 
 /** 
@@ -195,11 +196,7 @@ export async function centerWindow(): Promise<void> {
   await appWindow.setPosition(new PhysicalPosition(ideal.x, ideal.y));
 
   // Persist the clean initial geometry so all future launches restore this frame
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(ideal));
-  } catch {
-    // Persistence is best-effort
-  }
+  saveGeometrySync(ideal);
 }
 
 /**
@@ -229,11 +226,21 @@ export async function restoreWindowGeometry(): Promise<void> {
 }
 
 let trackingStarted = false;
+let lastKnownGeometry: WindowGeometry | null = null;
+
+function saveGeometrySync(geometry: WindowGeometry): void {
+  lastKnownGeometry = geometry;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(geometry));
+  } catch {
+    // Persistence is best-effort
+  }
+}
 
 /**
  * Persists the window position/size as the user moves or resizes it. Maximized,
- * fullscreen and transient mini modes are ignored so the remembered geometry is
- * always the last normal window the user chose.
+ * minimized, fullscreen and transient mini modes are ignored so the remembered
+ * geometry is always the last normal window the user chose.
  */
 export function startWindowGeometryTracking(): void {
   if (trackingStarted) return;
@@ -245,10 +252,15 @@ export function startWindowGeometryTracking(): void {
   const persist = async () => {
     try {
       if (await appWindow.isMaximized()) return;
+      if (await appWindow.isMinimized()) return;
       if (await appWindow.isFullscreen()) return;
 
       const position = await appWindow.outerPosition();
-      const size = await appWindow.outerSize();
+      // Ignore Windows minimized/off-screen sentinel coordinates (-32000, -32000)
+      if (position.x <= -30000 || position.y <= -30000) return;
+
+      // Use innerSize() because setSize(PhysicalSize) sets the inner client area
+      const size = await appWindow.innerSize();
       const scale = (await appWindow.scaleFactor().catch(() => 1)) || 1;
       const logicalWidth = size.width / scale;
       const logicalHeight = size.height / scale;
@@ -259,13 +271,12 @@ export function startWindowGeometryTracking(): void {
         return;
       }
 
-      const geometry: WindowGeometry = {
+      saveGeometrySync({
         x: position.x,
         y: position.y,
         width: size.width,
         height: size.height,
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(geometry));
+      });
     } catch {
       // Persistence is best-effort; a failure just means we recenter next launch.
     }
@@ -279,6 +290,10 @@ export function startWindowGeometryTracking(): void {
   appWindow.onMoved(schedulePersist).catch(() => {});
   appWindow.onResized(schedulePersist).catch(() => {});
 
-  // Flush any pending debounce if the window is torn down.
-  window.addEventListener("beforeunload", () => void persist());
+  // Synchronously flush the latest known valid geometry on teardown/shutdown
+  window.addEventListener("beforeunload", () => {
+    if (lastKnownGeometry) {
+      saveGeometrySync(lastKnownGeometry);
+    }
+  });
 }

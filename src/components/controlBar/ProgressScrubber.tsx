@@ -69,15 +69,18 @@ export function ProgressScrubber({ currentTime, duration, seek }: ProgressScrubb
     }
   }, [seek]);
 
-  const scheduleSeek = (seconds: number) => {
-    pendingSeekRef.current = seconds;
-    if (seekRafRef.current === null) {
-      seekRafRef.current = window.requestAnimationFrame(() => {
-        seekRafRef.current = null;
-        flushPendingSeek();
-      });
-    }
-  };
+  const scheduleSeek = useCallback(
+    (seconds: number) => {
+      pendingSeekRef.current = seconds;
+      if (seekRafRef.current === null) {
+        seekRafRef.current = window.requestAnimationFrame(() => {
+          seekRafRef.current = null;
+          flushPendingSeek();
+        });
+      }
+    },
+    [flushPendingSeek],
+  );
 
   useEffect(() => {
     return () => {
@@ -110,15 +113,30 @@ export function ProgressScrubber({ currentTime, duration, seek }: ProgressScrubb
   };
 
   useEffect(() => {
-    const handleMouseUp = () => {
-      if (isScrubbing) {
-        setIsScrubbing(false);
-        flushPendingSeek();
-      }
+    if (!isScrubbing) return;
+
+    const handleWindowMouseMove = (e: MouseEvent) => {
+      if (!scrubberRef.current || duration <= 0) return;
+      const rect = scrubberRef.current.getBoundingClientRect();
+      const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+      const ratio = x / rect.width;
+      setHoverPosition(x);
+      setHoverTime(ratio * duration);
+      scheduleSeek(ratio * duration);
     };
+
+    const handleMouseUp = () => {
+      setIsScrubbing(false);
+      flushPendingSeek();
+    };
+
+    window.addEventListener("mousemove", handleWindowMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
-    return () => window.removeEventListener("mouseup", handleMouseUp);
-  }, [isScrubbing, flushPendingSeek]);
+    return () => {
+      window.removeEventListener("mousemove", handleWindowMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isScrubbing, duration, flushPendingSeek, scheduleSeek]);
 
   const trackHeightClass =
     scrubberHeight === "slim"

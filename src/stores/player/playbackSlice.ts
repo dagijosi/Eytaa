@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { StateCreator } from "zustand";
 import { playerService } from "../../services/player/mpvPlayerService";
+import { composeAudioFilter } from "../../services/player/audioFilter";
 import { storageService } from "../../services/storage/storageService";
 import {
   PlaybackProfile,
@@ -303,8 +304,14 @@ export const createPlaybackSlice: StateCreator<
       if (typeof savedNightMode === "boolean") {
         set({ isNightListening: savedNightMode });
         if (savedNightMode) {
+          const activeProf = allProfiles.find(
+            (p) => p.id === (savedActiveProfileId || "default"),
+          );
+          const baseFilter =
+            activeProf?.settings.audioFilter ||
+            (activeProf?.settings.audioNormalize ? "lavfi=[loudnorm]" : "");
           playerService
-            .setMpvProperty("af", "lavfi=[dynaudnorm=f=150:g=15:m=10.0:r=0.9:b=1]")
+            .setMpvProperty("af", composeAudioFilter(baseFilter, true))
             .catch(() => {});
         }
       }
@@ -406,6 +413,9 @@ export const createPlaybackSlice: StateCreator<
         );
       }
       if (seq !== activeLoadSequence) return;
+
+      // Clear previous file's timer/duration immediately so UI never shows stale duration while loading
+      set({ currentTime: 0, duration: 0 });
 
       try {
         await playerService.openFile(path);

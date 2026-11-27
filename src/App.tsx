@@ -455,7 +455,7 @@ export default function App() {
 
       // Don't let Space/Enter double-fire on a focused button or control
       if (
-        (e.key === " " || e.key === "enter") &&
+        (e.key === " " || e.key === "Enter") &&
         e.target instanceof HTMLElement &&
         (e.target.tagName === "BUTTON" || e.target.tagName === "A")
       ) {
@@ -465,7 +465,7 @@ export default function App() {
       resetHideTimer();
 
       // Escape stays hardcoded: closes overlays/menus, never rebindable
-      if (e.key === "escape") {
+      if (e.key === "Escape") {
         setContextMenu(null);
         if (isPiP) togglePiP();
         if (isSleepTimerOpen) toggleSleepTimer(false);

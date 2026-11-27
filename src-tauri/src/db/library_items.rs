@@ -25,7 +25,7 @@ pub fn db_get_library_items(
                 rp.position as resume_position,
                 COALESCE(li.is_available, 1) as is_available,
                 li.quick_hash,
-                (SELECT COUNT(*) FROM library_items dup WHERE dup.quick_hash = li.quick_hash AND dup.quick_hash IS NOT NULL AND dup.quick_hash != '') > 1 as is_duplicate,
+                COALESCE(dh.hash_count, 0) > 1 as is_duplicate,
                 li.category, li.series_name, li.season_number, li.episode_number, li.episode_title, li.year,
                 COALESCE(li.is_watched, 0) as is_watched,
                 COALESCE(li.manual_override, 0) as manual_override,
@@ -34,6 +34,12 @@ pub fn db_get_library_items(
          FROM library_items li
          LEFT JOIN library_favorites lf ON li.file_path = lf.file_path
          LEFT JOIN resume_positions rp ON li.file_path = rp.file_path
+         LEFT JOIN (
+             SELECT quick_hash, COUNT(*) as hash_count
+             FROM library_items
+             WHERE quick_hash IS NOT NULL AND quick_hash != ''
+             GROUP BY quick_hash
+         ) dh ON li.quick_hash = dh.quick_hash
          WHERE 1=1 ",
     );
 
@@ -103,7 +109,7 @@ pub fn db_get_library_items(
     }
 
     if duplicates_only == Some(true) {
-        sql.push_str("AND (SELECT COUNT(*) FROM library_items dup WHERE dup.quick_hash = li.quick_hash AND dup.quick_hash IS NOT NULL AND dup.quick_hash != '') > 1 ");
+        sql.push_str("AND COALESCE(dh.hash_count, 0) > 1 ");
     }
 
     if available_only != Some(false) {

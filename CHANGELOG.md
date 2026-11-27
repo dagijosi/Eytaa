@@ -4,6 +4,24 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ---
 
+## [0.2.16] - 2026-11-27
+
+### 🪟 Window Geometry Persistence & Work-Area Sizing Fixes
+- **Cold-Boot Geometry Restoration**: Increased the startup window geometry restoration window (`2500ms`) and delayed geometry tracking until after reveal so slow cold-boot IPC no longer overwrites saved positions with the default frame.
+- **Taskbar-Safe Sizing & Shutdown Persistence**: Switched geometry persistence from `outerSize()` to `innerSize()` to match `setSize()`, tightened default work-area bounds (`65%` target, `78%×74%` cap) to stay clear of the Windows taskbar, ignored minimized/`-32000` sentinel coordinates, and added synchronous `beforeunload` flushing.
+
+### ⏱️ Playback Duration Sync & Player Fixes
+- **Stale Duration Fix**: Reset `duration` and `currentTime` to `0` on `openFile`, `openStream`, `stop`, and `start-file`, and explicitly query `duration` on `file-loaded` so switching from a movie to a TV episode never retains the previous file's runtime.
+- **Keyboard & Scrubber Polish**: Fixed lowercase `"escape"` / `"enter"` key checks in `App.tsx` so `Escape` reliably dismisses overlays, modals, PiP, and menus; bound `window` `mousemove` during scrubber dragging so vertical pointer drift no longer drops seeks.
+- **Compact Window Audio & Filter Composition**: Added Audio Track selection, Night Mode, and Audio Sync controls to `MoreMenu` for `< 1280px` viewports, and introduced `composeAudioFilter` so Night Mode (`dynaudnorm`) coexists with `loudnorm` and profile filters.
+- **Dynamic Welcome Version**: Replaced the hardcoded `"v2.0"` label on the Welcome Screen with the live app version.
+
+### 🛠️ Rust Backend Stability & SQLite Performance
+- **Thumbnailer & Safe Trash**: Passed cleaned paths to `ffmpeg`, included `thumbnails/scrub/` in cache stats and cleanup, handled mutex poisoning gracefully in `ConcurrencyLimiter`, and replaced the non-Windows `remove_file` trash fallback with native Finder (`osascript`) on macOS and `gio trash` / `kioclient5` on Linux.
+- **SQLite Lock & Query Optimization**: Released `DbState.conn` locks before `Path::exists()` filesystem checks, replaced the N+1 season breakdown query in `db_get_watch_report` with a single grouped query, and replaced the correlated duplicate subquery in `db_get_library_items` with a `LEFT JOIN`.
+
+---
+
 ## [0.2.15] - 2026-11-04
 
 ### 📈 Responsive Watch Analytics & Native SVG Visualizations

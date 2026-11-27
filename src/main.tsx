@@ -15,13 +15,14 @@ requestAnimationFrame(() => {
         .show()
         .catch(() => {});
 
-    // Never let geometry restoration block the window from appearing.
+    // Wait for geometry restoration before revealing and before tracking so
+    // cold-boot IPC latency never overwrites saved geometry with the default size.
     Promise.race([
       restoreWindowGeometry(),
-      new Promise((resolve) => setTimeout(resolve, 800)),
+      new Promise((resolve) => setTimeout(resolve, 2500)),
     ]).finally(() => {
       reveal();
-      startWindowGeometryTracking();
+      window.setTimeout(() => startWindowGeometryTracking(), 250);
     });
   });
 });

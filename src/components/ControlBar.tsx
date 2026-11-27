@@ -115,9 +115,6 @@ export function ControlBar() {
       setRepeatMode: s.setRepeatMode,
       autoPlayNext: s.autoPlayNext,
       toggleAutoPlayNext: s.toggleAutoPlayNext,
-      chapters: s.chapters,
-      currentChapterIndex: s.currentChapterIndex,
-      seekToChapter: s.seekToChapter,
       takeScreenshot: s.takeScreenshot,
       showStats: s.showStats,
       toggleStats: s.toggleStats,
@@ -232,6 +229,14 @@ export function ControlBar() {
             <MoreMenu
               playbackRate={playbackRate}
               onSetPlaybackRate={setPlaybackRate}
+              audioTracks={audioTracks}
+              currentAudioTrackId={currentAudioTrackId}
+              onSelectAudioTrack={selectAudioTrack}
+              audioDelay={audioDelay}
+              onChangeAudioDelay={changeAudioDelay}
+              onSetAudioDelay={setAudioDelay}
+              isNightListening={isNightListening}
+              onToggleNightListening={toggleNightListening}
               autoPlayNext={autoPlayNext}
               onToggleAutoPlayNext={toggleAutoPlayNext}
               repeatMode={repeatMode}

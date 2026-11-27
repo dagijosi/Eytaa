@@ -81,10 +81,9 @@ pub fn db_get_library_folders(
         )
         .map_err(|e| e.to_string())?;
 
-    let rows = stmt
+    let mut rows: Vec<LibraryFolderDto> = stmt
         .query_map([], |row| {
             let folder_path: String = row.get(1)?;
-            let is_accessible = std::path::Path::new(&folder_path).exists();
             let item_count: i64 = row.get(4)?;
             let available_count: i64 = row.get(5)?;
             Ok(LibraryFolderDto {
@@ -92,7 +91,7 @@ pub fn db_get_library_folders(
                 folder_path,
                 added_at: row.get(2)?,
                 last_scanned_at: row.get(3)?,
-                is_accessible,
+                is_accessible: false,
                 item_count: item_count as usize,
                 available_count: available_count as usize,
             })
@@ -100,6 +99,13 @@ pub fn db_get_library_folders(
         .map_err(|e| e.to_string())?
         .filter_map(Result::ok)
         .collect();
+
+    drop(stmt);
+    drop(conn);
+
+    for row in &mut rows {
+        row.is_accessible = std::path::Path::new(&row.folder_path).exists();
+    }
 
     Ok(rows)
 }

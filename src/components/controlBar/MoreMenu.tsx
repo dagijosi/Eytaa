@@ -9,15 +9,26 @@ import {
   Moon,
   Sliders,
   MoreHorizontal,
+  Headphones,
+  Check,
 } from "lucide-react";
 import { useThemeStore } from "../../stores/themeStore";
 import type { RepeatMode } from "../../stores/playerStore";
+import type { TrackInfo } from "../../services/player/types";
 import type { PlaybackProfile } from "../../services/player/profileTypes";
 import { activeBtnStyle, getProfileIcon } from "./shared";
 
 interface MoreMenuProps {
   playbackRate: number;
   onSetPlaybackRate: (rate: number) => void;
+  audioTracks: TrackInfo[];
+  currentAudioTrackId?: number;
+  onSelectAudioTrack: (trackId: number) => void;
+  audioDelay: number;
+  onChangeAudioDelay: (deltaMs: number) => void;
+  onSetAudioDelay: (ms: number) => void;
+  isNightListening: boolean;
+  onToggleNightListening: () => void;
   autoPlayNext: boolean;
   onToggleAutoPlayNext: () => void;
   repeatMode: RepeatMode;
@@ -37,6 +48,14 @@ interface MoreMenuProps {
 export function MoreMenu({
   playbackRate,
   onSetPlaybackRate,
+  audioTracks,
+  currentAudioTrackId,
+  onSelectAudioTrack,
+  audioDelay,
+  onChangeAudioDelay,
+  onSetAudioDelay,
+  isNightListening,
+  onToggleNightListening,
   autoPlayNext,
   onToggleAutoPlayNext,
   repeatMode,
@@ -186,6 +205,78 @@ export function MoreMenu({
                 {videoFitMode}
               </span>
             </button>
+
+            {/* Audio Track, Night Mode & Sync (for < xl viewports where AudioTrackMenu is hidden) */}
+            <div className="mt-1 pt-1 border-t border-white/5 px-1 flex flex-col gap-1">
+                <div className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-neutral-400 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Headphones style={{ color: accentColor }} className="w-3 h-3" />
+                    <span>Audio &amp; Sync</span>
+                  </div>
+                  <button
+                    onClick={onToggleNightListening}
+                    className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase transition cursor-pointer ${
+                      isNightListening
+                        ? "bg-indigo-500/25 text-indigo-300 border border-indigo-500/40"
+                        : "bg-white/5 text-neutral-400 hover:bg-white/10"
+                    }`}
+                    title="Night Mode Dialogue Booster (Key: N)"
+                  >
+                    Night {isNightListening ? "ON" : "OFF"}
+                  </button>
+                </div>
+
+                {audioTracks.length > 0 && (
+                  <div className="flex flex-col gap-0.5 max-h-28 overflow-y-auto px-0.5">
+                    {audioTracks.map((track) => {
+                      const selected = currentAudioTrackId === track.id;
+                      return (
+                        <button
+                          key={track.id}
+                          onClick={() => {
+                            onSelectAudioTrack(track.id);
+                            setShowMoreMenu(false);
+                          }}
+                          style={selected ? { backgroundColor: accentColor, color: "var(--accent-text)" } : undefined}
+                          className={`flex items-center justify-between px-2 py-1 rounded-lg text-[11px] text-left transition cursor-pointer ${
+                            selected ? "font-bold" : "text-neutral-300 hover:bg-white/10"
+                          }`}
+                        >
+                          <span className="truncate">
+                            {track.title || track.lang || `Track ${track.id}`}
+                          </span>
+                          {selected && <Check className="w-3 h-3 shrink-0" style={{ color: "var(--accent-text)" }} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between px-1.5 py-1 text-[10px] font-mono bg-white/[0.03] rounded-lg">
+                  <span className="text-neutral-400">Sync</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => onChangeAudioDelay(-100)}
+                      className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/15 text-neutral-300 cursor-pointer"
+                    >
+                      -100
+                    </button>
+                    <button
+                      onClick={() => onSetAudioDelay(0)}
+                      className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/15 text-neutral-200 font-bold tabular-nums cursor-pointer"
+                      title="Reset Audio Delay"
+                    >
+                      {audioDelay === 0 ? "0ms" : `${audioDelay > 0 ? "+" : ""}${audioDelay}ms`}
+                    </button>
+                    <button
+                      onClick={() => onChangeAudioDelay(100)}
+                      className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/15 text-neutral-300 cursor-pointer"
+                    >
+                      +100
+                    </button>
+                  </div>
+                </div>
+              </div>
 
             {/* Profiles Sub-section */}
             <div className="mt-1 pt-1 border-t border-white/5">
