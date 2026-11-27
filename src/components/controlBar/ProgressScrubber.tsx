@@ -5,12 +5,11 @@ import { libraryService } from "../../services/library/libraryService";
 import { formatSeconds } from "./shared";
 
 interface ProgressScrubberProps {
-  currentTime: number;
   duration: number;
   seek: (seconds: number) => void;
 }
 
-export function ProgressScrubber({ currentTime, duration, seek }: ProgressScrubberProps) {
+export function ProgressScrubber({ duration, seek }: ProgressScrubberProps) {
   const {
     accentColor,
     accentGlow,
@@ -19,7 +18,10 @@ export function ProgressScrubber({ currentTime, duration, seek }: ProgressScrubb
     showChapterMarkers,
     scrubberGlowIntensity,
   } = useThemeStore();
+  const currentTime = usePlayerStore((s) => s.currentTime);
   const chapters = usePlayerStore((s) => s.chapters);
+  const bookmarks = usePlayerStore((s) => s.bookmarks);
+  const deleteBookmark = usePlayerStore((s) => s.deleteBookmark);
   const abLoop = usePlayerStore((s) => s.abLoop);
   const currentFilePath = usePlayerStore((s) => s.mediaMetadata?.filePath);
 
@@ -161,16 +163,46 @@ export function ProgressScrubber({ currentTime, duration, seek }: ProgressScrubb
   const cardLeft = Math.max(halfCard, Math.min(hoverPosition, containerWidth - halfCard));
   const pointerOffset = Math.max(-halfCard + 16, Math.min(halfCard - 16, hoverPosition - cardLeft));
 
+  const hoveredChapter =
+    hoverTime !== null && chapters && chapters.length > 0
+      ? [...chapters].reverse().find((c) => c.time <= hoverTime) ?? null
+      : null;
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (duration <= 0) return;
+    const step = e.shiftKey ? 30 : 5;
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      seek(Math.min(duration, currentTime + step));
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      seek(Math.max(0, currentTime - step));
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      seek(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      seek(duration);
+    }
+  };
+
   return (
     <div
       ref={scrubberRef}
+      role="slider"
+      tabIndex={0}
+      aria-label="Playback position"
+      aria-valuemin={0}
+      aria-valuemax={Math.round(duration)}
+      aria-valuenow={Math.round(currentTime)}
+      onKeyDown={handleKeyDown}
       onMouseMove={handleScrubberMouseMove}
       onMouseLeave={() => {
         setHoverTime(null);
         setHoverFrame(null);
       }}
       onMouseDown={handleScrubberMouseDown}
-      className="group relative h-5 flex items-center cursor-pointer select-none py-1"
+      className="group relative h-5 flex items-center cursor-pointer select-none py-1 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded"
     >
       {/* Hover Time Preview Card */}
       {hoverTime !== null && (
@@ -237,6 +269,12 @@ export function ProgressScrubber({ currentTime, duration, seek }: ProgressScrubb
             <div className="text-base font-black font-mono text-white tracking-wider leading-none py-0.5">
               {formatSeconds(hoverTime)}
             </div>
+
+            {hoveredChapter?.title && (
+              <div className="text-[10px] font-medium text-neutral-300 truncate w-full px-1">
+                {hoveredChapter.title}
+              </div>
+            )}
 
             {/* Subtitle: Remaining time from hover */}
             {duration > 0 && (
@@ -390,6 +428,31 @@ export function ProgressScrubber({ currentTime, duration, seek }: ProgressScrubb
           B
         </div>
       )}
+
+      {/* Scene Bookmark Pins */}
+      {duration > 0 &&
+        bookmarks.map((bm) => {
+          const pct = Math.min(100, Math.max(0, (bm.timestamp_seconds / duration) * 100));
+          return (
+            <button
+              key={bm.id}
+              type="button"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                seek(bm.timestamp_seconds);
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void deleteBookmark(bm.id);
+              }}
+              style={{ left: `${pct}%` }}
+              className="absolute -top-2 -translate-x-1/2 w-2.5 h-2.5 rotate-45 bg-amber-400 hover:bg-amber-300 border border-black/70 shadow-sm z-20 cursor-pointer transition-transform hover:scale-125"
+              title={`${bm.label} (${formatSeconds(bm.timestamp_seconds)}) • Click to jump • Right-click to remove`}
+            />
+          );
+        })}
     </div>
   );
 }

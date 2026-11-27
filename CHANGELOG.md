@@ -4,6 +4,30 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ---
 
+## [0.3.0] - 2026-11-27
+
+### 🔋 Lightweight, Battery-First & Desktop Integration
+- **Automatic Battery-Aware Mode**: Detects AC vs. Battery power (`GetSystemPowerStatus` on Windows, `pmset` on macOS, sysfs on Linux); when unplugged, automatically pauses background `ffprobe` probing and switches from `gpu-next` to lightweight `vo=gpu`.
+- **Playback Wake Lock**: Keeps the display and system awake during active video playback (`SetThreadExecutionState` on Windows, `caffeinate` on macOS) and releases immediately when paused or stopped.
+- **Zero-Copy `eytaa-thumb://` Protocol**: Streams cached library thumbnails and scrub frames directly from disk via a custom URI scheme protocol instead of base64-encoding over Tauri IPC.
+- **Render Isolation**: Isolated `currentTime` subscriptions inside `ProgressScrubber` and `TimeDisplay` so `ControlBar` no longer re-renders 4×/sec during playback.
+- **Windows Taskbar Progress (`ITaskbarList3`)**: Displays live playback progress and paused/playing state directly on the Windows taskbar icon.
+- **Opt-In System Tray Icon**: Optional tray icon (*Show EYTAA*, *Play/Pause*, *Quit*) disabled by default so closing the window exits cleanly.
+
+### 🎚️ Audio, Chapters, Subtitles & Scene Bookmarks
+- **10-Band Audio Equalizer & Volume Boost (`150%`)**: Built-in presets (*Flat, Cinema, Voice Clarity, Bass Boost, Crisp Treble*) and per-band sliders (`31Hz–16kHz`) composed cleanly with Night Mode and `loudnorm`, plus optional `150%` software volume boost.
+- **Chapter Navigator & Scene Bookmarks (`Ctrl+B`)**: Save and label timestamped scene bookmarks in SQLite, rendered as clickable pins on `ProgressScrubber`, alongside a unified Chapters & Bookmarks popover in `ControlBar` and chapter hover tooltips.
+- **Subtitle Encoding & Online Search**: Added `sub-codepage` selector for legacy non-UTF-8 `.srt` files and an in-app OpenSubtitles search & 1-click load panel in `SubtitleMenu`.
+- **Scrubber Accessibility**: Added `role="slider"`, ARIA progress attributes, and Left/Right arrow keyboard seeking (`±5s` / `±30s`) to `ProgressScrubber`.
+
+### 📚 Media Library Upgrades & Portable Backup
+- **Custom Collections / Watchlists**: New `Collections` tab (`CollectionsView`) to organize movies and media into custom playlists/watchlists stored in SQLite.
+- **Multi-Select Bulk Actions & Richer Filters**: Added Select Mode in Movies to batch-mark Watched/Unwatched, add to Queue, or add to Collections, plus Resolution filters (`4K`, `1080p`, `720p`) and File Size sorting.
+- **Lazy `ffprobe` Enrichment**: Automatically probes resolution, codecs, HDR status, and duration for unprobed library items when on AC power.
+- **Portable Backup & Restore (`.json`)**: Export and import preferences, favorites, scene bookmarks, and collections from Playback Settings.
+
+---
+
 ## [0.2.16] - 2026-11-27
 
 ### 🪟 Window Geometry Persistence & Work-Area Sizing Fixes

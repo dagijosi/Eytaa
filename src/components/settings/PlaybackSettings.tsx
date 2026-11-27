@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
-import { PictureInPicture2, Sliders, Camera, FolderOpen, RotateCcw, Globe } from "lucide-react";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { PictureInPicture2, Sliders, Camera, FolderOpen, RotateCcw, Globe, BatteryCharging, Download, Upload } from "lucide-react";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { playerService } from "../../services/player/mpvPlayerService";
 import { storageService } from "../../services/storage/storageService";
+import { libraryService } from "../../services/library/libraryService";
 import { metadataScraperService } from "../../services/metadata/metadataScraperService";
 import { SimpleModeCallout } from "./shared";
 import type { SettingsMode } from "./types";
@@ -575,6 +577,160 @@ export function PlaybackSettings({
           </div>
         </div>
       )}
+
+      {/* Battery, Power & System Tray Section */}
+      <PowerAndBackupSection accentColor={accentColor} showOSD={showOSD} />
+    </div>
+  );
+}
+
+function PowerAndBackupSection({
+  accentColor,
+  showOSD,
+}: {
+  accentColor: string;
+  showOSD: (text: string) => void;
+}) {
+  const preventSleepDuringPlayback = usePlayerStore((s) => s.preventSleepDuringPlayback);
+  const setPreventSleepDuringPlayback = usePlayerStore((s) => s.setPreventSleepDuringPlayback);
+  const autoBatterySaver = usePlayerStore((s) => s.autoBatterySaver);
+  const setAutoBatterySaver = usePlayerStore((s) => s.setAutoBatterySaver);
+  const minimizeToTray = usePlayerStore((s) => s.minimizeToTray);
+  const setMinimizeToTray = usePlayerStore((s) => s.setMinimizeToTray);
+  const isOnBattery = usePlayerStore((s) => s.isOnBattery);
+
+  const handleExportBackup = async () => {
+    try {
+      const target = await saveDialog({
+        defaultPath: `eytaa-backup-${new Date().toISOString().slice(0, 10)}.json`,
+        filters: [{ name: "JSON Backup", extensions: ["json"] }],
+      });
+      if (!target) return;
+      const json = await libraryService.exportBackup();
+      await writeTextFile(target, json);
+      showOSD("Backup exported successfully");
+    } catch (err) {
+      console.warn("Export backup failed:", err);
+      showOSD("Failed to export backup");
+    }
+  };
+
+  const handleImportBackup = async () => {
+    try {
+      const selected = await openDialog({
+        multiple: false,
+        filters: [{ name: "JSON Backup", extensions: ["json"] }],
+      });
+      if (!selected || typeof selected !== "string") return;
+      const raw = await readTextFile(selected);
+      const count = await libraryService.importBackup(raw);
+      showOSD(`Restored ${count} backup records`);
+    } catch (err) {
+      console.warn("Import backup failed:", err);
+      showOSD("Invalid or corrupt backup file");
+    }
+  };
+
+  return (
+    <div className="space-y-3 pt-2 border-t border-white/5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <BatteryCharging className="w-3.5 h-3.5 text-emerald-400" />
+          <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+            Battery, Power &amp; Backup
+          </h4>
+        </div>
+        <span
+          className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+            isOnBattery
+              ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+              : "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+          }`}
+        >
+          {isOnBattery ? "On Battery" : "AC Power"}
+        </span>
+      </div>
+
+      <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
+        <div>
+          <span className="font-medium text-neutral-200 text-xs">
+            Prevent Display Sleep During Playback
+          </span>
+          <p className="text-xs text-neutral-500">
+            Keeps your screen awake while watching a video; releases immediately when paused
+          </p>
+        </div>
+        <input
+          type="checkbox"
+          checked={preventSleepDuringPlayback}
+          onChange={(e) => void setPreventSleepDuringPlayback(e.target.checked)}
+          style={{ accentColor }}
+          className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+        />
+      </div>
+
+      <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
+        <div>
+          <span className="font-medium text-neutral-200 text-xs">
+            Auto Battery Saver (When Unplugged)
+          </span>
+          <p className="text-xs text-neutral-500">
+            Pauses background probing and switches to lightweight rendering when on laptop battery
+          </p>
+        </div>
+        <input
+          type="checkbox"
+          checked={autoBatterySaver}
+          onChange={(e) => void setAutoBatterySaver(e.target.checked)}
+          style={{ accentColor }}
+          className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+        />
+      </div>
+
+      <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
+        <div>
+          <span className="font-medium text-neutral-200 text-xs">
+            Enable System Tray Icon (Opt-in)
+          </span>
+          <p className="text-xs text-neutral-500">
+            Keep a tray icon active for quick show/hide and background audio playback
+          </p>
+        </div>
+        <input
+          type="checkbox"
+          checked={minimizeToTray}
+          onChange={(e) => void setMinimizeToTray(e.target.checked)}
+          style={{ accentColor }}
+          className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+        />
+      </div>
+
+      <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5 gap-3">
+        <div>
+          <span className="font-medium text-neutral-200 text-xs">
+            Portable Backup &amp; Restore
+          </span>
+          <p className="text-xs text-neutral-500">
+            Export or restore preferences, favorites, bookmarks, and collections (.json)
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => void handleExportBackup()}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-neutral-200 text-xs font-medium cursor-pointer transition"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Export</span>
+          </button>
+          <button
+            onClick={() => void handleImportBackup()}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-neutral-200 text-xs font-medium cursor-pointer transition"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>Import</span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

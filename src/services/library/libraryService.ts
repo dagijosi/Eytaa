@@ -37,6 +37,36 @@ export interface LibraryItem {
   manual_override: boolean;
   custom_poster?: string;
   series_key?: string;
+  width?: number;
+  height?: number;
+  video_codec?: string;
+  audio_codec?: string;
+  is_hdr?: boolean;
+}
+
+export interface ProbedMediaInfo {
+  duration?: number;
+  width?: number;
+  height?: number;
+  video_codec?: string;
+  audio_codec?: string;
+  is_hdr: boolean;
+}
+
+export interface BookmarkItem {
+  id: number;
+  file_path: string;
+  timestamp_seconds: number;
+  label: string;
+  created_at: string;
+}
+
+export interface CollectionItem {
+  id: number;
+  name: string;
+  color?: string;
+  item_count: number;
+  created_at: string;
 }
 
 export interface SeriesOverview {
@@ -642,6 +672,99 @@ class LibraryService {
   public async deleteArchiveItem(id: number): Promise<void> {
     await invoke<void>("db_delete_archive_item", { id });
     this.notifyLibraryChanged();
+  }
+
+  public async probeMediaMetadata(filePath: string): Promise<ProbedMediaInfo | null> {
+    try {
+      const info = await invoke<ProbedMediaInfo | null>("probe_media_metadata", { filePath });
+      if (info) {
+        await invoke("db_update_probed_metadata", {
+          filePath,
+          duration: info.duration ?? null,
+          width: info.width ?? null,
+          height: info.height ?? null,
+          videoCodec: info.video_codec ?? null,
+          audioCodec: info.audio_codec ?? null,
+          isHdr: info.is_hdr,
+        });
+      }
+      return info;
+    } catch {
+      return null;
+    }
+  }
+
+  public async getBookmarks(filePath: string): Promise<BookmarkItem[]> {
+    try {
+      return await invoke<BookmarkItem[]>("db_get_bookmarks", { filePath });
+    } catch {
+      return [];
+    }
+  }
+
+  public async addBookmark(
+    filePath: string,
+    timestampSeconds: number,
+    label: string,
+  ): Promise<BookmarkItem | null> {
+    try {
+      return await invoke<BookmarkItem>("db_add_bookmark", {
+        filePath,
+        timestampSeconds,
+        label,
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  public async deleteBookmark(id: number): Promise<void> {
+    await invoke<void>("db_delete_bookmark", { id });
+  }
+
+  public async getCollections(): Promise<CollectionItem[]> {
+    try {
+      return await invoke<CollectionItem[]>("db_get_collections");
+    } catch {
+      return [];
+    }
+  }
+
+  public async createCollection(name: string, color?: string): Promise<CollectionItem> {
+    return await invoke<CollectionItem>("db_create_collection", {
+      name,
+      color: color ?? null,
+    });
+  }
+
+  public async deleteCollection(id: number): Promise<void> {
+    await invoke<void>("db_delete_collection", { id });
+  }
+
+  public async addToCollection(collectionId: number, filePaths: string[]): Promise<number> {
+    return await invoke<number>("db_add_to_collection", { collectionId, filePaths });
+  }
+
+  public async removeFromCollection(collectionId: number, filePath: string): Promise<void> {
+    await invoke<void>("db_remove_from_collection", { collectionId, filePath });
+  }
+
+  public async getCollectionItems(collectionId: number): Promise<string[]> {
+    try {
+      return await invoke<string[]>("db_get_collection_items", { collectionId });
+    } catch {
+      return [];
+    }
+  }
+
+  public async exportBackup(): Promise<string> {
+    return await invoke<string>("db_export_backup");
+  }
+
+  public async importBackup(jsonData: string): Promise<number> {
+    const count = await invoke<number>("db_import_backup", { jsonData });
+    this.notifyLibraryChanged();
+    return count;
   }
 
 }

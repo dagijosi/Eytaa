@@ -3,7 +3,10 @@ use tauri::{Emitter, Manager};
 mod db;
 mod media;
 mod library;
+mod power;
+mod taskbar;
 mod thumbnailer;
+mod tray;
 mod watcher;
 
 #[cfg(windows)]
@@ -196,6 +199,28 @@ pub fn run() {
     }
 
     builder
+        .register_uri_scheme_protocol("eytaa-thumb", |ctx, request| {
+            let path = request.uri().path().trim_start_matches('/');
+            let mut parts = path.splitn(2, '/');
+            let kind = parts.next().unwrap_or("");
+            let filename = parts.next().unwrap_or("");
+            if let Some(file_path) =
+                thumbnailer::resolve_thumb_file_for_uri(ctx.app_handle(), kind, filename)
+            {
+                if let Ok(bytes) = std::fs::read(&file_path) {
+                    return tauri::http::Response::builder()
+                        .status(200)
+                        .header("Content-Type", "image/jpeg")
+                        .header("Cache-Control", "public, max-age=86400")
+                        .body(bytes)
+                        .unwrap();
+                }
+            }
+            tauri::http::Response::builder()
+                .status(404)
+                .body(Vec::new())
+                .unwrap()
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -279,6 +304,23 @@ pub fn run() {
             thumbnailer::get_video_scrub_frame,
             thumbnailer::get_thumbnail_cache_stats,
             thumbnailer::clean_thumbnail_cache,
+            thumbnailer::probe_media_metadata,
+            db::db_update_probed_metadata,
+            db::db_get_bookmarks,
+            db::db_add_bookmark,
+            db::db_delete_bookmark,
+            db::db_get_collections,
+            db::db_create_collection,
+            db::db_delete_collection,
+            db::db_add_to_collection,
+            db::db_remove_from_collection,
+            db::db_get_collection_items,
+            db::db_export_backup,
+            db::db_import_backup,
+            power::get_power_status,
+            power::set_playback_wake_lock,
+            taskbar::set_taskbar_progress,
+            tray::set_tray_enabled,
             pip::enter_pip,
             pip::exit_pip,
         ])

@@ -1,6 +1,7 @@
 import type { PlayerState, ChapterInfo } from "../../services/player/types";
 import type { PlaybackProfile } from "../../services/player/profileTypes";
 import type { HistoryEntry } from "../../services/storage/storageService";
+import type { BookmarkItem } from "../../services/library/libraryService";
 
 export interface PlaylistItem {
   id: string;
@@ -127,6 +128,11 @@ export interface PlaybackSlice extends PlayerState {
   openUrl: (url: string) => Promise<void>;
   isUrlModalOpen: boolean;
   toggleUrlModal: (open?: boolean) => void;
+  // Scene Bookmarks
+  bookmarks: BookmarkItem[];
+  loadBookmarks: (filePath: string) => Promise<void>;
+  addBookmark: (label?: string) => Promise<void>;
+  deleteBookmark: (id: number) => Promise<void>;
   dispose: () => Promise<void>;
 }
 
@@ -206,6 +212,20 @@ export interface SettingsSlice {
   setEdgeHoverPlaylistEnabled: (enabled: boolean) => Promise<void>;
   edgeHoverPlaylistTrigger: "fullscreen" | "always" | "button_only" | "click_only";
   setEdgeHoverPlaylistTrigger: (trigger: "fullscreen" | "always" | "button_only" | "click_only") => Promise<void>;
+  // v0.3.0 Audio, Power & Desktop Integration
+  volumeBoostEnabled: boolean;
+  toggleVolumeBoost: (enabled?: boolean) => Promise<void>;
+  eqPreset: string;
+  eqGains: number[];
+  setEqualizer: (presetId: string, gains?: number[]) => Promise<void>;
+  preventSleepDuringPlayback: boolean;
+  setPreventSleepDuringPlayback: (enabled: boolean) => Promise<void>;
+  autoBatterySaver: boolean;
+  setAutoBatterySaver: (enabled: boolean) => Promise<void>;
+  minimizeToTray: boolean;
+  setMinimizeToTray: (enabled: boolean) => Promise<void>;
+  isOnBattery: boolean;
+  setIsOnBattery: (onBattery: boolean) => void;
 }
 
 export interface UiSlice {

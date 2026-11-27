@@ -162,6 +162,12 @@ export const createPlaybackSlice: StateCreator<
         savedEdgeHover,
         savedEdgeHoverTrigger,
         savedSession,
+        savedVolumeBoost,
+        savedEqPreset,
+        savedEqGains,
+        savedPreventSleep,
+        savedAutoBatterySaver,
+        savedMinimizeToTray,
       ] = await Promise.all([
         storageService.getPreference<number>("volume"),
         storageService.getRecentFiles(15),
@@ -183,7 +189,44 @@ export const createPlaybackSlice: StateCreator<
           items: Array<{ filePath: string; title: string }>;
           index: number;
         }>("sessionPlaylist"),
+        storageService.getPreference<boolean>("volumeBoostEnabled"),
+        storageService.getPreference<string>("eqPreset"),
+        storageService.getPreference<number[]>("eqGains"),
+        storageService.getPreference<boolean>("preventSleepDuringPlayback"),
+        storageService.getPreference<boolean>("autoBatterySaver"),
+        storageService.getPreference<boolean>("minimizeToTray"),
       ]);
+
+      const eqGainsToApply = Array.isArray(savedEqGains) && savedEqGains.length === 10
+        ? savedEqGains
+        : [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+      if (typeof savedVolumeBoost === "boolean") {
+        set({ volumeBoostEnabled: savedVolumeBoost });
+        if (savedVolumeBoost) {
+          await playerService.setVolumeMax(150).catch(() => {});
+        }
+      }
+      if (savedEqPreset || savedEqGains) {
+        set({
+          eqPreset: savedEqPreset || "flat",
+          eqGains: eqGainsToApply,
+        });
+      }
+      if (typeof savedPreventSleep === "boolean") {
+        set({ preventSleepDuringPlayback: savedPreventSleep });
+      }
+      if (typeof savedAutoBatterySaver === "boolean") {
+        set({ autoBatterySaver: savedAutoBatterySaver });
+      }
+      if (typeof savedMinimizeToTray === "boolean") {
+        set({ minimizeToTray: savedMinimizeToTray });
+        if (savedMinimizeToTray) {
+          import("../../services/system/powerService").then(({ powerService }) => {
+            void powerService.setTrayEnabled(true);
+          });
+        }
+      }
 
       if (savedQueueOnPlayMode) {
         set({ queueOnPlayMode: savedQueueOnPlayMode });
@@ -300,20 +343,19 @@ export const createPlaybackSlice: StateCreator<
         activeProfileId: savedActiveProfileId || "default",
       });
 
-      // Night listening setting
-      if (typeof savedNightMode === "boolean") {
-        set({ isNightListening: savedNightMode });
-        if (savedNightMode) {
-          const activeProf = allProfiles.find(
-            (p) => p.id === (savedActiveProfileId || "default"),
-          );
-          const baseFilter =
-            activeProf?.settings.audioFilter ||
-            (activeProf?.settings.audioNormalize ? "lavfi=[loudnorm]" : "");
-          playerService
-            .setMpvProperty("af", composeAudioFilter(baseFilter, true))
-            .catch(() => {});
-        }
+      // Night listening & EQ setting
+      const isNight = typeof savedNightMode === "boolean" ? savedNightMode : false;
+      set({ isNightListening: isNight });
+      if (isNight || eqGainsToApply.some((g) => g !== 0)) {
+        const activeProf = allProfiles.find(
+          (p) => p.id === (savedActiveProfileId || "default"),
+        );
+        const baseFilter =
+          activeProf?.settings.audioFilter ||
+          (activeProf?.settings.audioNormalize ? "lavfi=[loudnorm]" : "");
+        playerService
+          .setMpvProperty("af", composeAudioFilter(baseFilter, isNight, eqGainsToApply))
+          .catch(() => {});
       }
 
       // Pause-on-sleep setting
@@ -415,7 +457,8 @@ export const createPlaybackSlice: StateCreator<
       if (seq !== activeLoadSequence) return;
 
       // Clear previous file's timer/duration immediately so UI never shows stale duration while loading
-      set({ currentTime: 0, duration: 0 });
+      set({ currentTime: 0, duration: 0, bookmarks: [] });
+      void get().loadBookmarks(path);
 
       try {
         await playerService.openFile(path);
@@ -603,7 +646,8 @@ export const createPlaybackSlice: StateCreator<
     },
 
     setVolume: async (value: number) => {
-      const clamped = Math.max(0, Math.min(100, Math.round(value)));
+      const maxVol = get().volumeBoostEnabled ? 150 : 100;
+      const clamped = Math.max(0, Math.min(maxVol, Math.round(value)));
       await playerService.setVolume(clamped);
       await storageService.setPreference("volume", clamped);
       get().showOSD(`Volume: ${clamped}%`);
@@ -882,6 +926,40 @@ export const createPlaybackSlice: StateCreator<
       set((s) => ({
         isUrlModalOpen: open !== undefined ? open : !s.isUrlModalOpen,
       }));
+    },
+
+    bookmarks: [],
+
+    loadBookmarks: async (filePath: string) => {
+      const items = await libraryService.getBookmarks(filePath);
+      if (get().mediaMetadata?.filePath === filePath || get().bookmarks.length === 0) {
+        set({ bookmarks: items });
+      }
+    },
+
+    addBookmark: async (label?: string) => {
+      const state = get();
+      const filePath = state.mediaMetadata?.filePath;
+      if (!filePath) return;
+      const pos = state.currentTime;
+      const autoLabel = label?.trim() || `Bookmark (${formatSeconds(pos)})`;
+      const created = await libraryService.addBookmark(filePath, pos, autoLabel);
+      if (created) {
+        set((s) => ({
+          bookmarks: [...s.bookmarks, created].sort(
+            (a, b) => a.timestamp_seconds - b.timestamp_seconds,
+          ),
+        }));
+        get().showOSD(`Bookmarked at ${formatSeconds(pos)}`);
+      }
+    },
+
+    deleteBookmark: async (id: number) => {
+      await libraryService.deleteBookmark(id);
+      set((s) => ({
+        bookmarks: s.bookmarks.filter((b) => b.id !== id),
+      }));
+      get().showOSD("Bookmark removed");
     },
 
     openUrl: async (url: string) => {

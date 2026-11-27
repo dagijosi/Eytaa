@@ -1,7 +1,10 @@
 import { useState, useRef, useEffect } from "react";
-import { Headphones, Subtitles, Check, Moon } from "lucide-react";
+import { Headphones, Subtitles, Check, Moon, Globe, Search } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useThemeStore } from "../../stores/themeStore";
+import { usePlayerStore } from "../../stores/playerStore";
+import { storageService } from "../../services/storage/storageService";
 import type { TrackInfo } from "../../services/player/types";
 import { activeBtnStyle } from "./shared";
 
@@ -352,6 +355,8 @@ export function SubtitleMenu({
               <span>+ Load External Subtitle...</span>
             </button>
 
+            <OnlineSubtitleSearch onLoadSubtitle={onLoadSubtitle} onClose={() => setShowSubMenu(false)} />
+
             {/* Subtitle Timing & Sync Stepper */}
             {onChangeSubDelay && (
               <div className="border-t border-white/10 pt-1.5 mt-0.5 px-2 flex flex-col gap-1.5">
@@ -405,5 +410,209 @@ export function SubtitleMenu({
         )}
       </div>
     </>
+  );
+}
+
+interface OpenSubV1Item {
+  id: string;
+  attributes: {
+    language: string;
+    release: string;
+    files: Array<{ file_id: number; file_name: string }>;
+  };
+}
+
+function OnlineSubtitleSearch({
+  onLoadSubtitle,
+  onClose,
+}: {
+  onLoadSubtitle: (path: string) => void;
+  onClose: () => void;
+}) {
+  const mediaTitle = usePlayerStore((s) => s.mediaMetadata?.title || "");
+  const [expanded, setExpanded] = useState(false);
+  const [query, setQuery] = useState(mediaTitle);
+  const [apiKey, setApiKey] = useState("");
+  const [showKeyInput, setShowKeyInput] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [results, setResults] = useState<OpenSubV1Item[]>([]);
+
+  useEffect(() => {
+    storageService.getPreference<string>("opensubtitlesApiKey").then((k) => {
+      if (k) setApiKey(k);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (expanded && !query && mediaTitle) {
+      setQuery(mediaTitle);
+    }
+  }, [expanded, mediaTitle, query]);
+
+  const handleSaveKey = async (val: string) => {
+    setApiKey(val);
+    await storageService.setPreference("opensubtitlesApiKey", val.trim());
+  };
+
+  const handleSearch = async () => {
+    const q = query.trim();
+    if (!q) return;
+    if (!apiKey.trim()) {
+      setShowKeyInput(true);
+      setError("Enter a free OpenSubtitles.com API key or use Browser Search below.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `https://api.opensubtitles.com/api/v1/subtitles?query=${encodeURIComponent(q)}`,
+        {
+          headers: {
+            "Api-Key": apiKey.trim(),
+            "User-Agent": "EYTAA v0.3.0",
+          },
+        },
+      );
+      if (res.status === 401 || res.status === 403) {
+        setShowKeyInput(true);
+        throw new Error("Invalid OpenSubtitles API key.");
+      }
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const json = (await res.json()) as { data?: OpenSubV1Item[] };
+      const list = (json.data || []).filter((d) => d.attributes?.files?.length > 0).slice(0, 6);
+      setResults(list);
+      if (list.length === 0) {
+        setError("No matching subtitles found.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Subtitle search failed.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDownloadAndLoad = async (fileId: number) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("https://api.opensubtitles.com/api/v1/download", {
+        method: "POST",
+        headers: {
+          "Api-Key": apiKey.trim(),
+          "Content-Type": "application/json",
+          "User-Agent": "EYTAA v0.3.0",
+        },
+        body: JSON.stringify({ file_id: fileId }),
+      });
+      if (!res.ok) throw new Error(`Download failed (${res.status})`);
+      const json = (await res.json()) as { link?: string };
+      if (json.link) {
+        onLoadSubtitle(json.link);
+        onClose();
+      } else {
+        setError("No direct subtitle link returned.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch subtitle.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!expanded) {
+    return (
+      <button
+        onClick={() => setExpanded(true)}
+        className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] text-neutral-400 hover:text-white hover:bg-white/5 rounded-lg transition duration-150 cursor-pointer"
+      >
+        <Globe className="w-3 h-3" />
+        <span>Search Subtitles Online...</span>
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-1 p-2 rounded-lg bg-white/[0.04] border border-white/10 flex flex-col gap-1.5">
+      <div className="flex items-center justify-between text-[10px] text-neutral-400 px-0.5">
+        <span>OpenSubtitles.com</span>
+        <button
+          type="button"
+          onClick={() => setShowKeyInput((p) => !p)}
+          className="text-neutral-400 hover:text-white underline cursor-pointer"
+        >
+          {apiKey ? "API Key Set" : "Set API Key"}
+        </button>
+      </div>
+
+      {showKeyInput && (
+        <input
+          type="password"
+          value={apiKey}
+          onChange={(e) => void handleSaveKey(e.target.value)}
+          placeholder="Paste free OpenSubtitles.com API key..."
+          className="w-full bg-black/50 border border-white/15 rounded px-2 py-1 text-[10px] text-white placeholder-neutral-500 focus:outline-none focus:border-white/30"
+        />
+      )}
+
+      <div className="flex items-center gap-1">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void handleSearch();
+          }}
+          placeholder="Movie or episode title..."
+          className="flex-1 min-w-0 bg-black/50 border border-white/10 rounded px-2 py-1 text-[11px] text-white placeholder-neutral-500 focus:outline-none focus:border-white/30"
+        />
+        <button
+          onClick={() => void handleSearch()}
+          disabled={loading}
+          className="p-1.5 rounded bg-white/10 hover:bg-white/20 text-white cursor-pointer disabled:opacity-50"
+          title="Search OpenSubtitles API"
+        >
+          <Search className="w-3 h-3" />
+        </button>
+      </div>
+
+      {loading && <div className="text-[10px] text-neutral-400 px-1">Searching...</div>}
+      {error && <div className="text-[10px] text-amber-400/90 px-1">{error}</div>}
+
+      {results.length > 0 && (
+        <div className="flex flex-col gap-0.5 max-h-32 overflow-y-auto">
+          {results.map((r) => {
+            const f = r.attributes.files[0];
+            return (
+              <button
+                key={r.id}
+                onClick={() => void handleDownloadAndLoad(f.file_id)}
+                className="flex items-center justify-between gap-1.5 px-1.5 py-1 rounded hover:bg-white/10 text-left text-[10px] text-neutral-200 cursor-pointer"
+                title={r.attributes.release || f.file_name}
+              >
+                <span className="truncate">{r.attributes.release || f.file_name}</span>
+                <span className="text-[9px] font-mono text-neutral-400 uppercase shrink-0">
+                  {r.attributes.language}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => {
+          const q = encodeURIComponent(query.trim() || mediaTitle || "");
+          void openUrl(`https://www.opensubtitles.org/en/search2/sublanguageid-all/moviename-${q}`);
+        }}
+        className="w-full py-1 rounded bg-white/5 hover:bg-white/10 text-[10px] text-neutral-300 hover:text-white text-center transition cursor-pointer"
+      >
+        Search in Browser (OpenSubtitles.org) ↗
+      </button>
+    </div>
   );
 }

@@ -316,6 +316,28 @@ export class MpvPlayerService implements MediaPlayerService {
             }
           })
           .catch(() => {});
+        if (this.lastLoadedPath && !/^[a-z][a-z0-9+.-]*:\/\//i.test(this.lastLoadedPath)) {
+          const loadedFile = this.lastLoadedPath;
+          void Promise.all([
+            getProperty("video-params/w", "int64").catch(() => null),
+            getProperty("video-params/h", "int64").catch(() => null),
+            getProperty("duration", "double").catch(() => null),
+          ]).then(([w, h, d]) => {
+            if (typeof h === "number" && h > 0) {
+              import("@tauri-apps/api/core").then(({ invoke }) => {
+                void invoke("db_update_probed_metadata", {
+                  filePath: loadedFile,
+                  duration: typeof d === "number" && d > 0 ? d : null,
+                  width: typeof w === "number" && w > 0 ? w : null,
+                  height: h,
+                  videoCodec: null,
+                  audioCodec: null,
+                  isHdr: false,
+                }).catch(() => {});
+              });
+            }
+          });
+        }
         this.scheduleAutoSubtitleSelection();
         break;
       case "end-file": {
@@ -611,9 +633,20 @@ export class MpvPlayerService implements MediaPlayerService {
     }
   }
 
+  private volumeMax = 100;
+
+  public async setVolumeMax(max: 100 | 150): Promise<void> {
+    await this.ensureInitialized();
+    this.volumeMax = max;
+    await setProperty("volume-max", max);
+    if (this.state.volume > max) {
+      await this.setVolume(max);
+    }
+  }
+
   public async setVolume(value: number): Promise<void> {
     await this.ensureInitialized();
-    const clamped = Math.max(0, Math.min(100, Math.round(value)));
+    const clamped = Math.max(0, Math.min(this.volumeMax, Math.round(value)));
     await setProperty("volume", clamped);
     this.updateState({ volume: clamped, muted: clamped === 0 ? true : this.state.muted });
   }

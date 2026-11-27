@@ -231,7 +231,7 @@ export const createSettingsSlice: StateCreator<
     const baseFilter =
       activeProf?.settings.audioFilter ||
       (activeProf?.settings.audioNormalize ? "lavfi=[loudnorm]" : "");
-    const composed = composeAudioFilter(baseFilter, enabled);
+    const composed = composeAudioFilter(baseFilter, enabled, get().eqGains);
     await playerService.setMpvProperty("af", composed);
     get().showOSD(
       enabled ? "Night Mode: ON (Dialogue Boosted)" : "Night Mode: OFF",
@@ -272,7 +272,7 @@ export const createSettingsSlice: StateCreator<
         s.audioFilter || (s.audioNormalize ? "lavfi=[loudnorm]" : "");
       await playerService.setMpvProperty(
         "af",
-        composeAudioFilter(baseFilter, get().isNightListening),
+        composeAudioFilter(baseFilter, get().isNightListening, get().eqGains),
       );
 
       await playerService.setMpvProperty("audio-delay", s.audioDelay / 1000);
@@ -482,5 +482,73 @@ export const createSettingsSlice: StateCreator<
       set({ skipAnimation: null });
       skipAnimationTimer = null;
     }, 750);
+  },
+
+  volumeBoostEnabled: false,
+
+  toggleVolumeBoost: async (enabled?: boolean) => {
+    const next = enabled !== undefined ? enabled : !get().volumeBoostEnabled;
+    set({ volumeBoostEnabled: next });
+    await storageService.setPreference("volumeBoostEnabled", next);
+    await playerService.setVolumeMax(next ? 150 : 100);
+    get().showOSD(next ? "Volume Boost: ON (Max 150%)" : "Volume Boost: OFF (Max 100%)");
+  },
+
+  eqPreset: "flat",
+  eqGains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+
+  setEqualizer: async (presetId: string, gains?: number[]) => {
+    const { EQ_PRESETS } = await import("../../services/player/audioFilter");
+    const preset = EQ_PRESETS.find((p) => p.id === presetId);
+    const nextGains = gains ?? preset?.gains ?? get().eqGains;
+    set({ eqPreset: presetId, eqGains: [...nextGains] });
+    await storageService.setPreference("eqPreset", presetId);
+    await storageService.setPreference("eqGains", nextGains);
+
+    const activeProf = get().profiles.find((p) => p.id === get().activeProfileId);
+    const baseFilter =
+      activeProf?.settings.audioFilter ||
+      (activeProf?.settings.audioNormalize ? "lavfi=[loudnorm]" : "");
+    await playerService.setMpvProperty(
+      "af",
+      composeAudioFilter(baseFilter, get().isNightListening, nextGains),
+    );
+    get().showOSD(`Equalizer: ${preset?.name ?? "Custom"}`);
+  },
+
+  preventSleepDuringPlayback: true,
+
+  setPreventSleepDuringPlayback: async (enabled: boolean) => {
+    set({ preventSleepDuringPlayback: enabled });
+    await storageService.setPreference("preventSleepDuringPlayback", enabled);
+    if (!enabled) {
+      const { powerService } = await import("../../services/system/powerService");
+      await powerService.setPlaybackWakeLock(false);
+    }
+    get().showOSD(enabled ? "Playback Wake Lock: Enabled" : "Playback Wake Lock: Disabled");
+  },
+
+  autoBatterySaver: true,
+
+  setAutoBatterySaver: async (enabled: boolean) => {
+    set({ autoBatterySaver: enabled });
+    await storageService.setPreference("autoBatterySaver", enabled);
+    get().showOSD(enabled ? "Auto Battery Saver: Enabled" : "Auto Battery Saver: Disabled");
+  },
+
+  minimizeToTray: false,
+
+  setMinimizeToTray: async (enabled: boolean) => {
+    set({ minimizeToTray: enabled });
+    await storageService.setPreference("minimizeToTray", enabled);
+    const { powerService } = await import("../../services/system/powerService");
+    await powerService.setTrayEnabled(enabled);
+    get().showOSD(enabled ? "System Tray Icon: Enabled" : "System Tray Icon: Disabled");
+  },
+
+  isOnBattery: false,
+
+  setIsOnBattery: (onBattery: boolean) => {
+    set({ isOnBattery: onBattery });
   },
 });

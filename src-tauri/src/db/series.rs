@@ -23,7 +23,12 @@ pub fn db_get_next_episode(
                     COALESCE(li.is_watched, 0) as is_watched,
                     COALESCE(li.manual_override, 0) as manual_override,
                     li.custom_poster,
-                    li.series_key
+                    li.series_key,
+                    li.width,
+                    li.height,
+                    li.video_codec,
+                    li.audio_codec,
+                    COALESCE(li.is_hdr, 0) as is_hdr
              FROM library_items li
              LEFT JOIN library_favorites lf ON li.file_path = lf.file_path
              LEFT JOIN resume_positions rp ON li.file_path = rp.file_path
@@ -69,6 +74,11 @@ pub fn db_get_next_episode(
                 manual_override: manual_i64 == 1,
                 custom_poster: row.get(23)?,
                 series_key: row.get(24)?,
+                width: row.get(25)?,
+                height: row.get(26)?,
+                video_codec: row.get(27)?,
+                audio_codec: row.get(28)?,
+                is_hdr: row.get::<_, i64>(29).unwrap_or(0) == 1,
             })
         })
         .optional()

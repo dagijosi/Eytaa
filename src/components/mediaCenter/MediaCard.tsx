@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, memo } from "react";
-import { Play, Plus, Heart, CheckCircle2, Circle, Edit3, Clock, Trash2 } from "lucide-react";
+import { Play, Plus, Heart, CheckCircle2, Circle, Edit3, Clock, Trash2, Check } from "lucide-react";
 import { useThemeStore } from "../../stores/themeStore";
 import { LibraryItem } from "../../services/library/libraryService";
 import { useResolvedPoster } from "../../hooks/useResolvedPoster";
@@ -16,6 +16,8 @@ interface MediaCardProps {
   onToggleWatched: (filePath: string, currentWatched: boolean) => void;
   badge?: string;
   showSeriesTitle?: boolean;
+  isSelectMode?: boolean;
+  isSelected?: boolean;
 }
 
 function formatDuration(seconds?: number): string {
@@ -62,6 +64,8 @@ function MediaCardBase({
   onToggleWatched,
   badge,
   showSeriesTitle = true,
+  isSelectMode = false,
+  isSelected = false,
 }: MediaCardProps) {
   const { accentColor, accentText } = useThemeStore();
   const [isVisible, setIsVisible] = useState(false);
@@ -119,7 +123,13 @@ function MediaCardBase({
   return (
     <div
       ref={containerRef}
-      className="group relative flex flex-col rounded-xl bg-neutral-900/50 hover:bg-neutral-900/85 border border-white/[0.08] hover:border-white/[0.2] transition-colors duration-150 overflow-hidden cursor-pointer shadow-xs"
+      className={`group relative flex flex-col rounded-xl transition-all duration-150 overflow-hidden cursor-pointer shadow-xs border ${
+        isSelectMode
+          ? isSelected
+            ? "bg-indigo-950/35 border-indigo-400 ring-2 ring-indigo-400/50 scale-[0.985]"
+            : "bg-neutral-900/50 hover:bg-neutral-900/80 border-white/15 hover:border-white/35"
+          : "bg-neutral-900/50 hover:bg-neutral-900/85 border-white/[0.08] hover:border-white/[0.2]"
+      }`}
       onClick={() => onPlay(item.file_path)}
     >
       {/* Media Artwork Container */}
@@ -209,90 +219,104 @@ function MediaCardBase({
           )}
         </div>
 
-        {/* Center Hover Action: Clean native-style Play Overlay */}
-        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10 pointer-events-none">
-          <div className="w-11 h-11 rounded-full bg-black/70 backdrop-blur-md border border-white/25 flex items-center justify-center shadow-lg">
+        {/* Selection Mode Overlay vs Normal Play/Action Overlays */}
+        {isSelectMode ? (
+          <>
             <div
-              style={{
-                backgroundColor: accentColor,
-                color: accentText,
-              }}
-              className="w-7 h-7 rounded-full flex items-center justify-center shadow-xs"
+              className={`absolute inset-0 transition-colors duration-150 pointer-events-none z-10 ${
+                isSelected ? "bg-indigo-500/20" : "group-hover:bg-white/[0.05]"
+              }`}
+            />
+            <div
+              className={`absolute top-2.5 left-2.5 z-30 w-6 h-6 rounded-lg border flex items-center justify-center transition-all pointer-events-none ${
+                isSelected
+                  ? "bg-indigo-500 border-indigo-300 text-white shadow-lg scale-105"
+                  : "bg-black/65 border-white/45 text-transparent group-hover:border-white/80 group-hover:text-white/50"
+              }`}
             >
-              <Play className="w-3.5 h-3.5 fill-current translate-x-0.5" />
+              <Check className="w-3.5 h-3.5 stroke-[3]" />
             </div>
-          </div>
-        </div>
+          </>
+        ) : (
+          <>
+            {/* Center Hover Action: Clean cinema-grade Play circle */}
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10 pointer-events-none">
+              <div className="w-11 h-11 rounded-full bg-black/65 backdrop-blur-md border border-white/25 flex items-center justify-center shadow-xl transition-transform duration-150 group-hover:scale-105">
+                <Play className="w-4 h-4 text-white fill-white" />
+              </div>
+            </div>
 
-        {/* Hover Quick Action Tray */}
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className="absolute bottom-1.5 left-1.5 flex items-center gap-0.5 bg-black/80 backdrop-blur-md border border-white/15 rounded-lg p-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-20 shadow-lg pointer-events-auto"
-        >
-          {/* Mark Watched Toggle */}
-          <button
-            type="button"
-            onClick={() => onToggleWatched(item.file_path, item.is_watched)}
-            title={item.is_watched ? "Mark as Unwatched" : "Mark as Watched"}
-            className={`p-1.5 rounded-md transition duration-150 cursor-pointer ${
-              item.is_watched
-                ? "text-emerald-400 hover:bg-emerald-500/20"
-                : "text-neutral-400 hover:text-white hover:bg-white/15"
-            }`}
-          >
-            {item.is_watched ? (
-              <CheckCircle2 className="w-3.5 h-3.5" />
-            ) : (
-              <Circle className="w-3.5 h-3.5" />
-            )}
-          </button>
-
-          {/* Favorite Toggle */}
-          <button
-            type="button"
-            onClick={() => onToggleFavorite(item.file_path)}
-            title={item.is_favorite ? "Remove from Favorites" : "Add to Favorites"}
-            className={`p-1.5 rounded-md transition duration-150 cursor-pointer ${
-              item.is_favorite
-                ? "text-rose-400 fill-rose-400 hover:bg-rose-500/20"
-                : "text-neutral-400 hover:text-white hover:bg-white/15"
-            }`}
-          >
-            <Heart className={`w-3.5 h-3.5 ${item.is_favorite ? "fill-current" : ""}`} />
-          </button>
-
-          {/* Queue to Playlist */}
-          <button
-            type="button"
-            onClick={() => onQueue(item.file_path)}
-            title="Add to Playlist"
-            className="p-1.5 rounded-md text-neutral-400 hover:text-white hover:bg-white/15 transition duration-150 cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </button>
-
-          {/* Edit Metadata */}
-          <button
-            type="button"
-            onClick={() => onEdit(item)}
-            title="Edit Details"
-            className="p-1.5 rounded-md text-neutral-400 hover:text-white hover:bg-white/15 transition duration-150 cursor-pointer"
-          >
-            <Edit3 className="w-3.5 h-3.5" />
-          </button>
-
-          {/* Delete File */}
-          {onDelete && (
-            <button
-              type="button"
-              onClick={() => onDelete(item)}
-              title="Delete File..."
-              className="p-1.5 rounded-md text-neutral-400 hover:text-rose-400 hover:bg-rose-500/20 transition duration-150 cursor-pointer"
+            {/* Hover Quick Action Tray */}
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="absolute bottom-1.5 left-1.5 flex items-center gap-0.5 bg-black/80 backdrop-blur-md border border-white/15 rounded-lg p-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-20 shadow-lg pointer-events-auto"
             >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
+              {/* Mark Watched Toggle */}
+              <button
+                type="button"
+                onClick={() => onToggleWatched(item.file_path, item.is_watched)}
+                title={item.is_watched ? "Mark as Unwatched" : "Mark as Watched"}
+                className={`p-1.5 rounded-md transition duration-150 cursor-pointer ${
+                  item.is_watched
+                    ? "text-emerald-400 hover:bg-emerald-500/20"
+                    : "text-neutral-400 hover:text-white hover:bg-white/15"
+                }`}
+              >
+                {item.is_watched ? (
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                ) : (
+                  <Circle className="w-3.5 h-3.5" />
+                )}
+              </button>
+
+              {/* Favorite Toggle */}
+              <button
+                type="button"
+                onClick={() => onToggleFavorite(item.file_path)}
+                title={item.is_favorite ? "Remove from Favorites" : "Add to Favorites"}
+                className={`p-1.5 rounded-md transition duration-150 cursor-pointer ${
+                  item.is_favorite
+                    ? "text-rose-400 fill-rose-400 hover:bg-rose-500/20"
+                    : "text-neutral-400 hover:text-white hover:bg-white/15"
+                }`}
+              >
+                <Heart className={`w-3.5 h-3.5 ${item.is_favorite ? "fill-current" : ""}`} />
+              </button>
+
+              {/* Queue to Playlist */}
+              <button
+                type="button"
+                onClick={() => onQueue(item.file_path)}
+                title="Add to Playlist"
+                className="p-1.5 rounded-md text-neutral-400 hover:text-white hover:bg-white/15 transition duration-150 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Edit Metadata */}
+              <button
+                type="button"
+                onClick={() => onEdit(item)}
+                title="Edit Details"
+                className="p-1.5 rounded-md text-neutral-400 hover:text-white hover:bg-white/15 transition duration-150 cursor-pointer"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Delete File */}
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={() => onDelete(item)}
+                  title="Delete File..."
+                  className="p-1.5 rounded-md text-neutral-400 hover:text-rose-400 hover:bg-rose-500/20 transition duration-150 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </>
+        )}
 
         {/* Progress Bar (Bottom of artwork) */}
         {isPartiallyWatched && progressPercent && (

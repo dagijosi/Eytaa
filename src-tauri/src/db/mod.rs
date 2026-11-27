@@ -6,6 +6,9 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 
 pub mod archive;
+mod backup;
+mod bookmarks;
+mod collections;
 mod favorites;
 mod history;
 mod library;
@@ -15,6 +18,9 @@ mod preferences;
 mod series;
 
 pub use archive::*;
+pub use backup::*;
+pub use bookmarks::*;
+pub use collections::*;
 pub use favorites::*;
 pub use history::*;
 pub use library::*;
@@ -54,6 +60,11 @@ pub struct LibraryItemDto {
     pub manual_override: bool,
     pub custom_poster: Option<String>,
     pub series_key: Option<String>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub video_codec: Option<String>,
+    pub audio_codec: Option<String>,
+    pub is_hdr: bool,
 }
 
 pub fn init_db(app: &AppHandle) -> Result<DbState, String> {
@@ -175,7 +186,31 @@ pub fn init_db(app: &AppHandle) -> Result<DbState, String> {
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS bookmarks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_path TEXT NOT NULL,
+            timestamp_seconds REAL NOT NULL,
+            label TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS collections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            color TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS collection_items (
+            collection_id INTEGER NOT NULL,
+            file_path TEXT NOT NULL,
+            added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (collection_id, file_path),
+            FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE
+        );
+
         -- Performance Indexes for fast searching, filtering, and joins
+        CREATE INDEX IF NOT EXISTS idx_bookmarks_path ON bookmarks (file_path);
         CREATE INDEX IF NOT EXISTS idx_series_metadata_key ON series_metadata (series_key);
         CREATE INDEX IF NOT EXISTS idx_library_items_folder ON library_items (folder_path);
         CREATE INDEX IF NOT EXISTS idx_library_items_type ON library_items (media_type);
@@ -207,6 +242,11 @@ pub fn init_db(app: &AppHandle) -> Result<DbState, String> {
     let _ = conn.execute("ALTER TABLE library_items ADD COLUMN manual_override INTEGER DEFAULT 0", []);
     let _ = conn.execute("ALTER TABLE library_items ADD COLUMN custom_poster TEXT", []);
     let _ = conn.execute("ALTER TABLE library_items ADD COLUMN series_key TEXT", []);
+    let _ = conn.execute("ALTER TABLE library_items ADD COLUMN width INTEGER", []);
+    let _ = conn.execute("ALTER TABLE library_items ADD COLUMN height INTEGER", []);
+    let _ = conn.execute("ALTER TABLE library_items ADD COLUMN video_codec TEXT", []);
+    let _ = conn.execute("ALTER TABLE library_items ADD COLUMN audio_codec TEXT", []);
+    let _ = conn.execute("ALTER TABLE library_items ADD COLUMN is_hdr INTEGER DEFAULT 0", []);
     let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_library_items_hash ON library_items (quick_hash)", []);
     let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_library_items_avail ON library_items (is_available)", []);
     let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_library_items_category ON library_items (category)", []);

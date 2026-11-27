@@ -34,6 +34,8 @@ import {
   Square,
   Settings,
   ArrowUpDown,
+  FolderHeart,
+  CheckSquare,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { listen } from "@tauri-apps/api/event";
@@ -58,20 +60,23 @@ import { DeleteMediaModal } from "./mediaCenter/DeleteMediaModal";
 import { WatchReportDashboard } from "./mediaCenter/WatchReportDashboard";
 import { SeriesDetailView } from "./mediaCenter/SeriesDetailView";
 import { ProceduralPoster } from "./mediaCenter/ProceduralPoster";
+import { CollectionsView } from "./mediaCenter/CollectionsView";
 import { normalizeSeriesKey } from "../utils/mediaTitle";
 import { pickPosterItem } from "../utils/mediaPoster";
 import { useResolvedPoster } from "../hooks/useResolvedPoster";
 import { SelectDropdown, SelectDropdownOption } from "./common/SelectDropdown";
 
-type MediaCenterTab = "hub" | "movies" | "series" | "music" | "all" | "favorites" | "duplicates" | "reports" | "folders";
+type MediaCenterTab = "hub" | "movies" | "series" | "music" | "collections" | "all" | "favorites" | "duplicates" | "reports" | "folders";
 type WatchFilter = "all" | "in_progress" | "unwatched" | "watched";
-type SortOption = "recent" | "title" | "year" | "duration";
+type ResolutionFilter = "all" | "4k" | "1080p" | "720p" | "sd";
+type SortOption = "recent" | "title" | "year" | "duration" | "size";
 
 const MEDIA_SORT_OPTIONS: SelectDropdownOption<SortOption>[] = [
   { value: "recent", label: "Recently Added", desc: "Newest items added to library first" },
   { value: "title", label: "Title (A – Z)", desc: "Alphabetical by title" },
   { value: "year", label: "Release Year", desc: "Newest release year first" },
   { value: "duration", label: "Duration", desc: "Longest playback runtime first" },
+  { value: "size", label: "File Size", desc: "Largest files first (helpful for freeing space)" },
 ];
 
 const RECENT_LIMIT_OPTIONS: SelectDropdownOption<number>[] = [
@@ -213,7 +218,7 @@ function SeriesCard({
                   e.stopPropagation();
                   onCoverChange(group);
                 }}
-                className="pointer-events-auto opacity-0 group-hover:opacity-100 p-1.5 rounded-lg bg-black/80 hover:bg-white/20 text-neutral-300 hover:text-white border border-white/15 backdrop-blur-md transition cursor-pointer shadow-lg"
+                className="pointer-events-auto opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-1.5 rounded-lg bg-black/80 hover:bg-white/20 text-neutral-300 hover:text-white border border-white/15 backdrop-blur-md transition cursor-pointer shadow-lg"
                 title="Change TV Series Cover Artwork"
               >
                 <Camera className="w-3.5 h-3.5" />
@@ -226,7 +231,7 @@ function SeriesCard({
                   e.stopPropagation();
                   onEdit(group);
                 }}
-                className="pointer-events-auto opacity-0 group-hover:opacity-100 p-1.5 rounded-lg bg-black/80 hover:bg-white/20 text-neutral-300 hover:text-white border border-white/15 backdrop-blur-md transition cursor-pointer shadow-lg"
+                className="pointer-events-auto opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-1.5 rounded-lg bg-black/80 hover:bg-white/20 text-neutral-300 hover:text-white border border-white/15 backdrop-blur-md transition cursor-pointer shadow-lg"
                 title="Edit TV Series Details"
               >
                 <Edit3 className="w-3.5 h-3.5" />
@@ -239,7 +244,7 @@ function SeriesCard({
                   e.stopPropagation();
                   onDelete(group.sampleItem);
                 }}
-                className="pointer-events-auto opacity-0 group-hover:opacity-100 p-1.5 rounded-lg bg-black/80 hover:bg-rose-500/20 text-neutral-300 hover:text-rose-400 border border-white/15 backdrop-blur-md transition cursor-pointer shadow-lg"
+                className="pointer-events-auto opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-1.5 rounded-lg bg-black/80 hover:bg-rose-500/20 text-neutral-300 hover:text-rose-400 border border-white/15 backdrop-blur-md transition cursor-pointer shadow-lg"
                 title="Delete Series File..."
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -287,12 +292,16 @@ function SeriesCard({
 }
 
 export function MediaLibraryModal() {
-  const { isLibraryOpen, toggleLibraryModal, toggleSettingsModal, openFile, addToPlaylist, showOSD } = usePlayerStore();
+  const { isLibraryOpen, toggleLibraryModal, toggleSettingsModal, openFile, addToPlaylist, showOSD, autoBatterySaver, isOnBattery } = usePlayerStore();
   const { accentColor, accentText } = useThemeStore();
 
   const [activeTab, setActiveTab] = useState<MediaCenterTab>("hub");
   const [watchFilter, setWatchFilter] = useState<WatchFilter>("all");
+  const [resolutionFilter, setResolutionFilter] = useState<ResolutionFilter>("all");
   const [sortBy, setSortBy] = useState<SortOption>("recent");
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const [collectionsList, setCollectionsList] = useState<Array<{ id: number; name: string }>>([]);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [cardFormat, setCardFormat] = useState<"poster" | "widescreen">(() => {
     try {
@@ -517,6 +526,56 @@ export function MediaLibraryModal() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isLibraryOpen, editingItem, inspectingSeriesName, toggleLibraryModal, handleCloseEdit]);
 
+  const refreshCollectionsList = useCallback(async () => {
+    const cols = await libraryService.getCollections();
+    setCollectionsList(cols.map((c) => ({ id: c.id, name: c.name })));
+  }, []);
+
+  // Load collections list whenever Library opens or tab switches
+  useEffect(() => {
+    if (!isLibraryOpen) return;
+    void refreshCollectionsList();
+  }, [isLibraryOpen, activeTab, refreshCollectionsList]);
+
+  useEffect(() => {
+    if (!isLibraryOpen || (autoBatterySaver && isOnBattery)) return;
+    const unprobed = items
+      .filter((i) => i.media_type === "video" && !i.height && !i.video_codec)
+      .slice(0, 5);
+    if (unprobed.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      for (const target of unprobed) {
+        if (cancelled) break;
+        const probed = await libraryService.probeMediaMetadata(target.file_path);
+        if (cancelled) break;
+        if (probed) {
+          setItems((prev) =>
+            prev.map((it) =>
+              it.file_path === target.file_path
+                ? {
+                    ...it,
+                    duration: probed.duration ?? it.duration,
+                    width: probed.width ?? it.width,
+                    height: probed.height ?? it.height,
+                    video_codec: probed.video_codec ?? it.video_codec,
+                    audio_codec: probed.audio_codec ?? it.audio_codec,
+                    is_hdr: probed.is_hdr,
+                  }
+                : it,
+            ),
+          );
+        }
+        await new Promise((r) => setTimeout(r, 250));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLibraryOpen, autoBatterySaver, isOnBattery, items.length]);
+
   // Derived media groups
   const movies = useMemo(() => {
     return items.filter(
@@ -547,6 +606,8 @@ export function MediaLibraryModal() {
       result.sort((a, b) => (b.year || "").localeCompare(a.year || ""));
     } else if (sortBy === "duration") {
       result.sort((a, b) => (b.duration || 0) - (a.duration || 0));
+    } else if (sortBy === "size") {
+      result.sort((a, b) => b.file_size - a.file_size);
     }
     return result;
   }, [music, watchFilter, sortBy]);
@@ -774,6 +835,35 @@ export function MediaLibraryModal() {
       result = result.filter((i) => i.is_watched);
     }
 
+    const getResolutionHeight = (item: LibraryItem): number => {
+      if (item.height && item.height > 0) return item.height;
+      const text = `${item.file_name} ${item.title}`;
+      if (/\b(2160p|4k|uhd)\b/i.test(text)) return 2160;
+      if (/\b(1080p|fhd)\b/i.test(text)) return 1080;
+      if (/\b(720p|hd)\b/i.test(text)) return 720;
+      if (/\b(480p|360p|dvdrip)\b/i.test(text)) return 480;
+      return 0;
+    };
+
+    if (resolutionFilter === "4k") {
+      result = result.filter((i) => getResolutionHeight(i) >= 2000);
+    } else if (resolutionFilter === "1080p") {
+      result = result.filter((i) => {
+        const h = getResolutionHeight(i);
+        return h >= 1000 && h < 2000;
+      });
+    } else if (resolutionFilter === "720p") {
+      result = result.filter((i) => {
+        const h = getResolutionHeight(i);
+        return h >= 700 && h < 1000;
+      });
+    } else if (resolutionFilter === "sd") {
+      result = result.filter((i) => {
+        const h = getResolutionHeight(i);
+        return h > 0 && h < 700;
+      });
+    }
+
     if (sortBy === "recent") {
       result.sort((a, b) => new Date(b.added_at).getTime() - new Date(a.added_at).getTime());
     } else if (sortBy === "title") {
@@ -782,10 +872,12 @@ export function MediaLibraryModal() {
       result.sort((a, b) => (b.year || "").localeCompare(a.year || ""));
     } else if (sortBy === "duration") {
       result.sort((a, b) => (b.duration || 0) - (a.duration || 0));
+    } else if (sortBy === "size") {
+      result.sort((a, b) => b.file_size - a.file_size);
     }
 
     return result;
-  }, [movies, watchFilter, sortBy]);
+  }, [movies, watchFilter, resolutionFilter, sortBy]);
 
   // Scan folder handler
   const handleScanFolder = async (folderPath: string) => {
@@ -1283,6 +1375,7 @@ export function MediaLibraryModal() {
                   { id: "movies", label: "Movies", icon: Film, count: movies.length },
                   { id: "series", label: "TV Shows", icon: Tv, count: seriesCount },
                   { id: "music", label: "Music", icon: Music, count: music.length },
+                  { id: "collections", label: "Collections", icon: FolderHeart, count: collectionsList.length || undefined },
                   { id: "all", label: "All Media", icon: Database, count: items.length },
                   { id: "favorites", label: "Favorites", icon: Heart, count: favorites.length },
                   { id: "reports", label: "Watch Report", icon: BarChart3, count: undefined },
@@ -1496,6 +1589,8 @@ export function MediaLibraryModal() {
                     ? "TV Series"
                     : activeTab === "music"
                     ? "Music"
+                    : activeTab === "collections"
+                    ? "Collections"
                     : activeTab === "all"
                     ? "All Media"
                     : activeTab === "reports"
@@ -2196,17 +2291,125 @@ export function MediaLibraryModal() {
                 ))}
               </div>
 
-              {/* Sort Selector */}
-              <SelectDropdown<SortOption>
-                value={sortBy}
-                onChange={setSortBy}
-                options={MEDIA_SORT_OPTIONS}
-                label="Sort by:"
-                icon={<ArrowUpDown className="w-3.5 h-3.5" />}
-                menuHeader="Sort Movies By"
-                width="w-56"
-              />
+              {/* Sort & Bulk Select Controls */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-xl p-0.5 text-[10px] font-mono">
+                  {(["all", "4k", "1080p", "720p"] as const).map((res) => (
+                    <button
+                      key={res}
+                      onClick={() => setResolutionFilter(res)}
+                      className={`px-2 py-1 rounded-lg uppercase transition cursor-pointer ${
+                        resolutionFilter === res
+                          ? "bg-white/15 text-white font-bold"
+                          : "text-neutral-400 hover:text-white"
+                      }`}
+                    >
+                      {res === "all" ? "Any Res" : res}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => {
+                    setIsSelectMode((p) => !p);
+                    setSelectedPaths(new Set());
+                  }}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+                    isSelectMode
+                      ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/40"
+                      : "bg-white/5 text-neutral-300 border-white/10 hover:bg-white/10"
+                  }`}
+                >
+                  <CheckSquare className="w-3.5 h-3.5" />
+                  <span>{isSelectMode ? "Done" : "Select"}</span>
+                </button>
+
+                <SelectDropdown<SortOption>
+                  value={sortBy}
+                  onChange={setSortBy}
+                  options={MEDIA_SORT_OPTIONS}
+                  label="Sort by:"
+                  icon={<ArrowUpDown className="w-3.5 h-3.5" />}
+                  menuHeader="Sort Movies By"
+                  width="w-56"
+                />
+              </div>
             </div>
+
+            {isSelectMode && (
+              <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-400/30 text-xs">
+                <div className="flex items-center gap-2.5">
+                  <span className="font-mono text-indigo-200 font-bold">
+                    {selectedPaths.size > 0
+                      ? `${selectedPaths.size} selected`
+                      : "Select Mode — Click movies to select"}
+                  </span>
+                  <button
+                    onClick={() => setSelectedPaths(new Set(filteredMovies.map((m) => m.file_path)))}
+                    className="px-2 py-0.5 rounded-md bg-white/10 hover:bg-white/15 text-[11px] text-neutral-200 cursor-pointer"
+                  >
+                    Select All ({filteredMovies.length})
+                  </button>
+                </div>
+                {selectedPaths.size > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      onClick={async () => {
+                        for (const p of selectedPaths) {
+                          await libraryService.setWatchedStatus(p, true);
+                        }
+                        setSelectedPaths(new Set());
+                        await loadData();
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 font-semibold cursor-pointer"
+                    >
+                      Mark Watched
+                    </button>
+                    <button
+                      onClick={async () => {
+                        for (const p of selectedPaths) {
+                          await libraryService.setWatchedStatus(p, false);
+                        }
+                        setSelectedPaths(new Set());
+                        await loadData();
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-white/10 text-neutral-200 hover:bg-white/15 font-semibold cursor-pointer"
+                    >
+                      Mark Unwatched
+                    </button>
+                    <button
+                      onClick={() => {
+                        addToPlaylist(Array.from(selectedPaths));
+                        showOSD(`Added ${selectedPaths.size} items to queue`);
+                        setSelectedPaths(new Set());
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-white/10 text-neutral-200 hover:bg-white/15 font-semibold cursor-pointer"
+                    >
+                      + Queue
+                    </button>
+                    {collectionsList.map((col) => (
+                      <button
+                        key={col.id}
+                        onClick={async () => {
+                          await libraryService.addToCollection(col.id, Array.from(selectedPaths));
+                          showOSD(`Added ${selectedPaths.size} items to ${col.name}`);
+                          setSelectedPaths(new Set());
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30 font-semibold cursor-pointer"
+                      >
+                        + {col.name}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => setSelectedPaths(new Set())}
+                      className="px-2 py-1 rounded-lg text-neutral-400 hover:text-white cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Movies Content */}
             {filteredMovies.length === 0 ? (
@@ -2224,18 +2427,34 @@ export function MediaLibraryModal() {
                 getKey={(movie) => movie.file_path}
                 cardFormat={cardFormat}
                 rowEstimate={280}
-                renderItem={(movie) => (
-                  <MediaCard
-                    item={movie}
-                    viewFormat={cardFormat}
-                    onPlay={() => handlePlayMediaWithAutoQueue(movie)}
-                    onQueue={handleQueueItem}
-                    onEdit={(it) => setEditingItem(it)}
-                    onDelete={setDeletingItem}
-                    onToggleFavorite={handleToggleFavorite}
-                    onToggleWatched={handleToggleWatched}
-                  />
-                )}
+                renderItem={(movie) => {
+                  const isSelected = selectedPaths.has(movie.file_path);
+                  return (
+                    <MediaCard
+                      item={movie}
+                      viewFormat={cardFormat}
+                      isSelectMode={isSelectMode}
+                      isSelected={isSelected}
+                      onPlay={() => {
+                        if (isSelectMode) {
+                          setSelectedPaths((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(movie.file_path)) next.delete(movie.file_path);
+                            else next.add(movie.file_path);
+                            return next;
+                          });
+                        } else {
+                          handlePlayMediaWithAutoQueue(movie);
+                        }
+                      }}
+                      onQueue={handleQueueItem}
+                      onEdit={(it) => setEditingItem(it)}
+                      onDelete={setDeletingItem}
+                      onToggleFavorite={handleToggleFavorite}
+                      onToggleWatched={handleToggleWatched}
+                    />
+                  );
+                }}
               />
             )}
           </div>
@@ -2425,6 +2644,24 @@ export function MediaLibraryModal() {
                 )}
               />
             )}
+          </div>
+        ) : activeTab === "collections" ? (
+          <div className="flex-1 overflow-y-auto px-6 py-6 max-w-6xl mx-auto w-full">
+            <CollectionsView
+              allItems={items}
+              accentColor={accentColor}
+              accentText={accentText}
+              onPlayItem={(item) => handlePlayItem(item.file_path)}
+              onCollectionsChanged={() => void refreshCollectionsList()}
+              onQueueCollection={(colItems) => {
+                if (colItems.length === 0) return;
+                void openFile(colItems[0].file_path, {
+                  clearQueue: true,
+                  queueEpisodes: colItems.slice(1).map((i) => i.file_path),
+                });
+                toggleLibraryModal(false);
+              }}
+            />
           </div>
         ) : activeTab === "reports" ? (
           /* TAB: WATCH REPORT & ANALYTICS */

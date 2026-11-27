@@ -30,7 +30,12 @@ pub fn db_get_library_items(
                 COALESCE(li.is_watched, 0) as is_watched,
                 COALESCE(li.manual_override, 0) as manual_override,
                 li.custom_poster,
-                li.series_key
+                li.series_key,
+                li.width,
+                li.height,
+                li.video_codec,
+                li.audio_codec,
+                COALESCE(li.is_hdr, 0) as is_hdr
          FROM library_items li
          LEFT JOIN library_favorites lf ON li.file_path = lf.file_path
          LEFT JOIN resume_positions rp ON li.file_path = rp.file_path
@@ -170,6 +175,11 @@ pub fn db_get_library_items(
                 manual_override: manual_i64 == 1,
                 custom_poster: row.get(23)?,
                 series_key: row.get(24)?,
+                width: row.get(25)?,
+                height: row.get(26)?,
+                video_codec: row.get(27)?,
+                audio_codec: row.get(28)?,
+                is_hdr: row.get::<_, i64>(29).unwrap_or(0) == 1,
             })
         })
         .map_err(|e| e.to_string())?
@@ -177,6 +187,41 @@ pub fn db_get_library_items(
         .collect();
 
     Ok(items)
+}
+
+#[tauri::command]
+pub fn db_update_probed_metadata(
+    state: tauri::State<'_, DbState>,
+    file_path: String,
+    duration: Option<f64>,
+    width: Option<u32>,
+    height: Option<u32>,
+    video_codec: Option<String>,
+    audio_codec: Option<String>,
+    is_hdr: bool,
+) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+    conn.execute(
+        "UPDATE library_items
+         SET duration = COALESCE(?2, duration),
+             width = COALESCE(?3, width),
+             height = COALESCE(?4, height),
+             video_codec = COALESCE(?5, video_codec),
+             audio_codec = COALESCE(?6, audio_codec),
+             is_hdr = ?7
+         WHERE file_path = ?1",
+        params![
+            file_path,
+            duration,
+            width.map(|v| v as i64),
+            height.map(|v| v as i64),
+            video_codec,
+            audio_codec,
+            if is_hdr { 1i64 } else { 0i64 }
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]

@@ -1,0 +1,322 @@
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { FolderPlus, Play, Trash2, Layers, X, Plus, Search, Check } from "lucide-react";
+import { libraryService, CollectionItem, LibraryItem } from "../../services/library/libraryService";
+
+interface CollectionsViewProps {
+  allItems: LibraryItem[];
+  accentColor: string;
+  accentText: string;
+  onPlayItem: (item: LibraryItem) => void;
+  onQueueCollection: (items: LibraryItem[]) => void;
+  onCollectionsChanged?: () => void;
+}
+
+export function CollectionsView({
+  allItems,
+  accentColor,
+  accentText,
+  onPlayItem,
+  onQueueCollection,
+  onCollectionsChanged,
+}: CollectionsViewProps) {
+  const [collections, setCollections] = useState<CollectionItem[]>([]);
+  const [activeCollectionId, setActiveCollectionId] = useState<number | null>(null);
+  const [collectionPaths, setCollectionPaths] = useState<string[]>([]);
+  const [newName, setNewName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [showAddPicker, setShowAddPicker] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState("");
+
+  const loadCollections = useCallback(async () => {
+    const list = await libraryService.getCollections();
+    setCollections(list);
+    if (list.length > 0 && activeCollectionId === null) {
+      setActiveCollectionId(list[0].id);
+    }
+  }, [activeCollectionId]);
+
+  useEffect(() => {
+    void loadCollections();
+  }, [loadCollections]);
+
+  useEffect(() => {
+    if (activeCollectionId === null) {
+      setCollectionPaths([]);
+      return;
+    }
+    libraryService.getCollectionItems(activeCollectionId).then(setCollectionPaths);
+  }, [activeCollectionId]);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newName.trim();
+    if (!trimmed || creating) return;
+    setCreating(true);
+    try {
+      const created = await libraryService.createCollection(trimmed);
+      setNewName("");
+      setCollections((prev) => [...prev, created]);
+      setActiveCollectionId(created.id);
+      setShowAddPicker(true);
+      onCollectionsChanged?.();
+    } catch (err) {
+      console.warn("Create collection failed:", err);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDeleteCollection = async (id: number) => {
+    await libraryService.deleteCollection(id);
+    setCollections((prev) => prev.filter((c) => c.id !== id));
+    if (activeCollectionId === id) {
+      setActiveCollectionId(null);
+      setShowAddPicker(false);
+    }
+    onCollectionsChanged?.();
+  };
+
+  const handleAddItem = async (filePath: string) => {
+    if (activeCollectionId === null) return;
+    await libraryService.addToCollection(activeCollectionId, [filePath]);
+    setCollectionPaths((prev) => (prev.includes(filePath) ? prev : [filePath, ...prev]));
+    void loadCollections();
+    onCollectionsChanged?.();
+  };
+
+  const handleRemoveItem = async (filePath: string) => {
+    if (activeCollectionId === null) return;
+    await libraryService.removeFromCollection(activeCollectionId, filePath);
+    setCollectionPaths((prev) => prev.filter((p) => p !== filePath));
+    void loadCollections();
+    onCollectionsChanged?.();
+  };
+
+  const pathSet = useMemo(() => new Set(collectionPaths), [collectionPaths]);
+  const activeItems = useMemo(
+    () => allItems.filter((item) => pathSet.has(item.file_path)),
+    [allItems, pathSet],
+  );
+  const activeCollection = collections.find((c) => c.id === activeCollectionId) || null;
+
+  const pickerCandidates = useMemo(() => {
+    const q = pickerSearch.trim().toLowerCase();
+    return allItems
+      .filter((it) => {
+        if (!q) return true;
+        return (
+          it.title.toLowerCase().includes(q) ||
+          it.file_name.toLowerCase().includes(q) ||
+          (it.series_name && it.series_name.toLowerCase().includes(q))
+        );
+      })
+      .slice(0, 40);
+  }, [allItems, pickerSearch]);
+
+  return (
+    <div className="space-y-5">
+      {/* Create Collection Box */}
+      <form
+        onSubmit={handleCreate}
+        className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2"
+      >
+        <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+          Create New Collection / Watchlist
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Type a new collection name (e.g. Weekend Watchlist, 4K Sci-Fi)..."
+            className="flex-1 min-w-[220px] px-3.5 py-2 rounded-xl bg-black/50 border border-white/20 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-white/40"
+          />
+          <button
+            type="submit"
+            disabled={!newName.trim() || creating}
+            style={{ backgroundColor: accentColor, color: accentText }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer hover:brightness-110 disabled:opacity-40 transition"
+          >
+            <FolderPlus className="w-3.5 h-3.5" />
+            <span>Create Collection</span>
+          </button>
+        </div>
+      </form>
+
+      {collections.length === 0 ? (
+        <div className="py-16 text-center rounded-2xl border border-white/5 bg-white/[0.02]">
+          <Layers className="w-8 h-8 text-neutral-600 mx-auto mb-2" />
+          <p className="text-sm font-medium text-neutral-300">No Collections Yet</p>
+          <p className="text-xs text-neutral-500 mt-1">
+            Type a name above and click Create Collection, then add movies or shows directly inside.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          {/* Collection List */}
+          <div className="space-y-1.5">
+            {collections.map((col) => {
+              const active = col.id === activeCollectionId;
+              return (
+                <div
+                  key={col.id}
+                  className={`flex items-center justify-between px-3 py-2.5 rounded-xl border transition cursor-pointer ${
+                    active
+                      ? "bg-white/10 border-white/20 text-white"
+                      : "bg-white/[0.03] border-white/5 text-neutral-400 hover:text-white hover:bg-white/[0.06]"
+                  }`}
+                  onClick={() => setActiveCollectionId(col.id)}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold truncate">{col.name}</div>
+                    <div className="text-[10px] font-mono text-neutral-500">
+                      {col.item_count} {col.item_count === 1 ? "item" : "items"}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleDeleteCollection(col.id);
+                    }}
+                    className="p-1 rounded-lg text-neutral-500 hover:text-rose-400 hover:bg-rose-500/10 cursor-pointer"
+                    title="Delete collection"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Active Collection Items & Inline Media Picker */}
+          <div className="lg:col-span-3 space-y-3">
+            {activeCollection && (
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-white/10">
+                <div>
+                  <h3 className="text-sm font-bold text-white">{activeCollection.name}</h3>
+                  <p className="text-[11px] text-neutral-500">
+                    {activeItems.length} items in collection
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddPicker((p) => !p)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border cursor-pointer transition ${
+                      showAddPicker
+                        ? "bg-white/15 border-white/25 text-white"
+                        : "bg-white/5 border-white/10 text-neutral-300 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{showAddPicker ? "Done Adding" : "Add Movies / Shows"}</span>
+                  </button>
+                  {activeItems.length > 0 && (
+                    <button
+                      onClick={() => onQueueCollection(activeItems)}
+                      style={{ backgroundColor: accentColor, color: accentText }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer hover:brightness-110 transition"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <span>Play All</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Direct Inline Media Picker */}
+            {showAddPicker && activeCollection && (
+              <div className="p-3 rounded-2xl bg-white/[0.04] border border-white/15 space-y-2.5">
+                <div className="flex items-center gap-2 bg-black/50 border border-white/15 rounded-xl px-3 py-1.5">
+                  <Search className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                  <input
+                    type="text"
+                    value={pickerSearch}
+                    onChange={(e) => setPickerSearch(e.target.value)}
+                    placeholder="Search your library to add to this collection..."
+                    className="flex-1 bg-transparent text-xs text-white placeholder-neutral-500 focus:outline-none"
+                  />
+                </div>
+                <div className="max-h-56 overflow-y-auto space-y-1 pr-1">
+                  {pickerCandidates.map((cand) => {
+                    const added = pathSet.has(cand.file_path);
+                    return (
+                      <button
+                        key={cand.file_path}
+                        type="button"
+                        onClick={() =>
+                          added
+                            ? void handleRemoveItem(cand.file_path)
+                            : void handleAddItem(cand.file_path)
+                        }
+                        className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs transition cursor-pointer ${
+                          added
+                            ? "bg-emerald-500/15 text-emerald-200 border border-emerald-500/30"
+                            : "bg-white/[0.03] hover:bg-white/10 text-neutral-300 border border-transparent"
+                        }`}
+                      >
+                        <span className="truncate flex-1">
+                          {cand.series_name ? `${cand.series_name} • ` : ""}
+                          {cand.title}
+                        </span>
+                        <span className="text-[10px] font-mono text-neutral-400 shrink-0">
+                          {cand.category || cand.media_type}
+                        </span>
+                        {added ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        ) : (
+                          <Plus className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {activeItems.length === 0 ? (
+              <div className="py-12 text-center text-xs text-neutral-500 rounded-xl border border-white/5 bg-white/[0.02]">
+                This collection is empty. Click <strong className="text-neutral-300">Add Movies / Shows</strong> above to add items.
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {activeItems.map((item) => (
+                  <div
+                    key={item.file_path}
+                    className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 transition"
+                  >
+                    <button
+                      onClick={() => onPlayItem(item)}
+                      className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
+                    >
+                      <Play className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-semibold text-neutral-200 truncate">
+                          {item.title}
+                        </div>
+                        <div className="text-[10px] font-mono text-neutral-500 flex items-center gap-2">
+                          <span>{item.year || item.category || "Media"}</span>
+                          {item.height ? <span>{item.height >= 2160 ? "4K" : `${item.height}p`}</span> : null}
+                          {item.video_codec ? <span>{item.video_codec}</span> : null}
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => void handleRemoveItem(item.file_path)}
+                      className="p-1.5 rounded-lg text-neutral-500 hover:text-rose-400 hover:bg-rose-500/10 cursor-pointer"
+                      title="Remove from collection"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

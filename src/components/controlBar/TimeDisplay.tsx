@@ -1,12 +1,13 @@
 import { useState } from "react";
+import { usePlayerStore } from "../../stores/playerStore";
 import { formatSeconds } from "./shared";
 
 interface TimeDisplayProps {
-  currentTime: number;
   duration: number;
 }
 
-export function TimeDisplay({ currentTime, duration }: TimeDisplayProps) {
+export function TimeDisplay({ duration }: TimeDisplayProps) {
+  const currentTime = usePlayerStore((s) => s.currentTime);
   const [showRemainingTime, setShowRemainingTime] = useState(false);
 
   return (

@@ -1,7 +1,23 @@
+import { useState, useEffect } from "react";
 import { Music2, Plus, Subtitles } from "lucide-react";
 import type { TrackInfo } from "../../services/player/types";
 import { useThemeStore } from "../../stores/themeStore";
+import { usePlayerStore } from "../../stores/playerStore";
+import { EQ_BANDS, EQ_PRESETS } from "../../services/player/audioFilter";
+import { playerService } from "../../services/player/mpvPlayerService";
+import { storageService } from "../../services/storage/storageService";
 import { SelectDropdown, SelectDropdownOption } from "../common/SelectDropdown";
+
+const SUB_CODEPAGE_OPTIONS: SelectDropdownOption<string>[] = [
+  { value: "auto", label: "Auto Detect (Recommended)", shortLabel: "Auto", desc: "UTF-8 with automatic legacy fallback" },
+  { value: "utf-8", label: "UTF-8", shortLabel: "UTF-8", desc: "Universal Unicode encoding" },
+  { value: "windows-1256", label: "Arabic (Windows-1256)", shortLabel: "Arabic (1256)", desc: "Legacy Arabic .srt files" },
+  { value: "windows-1252", label: "Western European (Windows-1252)", shortLabel: "Western (1252)", desc: "Legacy English/French/Spanish .srt" },
+  { value: "windows-1251", label: "Cyrillic (Windows-1251)", shortLabel: "Cyrillic (1251)", desc: "Legacy Russian/Slavic .srt" },
+  { value: "shift_jis", label: "Japanese (Shift-JIS)", shortLabel: "Shift-JIS", desc: "Legacy Japanese .srt" },
+  { value: "gbk", label: "Chinese (GBK)", shortLabel: "GBK", desc: "Legacy Simplified Chinese .srt" },
+  { value: "euc-kr", label: "Korean (EUC-KR)", shortLabel: "EUC-KR", desc: "Legacy Korean .srt" },
+];
 
 const SUB_FONT_OPTIONS: SelectDropdownOption<string>[] = [
   { value: "Segoe UI", label: "Segoe UI", shortLabel: "Segoe UI", desc: "Clean modern Windows typography" },
@@ -78,6 +94,21 @@ export function AudioSubtitleSettings({
     setSubBgStyle,
     setSubMarginY,
   } = useThemeStore();
+  const eqPreset = usePlayerStore((s) => s.eqPreset);
+  const eqGains = usePlayerStore((s) => s.eqGains);
+  const setEqualizer = usePlayerStore((s) => s.setEqualizer);
+  const volumeBoostEnabled = usePlayerStore((s) => s.volumeBoostEnabled);
+  const toggleVolumeBoost = usePlayerStore((s) => s.toggleVolumeBoost);
+  const [subCodepage, setSubCodepage] = useState("auto");
+
+  useEffect(() => {
+    storageService.getPreference<string>("subCodepage").then((cp) => {
+      if (cp) {
+        setSubCodepage(cp);
+        void playerService.setMpvProperty("sub-codepage", cp);
+      }
+    });
+  }, []);
   return (
     <div className="space-y-5">
       {/* Night Mode / Dynamic Audio Normalizer */}
@@ -373,6 +404,104 @@ export function AudioSubtitleSettings({
               </button>
             );
           })}
+        </div>
+      </div>
+
+      {/* Subtitle Character Encoding */}
+      <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/5">
+        <div>
+          <span className="font-medium text-neutral-200 text-xs">
+            Subtitle Encoding (Codepage)
+          </span>
+          <p className="text-xs text-neutral-500">
+            Fix garbled characters in non-UTF-8 external .srt subtitle files
+          </p>
+        </div>
+        <SelectDropdown<string>
+          value={subCodepage}
+          onChange={async (val) => {
+            setSubCodepage(val);
+            await storageService.setPreference("subCodepage", val);
+            await playerService.setMpvProperty("sub-codepage", val);
+          }}
+          options={SUB_CODEPAGE_OPTIONS}
+          menuHeader="Subtitle Character Encoding"
+          width="w-60"
+        />
+      </div>
+
+      {/* Volume Boost & 10-Band Audio Equalizer */}
+      <div className="space-y-3 p-3.5 rounded-xl bg-white/5 border border-white/5">
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="font-medium text-neutral-200 text-xs">
+              Volume Boost (150% Software Amplification)
+            </span>
+            <p className="text-xs text-neutral-500">
+              Amplifies quiet laptop speakers beyond 100%
+            </p>
+          </div>
+          <input
+            type="checkbox"
+            checked={volumeBoostEnabled}
+            onChange={() => void toggleVolumeBoost()}
+            style={{ accentColor }}
+            className="w-4 h-4 rounded bg-neutral-800 border-white/20 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+          />
+        </div>
+
+        <div className="border-t border-white/10 pt-3 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="font-medium text-neutral-200 text-xs">
+              10-Band Audio Equalizer
+            </span>
+            <div className="flex flex-wrap gap-1">
+              {EQ_PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => void setEqualizer(p.id)}
+                  style={eqPreset === p.id ? { backgroundColor: accentColor, color: "var(--accent-text)" } : undefined}
+                  className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition cursor-pointer ${
+                    eqPreset === p.id
+                      ? "shadow-xs"
+                      : "bg-white/5 text-neutral-400 hover:text-white hover:bg-white/10"
+                  }`}
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-5 sm:grid-cols-10 gap-2 pt-1">
+            {EQ_BANDS.map((freq, idx) => {
+              const gain = eqGains[idx] ?? 0;
+              const label = freq >= 1000 ? `${freq / 1000}k` : `${freq}`;
+              return (
+                <div key={freq} className="flex flex-col items-center gap-1">
+                  <span className="text-[9px] font-mono text-neutral-400">
+                    {gain > 0 ? `+${gain}` : gain}dB
+                  </span>
+                  <input
+                    type="range"
+                    min={-12}
+                    max={12}
+                    step={1}
+                    value={gain}
+                    onChange={(e) => {
+                      const next = [...eqGains];
+                      next[idx] = Number(e.target.value);
+                      void setEqualizer("custom", next);
+                    }}
+                    style={{ accentColor }}
+                    className="w-full h-1.5 bg-white/15 rounded-lg cursor-pointer"
+                    title={`${label} Hz: ${gain} dB`}
+                  />
+                  <span className="text-[9px] font-mono text-neutral-500">{label}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

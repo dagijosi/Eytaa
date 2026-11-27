@@ -6,6 +6,7 @@ import { TransportControls } from "./controlBar/TransportControls";
 import { VolumeControl } from "./controlBar/VolumeControl";
 import { TimeDisplay } from "./controlBar/TimeDisplay";
 import { AudioTrackMenu, SubtitleMenu } from "./controlBar/TrackMenus";
+import { ChapterBookmarkMenu } from "./controlBar/ChapterBookmarkMenu";
 import { SpeedMenu, RepeatMenu, ProfileMenu } from "./controlBar/PlaybackMenus";
 import { MoreMenu } from "./controlBar/MoreMenu";
 import {
@@ -21,7 +22,6 @@ import {
 export function ControlBar() {
   const {
     status,
-    currentTime,
     duration,
     volume,
     muted,
@@ -74,7 +74,6 @@ export function ControlBar() {
   } = usePlayerStore(
     useShallow((s) => ({
       status: s.status,
-      currentTime: s.currentTime,
       duration: s.duration,
       volume: s.volume,
       muted: s.muted,
@@ -144,7 +143,7 @@ export function ControlBar() {
     >
       <div className="w-full flex flex-col gap-1.5 sm:gap-2">
         {/* Progress Scrubber */}
-        <ProgressScrubber currentTime={currentTime} duration={duration} seek={seek} />
+        <ProgressScrubber duration={duration} seek={seek} />
 
         {/* Controls Ribbon (Responsive flex-nowrap) */}
         <div className="flex items-center justify-between gap-1 sm:gap-3 w-full min-w-0">
@@ -166,7 +165,7 @@ export function ControlBar() {
               onSetVolume={setVolume}
             />
 
-            <TimeDisplay currentTime={currentTime} duration={duration} />
+            <TimeDisplay duration={duration} />
           </div>
 
           {/* Right: Secondary Options (Intelligently collapses into More ... menu on small screens) */}
@@ -196,6 +195,8 @@ export function ControlBar() {
               secondarySubtitleTrackId={secondarySubtitleTrackId}
               onSelectSecondarySubtitleTrack={selectSecondarySubtitleTrack}
             />
+
+            <ChapterBookmarkMenu />
 
             <VideoFitButton videoFitMode={videoFitMode} onCycleVideoFitMode={cycleVideoFitMode} />
 

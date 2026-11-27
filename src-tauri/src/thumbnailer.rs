@@ -54,12 +54,12 @@ fn get_limiter() -> &'static ConcurrencyLimiter {
     FFMPEG_LIMITER.get_or_init(|| ConcurrencyLimiter::new(2))
 }
 
-/// Resolves the ffmpeg executable, preferring a copy bundled beside the app binary.
-fn resolve_ffmpeg_binary() -> PathBuf {
+/// Resolves a binary (`ffmpeg` or `ffprobe`), preferring a copy bundled beside the app binary.
+fn resolve_media_binary(win_name: &str, unix_name: &str) -> PathBuf {
     let names: [&str; 2] = if cfg!(windows) {
-        ["ffmpeg.exe", "ffmpeg"]
+        [win_name, unix_name]
     } else {
-        ["ffmpeg", "ffmpeg.exe"]
+        [unix_name, win_name]
     };
 
     if let Ok(exe) = std::env::current_exe() {
@@ -77,7 +77,47 @@ fn resolve_ffmpeg_binary() -> PathBuf {
         }
     }
 
-    PathBuf::from("ffmpeg")
+    PathBuf::from(unix_name)
+}
+
+fn resolve_ffmpeg_binary() -> PathBuf {
+    resolve_media_binary("ffmpeg.exe", "ffmpeg")
+}
+
+fn resolve_ffprobe_binary() -> PathBuf {
+    resolve_media_binary("ffprobe.exe", "ffprobe")
+}
+
+pub fn build_thumb_uri(kind: &str, filename: &str) -> String {
+    if cfg!(windows) {
+        format!("http://eytaa-thumb.localhost/{}/{}", kind, filename)
+    } else {
+        format!("eytaa-thumb://localhost/{}/{}", kind, filename)
+    }
+}
+
+pub fn resolve_thumb_file_for_uri(app: &AppHandle, kind: &str, filename: &str) -> Option<PathBuf> {
+    if filename.is_empty()
+        || !filename
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.')
+        || !filename.ends_with(".jpg")
+    {
+        return None;
+    }
+
+    let cache_dir = get_thumbnail_cache_dir(app).ok()?;
+    let target = match kind {
+        "thumb" => cache_dir.join(filename),
+        "scrub" => cache_dir.join("scrub").join(filename),
+        _ => return None,
+    };
+
+    if target.is_file() {
+        Some(target)
+    } else {
+        None
+    }
 }
 
 /// Generates a simple hash string from a file path
@@ -247,14 +287,12 @@ pub fn generate_or_load_thumbnail(app: &AppHandle, file_path: &str) -> Result<Op
         return Ok(None);
     }
 
+    let thumb_filename = format!("{}.jpg", file_hash);
     // Fast path: Return cached image if exists and valid without waiting for semaphore
     if output_thumb.exists() {
         if let Ok(metadata) = fs::metadata(&output_thumb) {
             if metadata.len() > 0 {
-                if let Ok(bytes) = fs::read(&output_thumb) {
-                    let b64 = general_purpose::STANDARD.encode(&bytes);
-                    return Ok(Some(format!("data:image/jpeg;base64,{}", b64)));
-                }
+                return Ok(Some(build_thumb_uri("thumb", &thumb_filename)));
             }
         }
     }
@@ -266,10 +304,7 @@ pub fn generate_or_load_thumbnail(app: &AppHandle, file_path: &str) -> Result<Op
     if output_thumb.exists() {
         if let Ok(metadata) = fs::metadata(&output_thumb) {
             if metadata.len() > 0 {
-                if let Ok(bytes) = fs::read(&output_thumb) {
-                    let b64 = general_purpose::STANDARD.encode(&bytes);
-                    return Ok(Some(format!("data:image/jpeg;base64,{}", b64)));
-                }
+                return Ok(Some(build_thumb_uri("thumb", &thumb_filename)));
             }
         }
     }
@@ -331,10 +366,9 @@ pub fn generate_or_load_thumbnail(app: &AppHandle, file_path: &str) -> Result<Op
     };
 
     if success && output_thumb.exists() {
-        if let Ok(bytes) = fs::read(&output_thumb) {
-            if !bytes.is_empty() {
-                let b64 = general_purpose::STANDARD.encode(&bytes);
-                return Ok(Some(format!("data:image/jpeg;base64,{}", b64)));
+        if let Ok(metadata) = fs::metadata(&output_thumb) {
+            if metadata.len() > 0 {
+                return Ok(Some(build_thumb_uri("thumb", &format!("{}.jpg", file_hash))));
             }
         }
     }
@@ -454,15 +488,13 @@ pub fn generate_scrub_frame(
 
     let bucket = (timestamp_seconds.max(0.0) / 2.0).round() as u64 * 2;
     let file_hash = hash_path(clean_path);
-    let output_frame = scrub_dir.join(format!("{}_{}.jpg", file_hash, bucket));
+    let scrub_filename = format!("{}_{}.jpg", file_hash, bucket);
+    let output_frame = scrub_dir.join(&scrub_filename);
 
     if output_frame.exists() {
         if let Ok(metadata) = fs::metadata(&output_frame) {
             if metadata.len() > 0 {
-                if let Ok(bytes) = fs::read(&output_frame) {
-                    let b64 = general_purpose::STANDARD.encode(&bytes);
-                    return Ok(Some(format!("data:image/jpeg;base64,{}", b64)));
-                }
+                return Ok(Some(build_thumb_uri("scrub", &scrub_filename)));
             }
         }
     }
@@ -472,10 +504,7 @@ pub fn generate_scrub_frame(
     if output_frame.exists() {
         if let Ok(metadata) = fs::metadata(&output_frame) {
             if metadata.len() > 0 {
-                if let Ok(bytes) = fs::read(&output_frame) {
-                    let b64 = general_purpose::STANDARD.encode(&bytes);
-                    return Ok(Some(format!("data:image/jpeg;base64,{}", b64)));
-                }
+                return Ok(Some(build_thumb_uri("scrub", &scrub_filename)));
             }
         }
     }
@@ -504,10 +533,9 @@ pub fn generate_scrub_frame(
         .arg("-y");
 
     if run_ffmpeg_with_timeout(cmd, 3) && output_frame.exists() {
-        if let Ok(bytes) = fs::read(&output_frame) {
-            if !bytes.is_empty() {
-                let b64 = general_purpose::STANDARD.encode(&bytes);
-                return Ok(Some(format!("data:image/jpeg;base64,{}", b64)));
+        if let Ok(metadata) = fs::metadata(&output_frame) {
+            if metadata.len() > 0 {
+                return Ok(Some(build_thumb_uri("scrub", &scrub_filename)));
             }
         }
     }
@@ -523,6 +551,130 @@ pub async fn get_video_scrub_frame(
 ) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         generate_scrub_frame(&app, &file_path, timestamp_seconds)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+pub struct ProbedMediaInfo {
+    pub duration: Option<f64>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub video_codec: Option<String>,
+    pub audio_codec: Option<String>,
+    pub is_hdr: bool,
+}
+
+#[tauri::command]
+pub async fn probe_media_metadata(file_path: String) -> Result<Option<ProbedMediaInfo>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let clean_path = file_path
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'')
+            .trim_start_matches("file:///")
+            .trim_start_matches("file://");
+        if !Path::new(clean_path).exists() {
+            return Ok(None);
+        }
+
+        let _guard = get_limiter().acquire();
+        let mut cmd = std::process::Command::new(resolve_ffprobe_binary());
+        cmd.arg("-v")
+            .arg("quiet")
+            .arg("-print_format")
+            .arg("json")
+            .arg("-show_format")
+            .arg("-show_streams")
+            .arg(clean_path);
+
+        #[cfg(windows)]
+        cmd.creation_flags(CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS);
+
+        cmd.stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null());
+
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(_) => return Ok(None),
+        };
+
+        let start = Instant::now();
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    if !status.success() {
+                        return Ok(None);
+                    }
+                    break;
+                }
+                Ok(None) => {
+                    if start.elapsed() > Duration::from_secs(4) {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        return Ok(None);
+                    }
+                    std::thread::sleep(Duration::from_millis(25));
+                }
+                Err(_) => return Ok(None),
+            }
+        }
+
+        let output = child.wait_with_output().map_err(|e| e.to_string())?;
+        let json: serde_json::Value = match serde_json::from_slice(&output.stdout) {
+            Ok(v) => v,
+            Err(_) => return Ok(None),
+        };
+
+        let duration = json
+            .get("format")
+            .and_then(|f| f.get("duration"))
+            .and_then(|d| d.as_str())
+            .and_then(|s| s.parse::<f64>().ok())
+            .filter(|d| d.is_finite() && *d > 0.0);
+
+        let mut width = None;
+        let mut height = None;
+        let mut video_codec = None;
+        let mut audio_codec = None;
+        let mut is_hdr = false;
+
+        if let Some(streams) = json.get("streams").and_then(|s| s.as_array()) {
+            for st in streams {
+                let codec_type = st.get("codec_type").and_then(|v| v.as_str()).unwrap_or("");
+                if codec_type == "video" && video_codec.is_none() {
+                    video_codec = st
+                        .get("codec_name")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_uppercase());
+                    width = st.get("width").and_then(|v| v.as_u64()).map(|n| n as u32);
+                    height = st.get("height").and_then(|v| v.as_u64()).map(|n| n as u32);
+                    let transfer = st
+                        .get("color_transfer")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    if transfer == "smpte2084" || transfer == "arib-std-b67" {
+                        is_hdr = true;
+                    }
+                } else if codec_type == "audio" && audio_codec.is_none() {
+                    audio_codec = st
+                        .get("codec_name")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_uppercase());
+                }
+            }
+        }
+
+        Ok(Some(ProbedMediaInfo {
+            duration,
+            width,
+            height,
+            video_codec,
+            audio_codec,
+            is_hdr,
+        }))
     })
     .await
     .map_err(|e| e.to_string())?

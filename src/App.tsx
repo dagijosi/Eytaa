@@ -38,6 +38,7 @@ import { localShortcutsService } from "./services/shortcuts/localShortcutsServic
 import { globalShortcutsService } from "./services/shortcuts/globalShortcutsService";
 import { toggleWindowFullscreen } from "./utils/windowControls";
 import { libraryService } from "./services/library/libraryService";
+import { powerService } from "./services/system/powerService";
 
 export default function App() {
   const {
@@ -93,6 +94,11 @@ export default function App() {
     toggleCommandPalette,
     playNext,
     playPrevious,
+    addBookmark,
+    preventSleepDuringPlayback,
+    autoBatterySaver,
+    setIsOnBattery,
+    duration,
   } = usePlayerStore(
     useShallow((s) => ({
       isInitialized: s.isInitialized,
@@ -147,6 +153,11 @@ export default function App() {
       toggleCommandPalette: s.toggleCommandPalette,
       playNext: s.playNext,
       playPrevious: s.playPrevious,
+      addBookmark: s.addBookmark,
+      preventSleepDuringPlayback: s.preventSleepDuringPlayback,
+      autoBatterySaver: s.autoBatterySaver,
+      setIsOnBattery: s.setIsOnBattery,
+      duration: s.duration,
     })),
   );
 
@@ -288,6 +299,68 @@ export default function App() {
       if (unlistenResize) unlistenResize();
     };
   }, [setIsFullscreenStore]);
+
+  // Playback Wake Lock, Battery-Aware Mode, Taskbar Progress & Tray Playback
+  useEffect(() => {
+    const shouldLock = preventSleepDuringPlayback && status === "playing";
+    void powerService.setPlaybackWakeLock(shouldLock);
+    return () => {
+      if (shouldLock) {
+        void powerService.setPlaybackWakeLock(false);
+      }
+    };
+  }, [preventSleepDuringPlayback, status]);
+
+  useEffect(() => {
+    const checkPower = async () => {
+      const p = await powerService.getPowerStatus();
+      setIsOnBattery(p.on_battery);
+      if (autoBatterySaver && p.on_battery && playerService.getVideoRenderer() === "gpu-next") {
+        await playerService.setVideoRenderer("gpu");
+      }
+    };
+    void checkPower();
+    const timer = window.setInterval(() => void checkPower(), 60000);
+    window.addEventListener("focus", checkPower);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", checkPower);
+    };
+  }, [autoBatterySaver, setIsOnBattery]);
+
+  useEffect(() => {
+    const unsub = usePlayerStore.subscribe((state, prev) => {
+      if (
+        state.status === prev.status &&
+        Math.floor(state.currentTime) === Math.floor(prev.currentTime) &&
+        state.duration === prev.duration
+      ) {
+        return;
+      }
+      if (!state.mediaMetadata?.filePath || state.status === "idle" || state.status === "stopped") {
+        void powerService.setTaskbarProgress("none", undefined, true);
+      } else if (state.status === "paused") {
+        const pct = state.duration > 0 ? state.currentTime / state.duration : 0;
+        void powerService.setTaskbarProgress("paused", pct, true);
+      } else if (state.status === "playing") {
+        const pct = state.duration > 0 ? state.currentTime / state.duration : 0;
+        void powerService.setTaskbarProgress("playing", pct);
+      }
+    });
+    return () => unsub();
+  }, [duration]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    listen("tray-toggle-playback", () => {
+      void togglePlayback();
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [togglePlayback]);
 
   // System Sleep / Wake Detector: auto-pauses when PC sleeps/resumes
   useEffect(() => {
@@ -498,6 +571,13 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         toggleCommandPalette();
+        return;
+      }
+
+      // Scene Bookmark shortcut (Ctrl+B / Cmd+B)
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        await addBookmark();
         return;
       }
 
