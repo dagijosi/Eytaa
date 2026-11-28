@@ -12,6 +12,7 @@ import {
   Palette,
   Download,
   Layers,
+  Search,
 } from "lucide-react";
 import { usePlayerStore } from "../stores/playerStore";
 import { useThemeStore, DEFAULT_THEME } from "../stores/themeStore";
@@ -33,6 +34,23 @@ import { HistorySettings } from "./settings/HistorySettings";
 import { UpdateSettings } from "./settings/UpdateSettings";
 import { RestoreDefaultsDialog } from "./settings/shared";
 import type { ProfileIconName, SettingsMode, SettingsTab } from "./settings/types";
+
+const SETTINGS_SEARCH_INDEX: Array<{
+  tab: SettingsTab;
+  label: string;
+  keywords: string;
+  requiresAdvanced?: boolean;
+}> = [
+  { tab: "playback", label: "General, Battery, Tray & Backup", keywords: "general playback resume hardware hwdec screenshot battery tray backup export import" },
+  { tab: "appearance", label: "Appearance, Eco Blur, Library & HUD", keywords: "theme accent color glass blur eco library density startup osd control bar subtitle font" },
+  { tab: "profiles", label: "Playback Profiles", keywords: "profile cinema anime night preset" },
+  { tab: "video", label: "Picture Calibration & Shaders", keywords: "video brightness contrast gamma saturation hue shader", requiresAdvanced: true },
+  { tab: "audio", label: "Audio, 10-Band EQ & Subtitles", keywords: "audio equalizer eq boost volume sync delay codepage subtitle", requiresAdvanced: true },
+  { tab: "sleep", label: "Night Mode & Sleep Timer", keywords: "sleep timer night listening fade", requiresAdvanced: true },
+  { tab: "shortcuts", label: "Keyboard & Global Shortcuts", keywords: "shortcut keybind hotkey keyboard" },
+  { tab: "history", label: "Playback History & Stats", keywords: "history recent clear", requiresAdvanced: true },
+  { tab: "updates", label: "App Updates & Version", keywords: "update version release check" },
+];
 
 export function SettingsModal() {
   const {
@@ -179,6 +197,7 @@ export function SettingsModal() {
 
   // In-App GitHub Releases Updater version state
   const [appVersion, setAppVersion] = useState<string>("");
+  const [settingsSearch, setSettingsSearch] = useState("");
 
   // Load initial preferences & dynamic app version
   useEffect(() => {
@@ -507,6 +526,53 @@ export function SettingsModal() {
                 <X className="w-4 h-4" />
               </button>
             </div>
+          </div>
+
+          {/* Quick Settings Search Strip */}
+          <div className="px-6 py-2 border-b border-white/5 bg-black/20 shrink-0">
+            <div className="relative flex items-center">
+              <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-3 pointer-events-none" />
+              <input
+                type="text"
+                value={settingsSearch}
+                onChange={(e) => setSettingsSearch(e.target.value)}
+                placeholder="Jump to setting (e.g. battery, eco blur, equalizer, density, shortcut)..."
+                className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-white/30"
+              />
+              {settingsSearch && (
+                <button
+                  type="button"
+                  onClick={() => setSettingsSearch("")}
+                  className="absolute right-2.5 text-neutral-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            {settingsSearch.trim() && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {SETTINGS_SEARCH_INDEX.filter((entry) => {
+                  const q = settingsSearch.trim().toLowerCase();
+                  return entry.label.toLowerCase().includes(q) || entry.keywords.includes(q);
+                }).map((entry) => (
+                  <button
+                    key={entry.tab}
+                    type="button"
+                    onClick={() => {
+                      if (entry.requiresAdvanced && settingsMode === "simple") {
+                        void handleModeChange("advanced");
+                      }
+                      setActiveTab(entry.tab);
+                      setSettingsSearch("");
+                    }}
+                    style={{ borderColor: `${accentColor}50` }}
+                    className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 border text-[11px] font-medium text-neutral-200 hover:text-white transition cursor-pointer"
+                  >
+                    {entry.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Modal Body with vertical scrolling only */}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { useThemeStore } from "../../stores/themeStore";
 
 export type CardFormat = "poster" | "widescreen";
 
@@ -53,12 +54,29 @@ export function VirtualizedMediaGrid<T>({
   getKey,
   renderItem,
   cardFormat = "poster",
-  gap = 14,
+  gap,
   overscan = 4,
-  posterColumns = [2, 3, 4, 6],
-  widescreenColumns = [1, 2, 3, 4],
+  posterColumns,
+  widescreenColumns,
   rowEstimate = 320,
 }: GridProps<T>) {
+  const libraryDensity = useThemeStore((s) => s.libraryDensity);
+  const resolvedPosterCols: [number, number, number, number] =
+    posterColumns ??
+    (libraryDensity === "compact"
+      ? [3, 4, 5, 7]
+      : libraryDensity === "spacious"
+      ? [2, 2, 3, 4]
+      : [2, 3, 4, 6]);
+  const resolvedWidescreenCols: [number, number, number, number] =
+    widescreenColumns ??
+    (libraryDensity === "compact"
+      ? [2, 3, 4, 5]
+      : libraryDensity === "spacious"
+      ? [1, 2, 2, 3]
+      : [1, 2, 3, 4]);
+  const resolvedGap =
+    gap ?? (libraryDensity === "compact" ? 10 : libraryDensity === "spacious" ? 18 : 14);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
   const [scrollMargin, setScrollMargin] = useState(0);
@@ -95,7 +113,7 @@ export function VirtualizedMediaGrid<T>({
     return;
   }, [scrollRef, width, items.length, cardFormat]);
 
-  const cols = computeColumns(width, cardFormat, posterColumns, widescreenColumns);
+  const cols = computeColumns(width, cardFormat, resolvedPosterCols, resolvedWidescreenCols);
   const columnCount = Math.max(1, cols);
   const rowCount = Math.max(1, Math.ceil(items.length / columnCount));
   const estimate = Math.max(200, rowEstimate);
@@ -127,14 +145,14 @@ export function VirtualizedMediaGrid<T>({
               left: 0,
               width: "100%",
               transform: `translateY(${vr.start - scrollMargin}px)`,
-              paddingBottom: `${gap}px`,
+              paddingBottom: `${resolvedGap}px`,
             }}
           >
             <div
               style={{
                 display: "grid",
                 gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
-                columnGap: `${gap}px`,
+                columnGap: `${resolvedGap}px`,
                 rowGap: 0,
               }}
             >

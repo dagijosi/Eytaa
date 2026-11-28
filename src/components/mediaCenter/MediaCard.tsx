@@ -69,7 +69,13 @@ function MediaCardBase({
   isSelected = false,
   onContextMenu,
 }: MediaCardProps) {
-  const { accentColor, accentText } = useThemeStore();
+  const {
+    accentColor,
+    accentText,
+    cardShowFileSize,
+    cardShowNewBadge,
+    cardShowWatchedBadge,
+  } = useThemeStore();
   const [isVisible, setIsVisible] = useState(false);
   const [thumbSrc, setThumbSrc] = useResolvedPoster(
     item.custom_poster,
@@ -201,20 +207,20 @@ function MediaCardBase({
                 <span>{badge}</span>
                 {progressPercent !== undefined && <span className="tabular-nums">• {progressPercent}%</span>}
               </span>
-            ) : item.is_watched ? (
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-sans font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 backdrop-blur-md shrink-0 whitespace-nowrap">
+            ) : item.is_watched && cardShowWatchedBadge ? (
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-sans font-medium bg-emerald-950/90 text-emerald-300 border border-emerald-500/35 shrink-0 whitespace-nowrap">
                 <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                 <span>Watched</span>
               </span>
             ) : isPartiallyWatched ? (
               <span
                 style={{ backgroundColor: accentColor, color: accentText }}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold backdrop-blur-md shrink-0 whitespace-nowrap shadow-xs tabular-nums"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold shrink-0 whitespace-nowrap shadow-xs tabular-nums"
               >
                 <Clock className="w-2.5 h-2.5" />
                 <span>Resume {progressPercent}%</span>
               </span>
-            ) : isRecentlyAdded ? (
+            ) : isRecentlyAdded && cardShowNewBadge ? (
               <span
                 style={{
                   backgroundColor: accentColor,
@@ -229,7 +235,7 @@ function MediaCardBase({
 
           {/* Right Controls: Duration Badge */}
           {item.duration && item.duration > 0 && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-black/75 text-neutral-300 border border-white/10 backdrop-blur-md shrink-0 ml-auto tabular-nums">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-black/85 text-neutral-300 border border-white/10 shrink-0 ml-auto tabular-nums">
               {formatDuration(item.duration)}
             </span>
           )}
@@ -257,7 +263,7 @@ function MediaCardBase({
           <>
             {/* Center Hover Action: Clean cinema-grade Play circle */}
             <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10 pointer-events-none">
-              <div className="w-11 h-11 rounded-full bg-black/65 backdrop-blur-md border border-white/25 flex items-center justify-center shadow-xl transition-transform duration-150 group-hover:scale-105">
+              <div className="w-11 h-11 rounded-full bg-black/80 border border-white/25 flex items-center justify-center shadow-xl transition-transform duration-150 group-hover:scale-105">
                 <Play className="w-4 h-4 text-white fill-white" />
               </div>
             </div>
@@ -265,7 +271,7 @@ function MediaCardBase({
             {/* Hover Quick Action Tray: Watched, Favorite, and More Menu */}
             <div
               onClick={(e) => e.stopPropagation()}
-              className="absolute bottom-1.5 left-1.5 flex items-center gap-0.5 bg-black/80 backdrop-blur-md border border-white/15 rounded-lg p-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150 z-20 shadow-lg pointer-events-auto"
+              className="absolute bottom-1.5 left-1.5 flex items-center gap-0.5 bg-neutral-950/90 border border-white/15 rounded-lg p-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150 z-20 shadow-lg pointer-events-auto"
             >
               {/* Mark Watched Toggle */}
               <button
@@ -398,8 +404,12 @@ function MediaCardBase({
             ) : (
               <span className="capitalize shrink-0">{item.category || item.media_type}</span>
             )}
-            <span className="text-neutral-600 shrink-0">•</span>
-            <span className="truncate">{formatBytes(item.file_size)}</span>
+            {cardShowFileSize && (
+              <>
+                <span className="text-neutral-600 shrink-0">•</span>
+                <span className="truncate">{formatBytes(item.file_size)}</span>
+              </>
+            )}
           </div>
 
           {/* Remaining resume time */}

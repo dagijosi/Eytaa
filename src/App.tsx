@@ -21,10 +21,12 @@ const SettingsModal = lazy(() =>
 const MediaLibraryModal = lazy(() =>
   import("./components/MediaLibraryModal").then((m) => ({ default: m.MediaLibraryModal })),
 );
+const CommandPalette = lazy(() =>
+  import("./components/CommandPalette").then((m) => ({ default: m.CommandPalette })),
+);
 import { UpdateCheckToast } from "./components/UpdateCheckToast";
 import { ScreenshotToast } from "./components/ScreenshotToast";
 import { NextEpisodeOverlay } from "./components/NextEpisodeOverlay";
-import { CommandPalette } from "./components/CommandPalette";
 import { ContextMenu } from "./components/ContextMenu";
 import { TooltipLayer } from "./components/TooltipLayer";
 import { StatsOverlay } from "./components/StatsOverlay";
@@ -91,6 +93,7 @@ export default function App() {
     setAbLoopA,
     setAbLoopB,
     clearAbLoop,
+    isCommandPaletteOpen,
     toggleCommandPalette,
     playNext,
     playPrevious,
@@ -150,6 +153,7 @@ export default function App() {
       setAbLoopA: s.setAbLoopA,
       setAbLoopB: s.setAbLoopB,
       clearAbLoop: s.clearAbLoop,
+      isCommandPaletteOpen: s.isCommandPaletteOpen,
       toggleCommandPalette: s.toggleCommandPalette,
       playNext: s.playNext,
       playPrevious: s.playPrevious,
@@ -216,6 +220,9 @@ export default function App() {
 
     if (isInitialized) {
       hideSplash();
+      if (!usePlayerStore.getState().mediaMetadata && useThemeStore.getState().launchToLibrary) {
+        toggleLibraryModal(true);
+      }
       return;
     }
 
@@ -811,6 +818,7 @@ export default function App() {
     setAbLoopA,
     setAbLoopB,
     clearAbLoop,
+    isCommandPaletteOpen,
     toggleCommandPalette,
     handleToggleFullscreen,
     showOSD,
@@ -1024,12 +1032,11 @@ export default function App() {
       {/* Slide-in Playlist Drawer */}
       <PlaylistDrawer />
 
-      {/* Settings / Shortcuts Modal (code-split) */}
+      {/* Settings / Shortcuts / Library / Command Palette Modals (code-split & mounted on demand) */}
       <Suspense fallback={null}>
-        <SettingsModal />
-
-        {/* Local Media Library Modal (code-split) */}
-        <MediaLibraryModal />
+        {isSettingsOpen && <SettingsModal />}
+        {isLibraryOpen && <MediaLibraryModal />}
+        {isCommandPaletteOpen && <CommandPalette />}
       </Suspense>
 
       {/* Night Listening & Sleep Timer Modal */}
@@ -1052,9 +1059,6 @@ export default function App() {
 
       {/* Network Stream / URL Opener */}
       <OpenUrlModal />
-
-      {/* Spotlight Command Palette (Ctrl+K / Cmd+K) */}
-      <CommandPalette />
 
       {/* Custom Right-Click Context Menu */}
       {contextMenu && (

@@ -399,6 +399,17 @@ export interface ThemeSettings {
   subBorderSize: number;
   subMarginY: number;
 
+  // Performance, Library & HUD Customization
+  ecoBlur: boolean;
+  libraryDensity: "compact" | "comfortable" | "spacious";
+  libraryStartupTab: "hub" | "movies" | "series" | "music" | "collections";
+  launchToLibrary: boolean;
+  cardShowFileSize: boolean;
+  cardShowNewBadge: boolean;
+  cardShowWatchedBadge: boolean;
+  osdPosition: "top-left" | "top-center" | "minimal";
+  hiddenControlButtons: string[];
+
   // Custom User Saved Profiles
   customThemes: CustomThemeProfile[];
 }
@@ -429,6 +440,15 @@ export const DEFAULT_THEME: ThemeSettings = {
   subBorderColor: "#000000",
   subBorderSize: 3,
   subMarginY: 65,
+  ecoBlur: false,
+  libraryDensity: "comfortable",
+  libraryStartupTab: "hub",
+  launchToLibrary: false,
+  cardShowFileSize: true,
+  cardShowNewBadge: true,
+  cardShowWatchedBadge: true,
+  osdPosition: "top-center",
+  hiddenControlButtons: [],
   customThemes: [],
 };
 
@@ -511,6 +531,11 @@ function applyCssVariables(theme: ThemeSettings) {
     default:
       baseRgb = "12, 12, 16";
       break;
+  }
+
+  if (theme.ecoBlur) {
+    blur = 0;
+    opacity = Math.max(opacity, 0.94);
   }
 
   root.style.setProperty("--ui-bg", `rgba(${baseRgb}, ${opacity})`);
@@ -656,6 +681,7 @@ interface ThemeStoreState extends ThemeSettings {
   applyCustomTheme: (id: string) => Promise<void>;
   exportThemeJson: () => string;
   importThemeJson: (jsonStr: string) => Promise<boolean>;
+  updateUiSettings: (patch: Partial<ThemeSettings>) => Promise<void>;
   resetTheme: () => Promise<void>;
 }
 
@@ -1003,6 +1029,13 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
       console.warn("Failed to import theme JSON:", e);
       return false;
     }
+  },
+
+  updateUiSettings: async (patch: Partial<ThemeSettings>) => {
+    set(patch);
+    const full = { ...get(), ...patch };
+    applyCssVariables(full);
+    await storageService.setPreference("userThemeSettings", full);
   },
 
   resetTheme: async () => {

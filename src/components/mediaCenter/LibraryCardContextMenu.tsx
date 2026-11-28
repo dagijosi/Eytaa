@@ -53,20 +53,18 @@ export function LibraryCardContextMenu({
   onDelete,
 }: LibraryCardContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
+  const [measuredRect, setMeasuredRect] = useState<{ width: number; height: number } | null>(null);
   const [showCollections, setShowCollections] = useState(false);
 
   useEffect(() => {
     setShowCollections(false);
+    setMeasuredRect(null);
   }, [menu?.item.file_path, menu?.x, menu?.y]);
 
   useLayoutEffect(() => {
     if (!menu || !menuRef.current) return;
     const rect = menuRef.current.getBoundingClientRect();
-    const pad = 12;
-    const left = Math.min(menu.x, Math.max(pad, window.innerWidth - rect.width - pad));
-    const top = Math.min(menu.y, Math.max(pad, window.innerHeight - rect.height - pad));
-    setPos({ left, top });
+    setMeasuredRect({ width: rect.width, height: rect.height });
   }, [menu, showCollections]);
 
   useEffect(() => {
@@ -92,6 +90,25 @@ export function LibraryCardContextMenu({
 
   if (!menu) return null;
 
+  const pad = 12;
+  const w = measuredRect?.width ?? 224;
+  const h = measuredRect?.height ?? 320;
+  const flipX = menu.x + w > window.innerWidth - pad;
+  const flipY = menu.y + h > window.innerHeight - pad;
+  const left = flipX
+    ? Math.max(pad, menu.x - w)
+    : Math.min(menu.x, Math.max(pad, window.innerWidth - w - pad));
+  const top = flipY
+    ? Math.max(pad, menu.y - h)
+    : Math.min(menu.y, Math.max(pad, window.innerHeight - h - pad));
+  const originClass = flipY
+    ? flipX
+      ? "origin-bottom-right"
+      : "origin-bottom-left"
+    : flipX
+    ? "origin-top-right"
+    : "origin-top-left";
+
   const { item, collectionIdToRemove } = menu;
   const hasResume =
     !item.is_watched &&
@@ -100,11 +117,12 @@ export function LibraryCardContextMenu({
 
   return (
     <div
+      key={`${item.file_path}-${menu.x}-${menu.y}`}
       ref={menuRef}
       role="menu"
-      style={{ left: pos.left, top: pos.top }}
+      style={{ left, top }}
       onContextMenu={(e) => e.preventDefault()}
-      className="fixed z-[120] w-56 rounded-xl bg-neutral-950/95 backdrop-blur-xl border border-white/15 shadow-2xl p-1.5 text-xs text-neutral-200 select-none animate-in fade-in zoom-in-95 duration-150"
+      className={`fixed z-[120] w-56 ui-glass-panel shadow-2xl p-1.5 text-xs text-neutral-200 select-none ${originClass} animate-in fade-in zoom-in-95 duration-150`}
     >
       <div className="px-2.5 py-1.5 mb-1 border-b border-white/10">
         <p className="font-semibold text-white truncate">{item.title}</p>

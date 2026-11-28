@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { FolderPlus, Play, Trash2, Layers, Plus, Search, Check, Shuffle } from "lucide-react";
+import { FolderPlus, Play, Trash2, Layers, Plus, Search, Check, Shuffle, Edit3 } from "lucide-react";
 import { libraryService, CollectionItem, LibraryItem } from "../../services/library/libraryService";
 import { MediaCard } from "./MediaCard";
 
@@ -41,6 +41,8 @@ export function CollectionsView({
   const [creating, setCreating] = useState(false);
   const [showAddPicker, setShowAddPicker] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState("");
 
   const loadCollections = useCallback(async () => {
     const list = await libraryService.getCollections();
@@ -92,7 +94,24 @@ export function CollectionsView({
     if (activeCollectionId === id) {
       setActiveCollectionId(null);
       setShowAddPicker(false);
+      setIsRenaming(false);
     }
+    onCollectionsChanged?.();
+  };
+
+  const handleRenameSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeCollection) return;
+    const trimmed = renameDraft.trim();
+    if (!trimmed || trimmed === activeCollection.name) {
+      setIsRenaming(false);
+      return;
+    }
+    await libraryService.renameCollection(activeCollection.id, trimmed);
+    setCollections((prev) =>
+      prev.map((c) => (c.id === activeCollection.id ? { ...c, name: trimmed } : c)),
+    );
+    setIsRenaming(false);
     onCollectionsChanged?.();
   };
 
@@ -213,8 +232,49 @@ export function CollectionsView({
           <div className="lg:col-span-3 space-y-3">
             {activeCollection && (
               <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-white/10">
-                <div>
-                  <h3 className="text-sm font-bold text-white">{activeCollection.name}</h3>
+                <div className="min-w-0">
+                  {isRenaming ? (
+                    <form onSubmit={handleRenameSubmit} className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={renameDraft}
+                        onChange={(e) => setRenameDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") setIsRenaming(false);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-black/60 border border-white/25 text-xs font-bold text-white focus:outline-none focus:border-white/50"
+                      />
+                      <button
+                        type="submit"
+                        className="px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/20 text-[11px] font-semibold text-white cursor-pointer"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsRenaming(false)}
+                        className="px-2 py-1 rounded-lg text-[11px] text-neutral-400 hover:text-white cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="text-sm font-bold text-white truncate">{activeCollection.name}</h3>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRenameDraft(activeCollection.name);
+                          setIsRenaming(true);
+                        }}
+                        className="p-1 rounded-md text-neutral-500 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                        title="Rename collection"
+                      >
+                        <Edit3 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
                   <p className="text-[11px] text-neutral-500">
                     {activeItems.length} items in collection
                   </p>

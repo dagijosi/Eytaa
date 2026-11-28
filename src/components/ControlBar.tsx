@@ -126,7 +126,8 @@ export function ControlBar() {
     })),
   );
 
-  const { controlBarStyle } = useThemeStore();
+  const { controlBarStyle, hiddenControlButtons } = useThemeStore();
+  const isHidden = (id: string) => hiddenControlButtons.includes(id);
   const isPlaying = status === "playing";
   const isFloating = controlBarStyle === "floating";
   const isMinimal = controlBarStyle === "minimal";
@@ -196,36 +197,46 @@ export function ControlBar() {
               onSelectSecondarySubtitleTrack={selectSecondarySubtitleTrack}
             />
 
-            <ChapterBookmarkMenu />
+            {!isHidden("chapters") && <ChapterBookmarkMenu />}
 
-            <VideoFitButton videoFitMode={videoFitMode} onCycleVideoFitMode={cycleVideoFitMode} />
+            {!isHidden("fit") && (
+              <VideoFitButton videoFitMode={videoFitMode} onCycleVideoFitMode={cycleVideoFitMode} />
+            )}
 
-            <AutoPlayNextButton
-              autoPlayNext={autoPlayNext}
-              onToggleAutoPlayNext={toggleAutoPlayNext}
-            />
+            {!isHidden("autoplay") && (
+              <AutoPlayNextButton
+                autoPlayNext={autoPlayNext}
+                onToggleAutoPlayNext={toggleAutoPlayNext}
+              />
+            )}
 
-            <RepeatMenu repeatMode={repeatMode} onSetRepeatMode={setRepeatMode} />
+            {!isHidden("repeat") && (
+              <RepeatMenu repeatMode={repeatMode} onSetRepeatMode={setRepeatMode} />
+            )}
 
-            <ProfileMenu
-              profiles={profiles}
-              activeProfileId={activeProfileId}
-              onApplyProfile={applyProfile}
-              onToggleSettingsModal={toggleSettingsModal}
-            />
+            {!isHidden("profiles") && (
+              <ProfileMenu
+                profiles={profiles}
+                activeProfileId={activeProfileId}
+                onApplyProfile={applyProfile}
+                onToggleSettingsModal={toggleSettingsModal}
+              />
+            )}
 
-            <SleepTimerButton
-              sleepTimer={sleepTimer}
-              isNightListening={isNightListening}
-              onToggleSleepTimer={toggleSleepTimer}
-            />
+            {!isHidden("sleep") && (
+              <SleepTimerButton
+                sleepTimer={sleepTimer}
+                isNightListening={isNightListening}
+                onToggleSleepTimer={toggleSleepTimer}
+              />
+            )}
 
             <PlaylistButton
               playlistLength={playlist.length}
               onTogglePlaylistDrawer={togglePlaylistDrawer}
             />
 
-            <PipButton isPiP={isPiP} onTogglePiP={togglePiP} />
+            {!isHidden("pip") && <PipButton isPiP={isPiP} onTogglePiP={togglePiP} />}
 
             <MoreMenu
               playbackRate={playbackRate}

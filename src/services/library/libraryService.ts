@@ -737,6 +737,11 @@ class LibraryService {
     });
   }
 
+  public async renameCollection(id: number, name: string): Promise<void> {
+    await invoke<void>("db_rename_collection", { id, name });
+    this.notifyLibraryChanged();
+  }
+
   public async deleteCollection(id: number): Promise<void> {
     await invoke<void>("db_delete_collection", { id });
     this.notifyLibraryChanged();

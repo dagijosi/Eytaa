@@ -80,6 +80,25 @@ pub fn db_create_collection(
 }
 
 #[tauri::command]
+pub fn db_rename_collection(
+    state: tauri::State<'_, DbState>,
+    id: i64,
+    name: String,
+) -> Result<(), String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("Collection name cannot be empty".to_string());
+    }
+    let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
+    conn.execute(
+        "UPDATE collections SET name = ?1 WHERE id = ?2",
+        params![trimmed, id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn db_delete_collection(state: tauri::State<'_, DbState>, id: i64) -> Result<(), String> {
     let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
     conn.execute("DELETE FROM collections WHERE id = ?1", params![id])

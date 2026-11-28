@@ -311,6 +311,7 @@ pub fn run() {
             db::db_delete_bookmark,
             db::db_get_collections,
             db::db_create_collection,
+            db::db_rename_collection,
             db::db_delete_collection,
             db::db_add_to_collection,
             db::db_remove_from_collection,

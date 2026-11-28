@@ -25,7 +25,7 @@ interface AppearanceSettingsProps {
   [key: string]: any;
 }
 
-type AppearanceSubTab = "themes" | "surface" | "controls" | "subtitles";
+type AppearanceSubTab = "themes" | "surface" | "controls" | "subtitles" | "library_hud";
 
 const WINDOWS_FONTS = [
   { id: "Segoe UI", name: "Segoe UI", family: "'Segoe UI', sans-serif", note: "Windows Default" },
@@ -102,6 +102,16 @@ export function AppearanceSettings(_props?: AppearanceSettingsProps) {
     applyCustomTheme,
     exportThemeJson,
     importThemeJson,
+    ecoBlur,
+    libraryDensity,
+    libraryStartupTab,
+    launchToLibrary,
+    cardShowFileSize,
+    cardShowNewBadge,
+    cardShowWatchedBadge,
+    osdPosition,
+    hiddenControlButtons,
+    updateUiSettings,
     resetTheme,
   } = useThemeStore();
 
@@ -371,12 +381,13 @@ export function AppearanceSettings(_props?: AppearanceSettingsProps) {
       </div>
 
       {/* Segmented Section Navigator (Tab Pills) */}
-      <div className="flex items-center p-1 bg-white/[0.04] border border-white/10 rounded-xl gap-1">
+      <div className="flex flex-wrap items-center p-1 bg-white/[0.04] border border-white/10 rounded-xl gap-1">
         {[
           { id: "themes", label: "Themes & Colors", icon: <Palette className="w-3.5 h-3.5" /> },
           { id: "surface", label: "Surface & Glass", icon: <Layers className="w-3.5 h-3.5" /> },
           { id: "controls", label: "Player Controls", icon: <Layout className="w-3.5 h-3.5" /> },
-          { id: "subtitles", label: "Subtitles Typography", icon: <Type className="w-3.5 h-3.5" /> },
+          { id: "subtitles", label: "Subtitles", icon: <Type className="w-3.5 h-3.5" /> },
+          { id: "library_hud", label: "Library & HUD", icon: <Eye className="w-3.5 h-3.5" /> },
         ].map((tab) => {
           const isActive = activeSubTab === tab.id;
           return (
@@ -1284,6 +1295,222 @@ export function AppearanceSettings(_props?: AppearanceSettingsProps) {
               style={{ accentColor: accentColor }}
               className="w-full cursor-pointer"
             />
+          </div>
+        </div>
+      )}
+
+      {/* SUBTAB 5: LIBRARY & HUD CUSTOMIZATION */}
+      {activeSubTab === "library_hud" && (
+        <div className="space-y-4">
+          {/* Eco Blur / Battery Optimization */}
+          <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-between gap-4">
+            <div>
+              <h4 className="text-xs font-bold text-white">Eco Blur (Reduced Transparency)</h4>
+              <p className="text-[11px] text-neutral-400 mt-0.5">
+                Disables expensive glass blur layers to save laptop GPU & battery power
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => updateUiSettings({ ecoBlur: !ecoBlur })}
+              style={ecoBlur ? { backgroundColor: accentColor, color: accentText } : {}}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer shrink-0 ${
+                ecoBlur
+                  ? "border-transparent shadow-sm"
+                  : "bg-white/5 border-white/10 text-neutral-300 hover:bg-white/10"
+              }`}
+            >
+              {ecoBlur ? "Enabled" : "Disabled"}
+            </button>
+          </div>
+
+          {/* Library Grid Density & Startup */}
+          <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-white">Library Card Density</span>
+                <span className="text-[11px] text-neutral-400 font-mono capitalize">{libraryDensity}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {(["compact", "comfortable", "spacious"] as const).map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => updateUiSettings({ libraryDensity: d })}
+                    style={
+                      libraryDensity === d
+                        ? { backgroundColor: accentColor, color: accentText, borderColor: accentColor }
+                        : {}
+                    }
+                    className={`py-2 rounded-xl text-xs font-semibold border capitalize transition cursor-pointer ${
+                      libraryDensity === d
+                        ? "font-bold shadow-sm"
+                        : "bg-white/5 border-white/10 text-neutral-300 hover:bg-white/10"
+                    }`}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-white/10">
+              <span className="text-xs font-bold text-white block">Default Library Startup Tab</span>
+              <div className="flex flex-wrap gap-1.5">
+                {(
+                  [
+                    { id: "hub", label: "Media Hub" },
+                    { id: "movies", label: "Movies" },
+                    { id: "series", label: "TV Shows" },
+                    { id: "music", label: "Music" },
+                    { id: "collections", label: "Collections" },
+                  ] as const
+                ).map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => updateUiSettings({ libraryStartupTab: t.id })}
+                    style={
+                      libraryStartupTab === t.id
+                        ? { backgroundColor: accentColor, color: accentText }
+                        : {}
+                    }
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+                      libraryStartupTab === t.id
+                        ? "border-transparent font-bold shadow-sm"
+                        : "bg-white/5 border-white/10 text-neutral-300 hover:bg-white/10"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-white/10">
+              <div>
+                <span className="text-xs font-bold text-white">Open Library on Launch</span>
+                <p className="text-[11px] text-neutral-400">
+                  Automatically open Media Library when launching without a video file
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => updateUiSettings({ launchToLibrary: !launchToLibrary })}
+                style={launchToLibrary ? { backgroundColor: accentColor, color: accentText } : {}}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer shrink-0 ${
+                  launchToLibrary
+                    ? "border-transparent shadow-sm"
+                    : "bg-white/5 border-white/10 text-neutral-300 hover:bg-white/10"
+                }`}
+              >
+                {launchToLibrary ? "On" : "Off"}
+              </button>
+            </div>
+          </div>
+
+          {/* Card Metadata Badges */}
+          <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2.5">
+            <h4 className="text-xs font-bold text-white">Library Card Badges</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {[
+                { key: "cardShowFileSize" as const, label: "Show File Size", val: cardShowFileSize },
+                { key: "cardShowNewBadge" as const, label: 'Show "New" Badge', val: cardShowNewBadge },
+                { key: "cardShowWatchedBadge" as const, label: 'Show "Watched" Pill', val: cardShowWatchedBadge },
+              ].map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => updateUiSettings({ [opt.key]: !opt.val })}
+                  className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs transition cursor-pointer ${
+                    opt.val
+                      ? "bg-white/10 border-white/25 text-white font-semibold"
+                      : "bg-white/[0.02] border-white/5 text-neutral-500 hover:text-neutral-300"
+                  }`}
+                >
+                  <span>{opt.label}</span>
+                  <CheckCircle2
+                    className="w-3.5 h-3.5 shrink-0"
+                    style={opt.val ? { color: accentColor } : { opacity: 0.25 }}
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* OSD Position & Control Bar Buttons */}
+          <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-4">
+            <div className="space-y-2">
+              <span className="text-xs font-bold text-white block">On-Screen Feedback (OSD) Style</span>
+              <div className="grid grid-cols-3 gap-2">
+                {(
+                  [
+                    { id: "top-center", label: "Top Center" },
+                    { id: "top-left", label: "Top Left" },
+                    { id: "minimal", label: "Minimal Pill" },
+                  ] as const
+                ).map((pos) => (
+                  <button
+                    key={pos.id}
+                    type="button"
+                    onClick={() => updateUiSettings({ osdPosition: pos.id })}
+                    style={
+                      osdPosition === pos.id
+                        ? { backgroundColor: accentColor, color: accentText, borderColor: accentColor }
+                        : {}
+                    }
+                    className={`py-2 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+                      osdPosition === pos.id
+                        ? "font-bold shadow-sm"
+                        : "bg-white/5 border-white/10 text-neutral-300 hover:bg-white/10"
+                    }`}
+                  >
+                    {pos.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-white/10">
+              <span className="text-xs font-bold text-white block">
+                Visible Control Bar Buttons
+              </span>
+              <p className="text-[11px] text-neutral-400">
+                Hide buttons you rarely use for a cleaner player bar
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { id: "chapters", label: "Chapters" },
+                  { id: "fit", label: "Video Fit" },
+                  { id: "autoplay", label: "Auto-Next" },
+                  { id: "repeat", label: "Repeat" },
+                  { id: "profiles", label: "Profiles" },
+                  { id: "sleep", label: "Sleep Timer" },
+                  { id: "pip", label: "PiP" },
+                ].map((btn) => {
+                  const visible = !hiddenControlButtons.includes(btn.id);
+                  return (
+                    <button
+                      key={btn.id}
+                      type="button"
+                      onClick={() => {
+                        const next = visible
+                          ? [...hiddenControlButtons, btn.id]
+                          : hiddenControlButtons.filter((id) => id !== btn.id);
+                        updateUiSettings({ hiddenControlButtons: next });
+                      }}
+                      className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+                        visible
+                          ? "bg-white/10 border-white/25 text-white"
+                          : "bg-white/[0.02] border-white/5 text-neutral-500 line-through"
+                      }`}
+                    >
+                      {btn.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       )}

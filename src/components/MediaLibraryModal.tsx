@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from "react";
 import {
   X,
   Search,
@@ -60,7 +60,6 @@ import { MediaCard } from "./mediaCenter/MediaCard";
 import { VirtualizedMediaGrid, VirtualizedMediaList } from "./mediaCenter/VirtualizedMediaGrid";
 import { EditMetadataModal } from "./mediaCenter/EditMetadataModal";
 import { DeleteMediaModal } from "./mediaCenter/DeleteMediaModal";
-import { WatchReportDashboard } from "./mediaCenter/WatchReportDashboard";
 import { SeriesDetailView } from "./mediaCenter/SeriesDetailView";
 import { ProceduralPoster } from "./mediaCenter/ProceduralPoster";
 import { CollectionsView } from "./mediaCenter/CollectionsView";
@@ -68,6 +67,12 @@ import {
   LibraryCardContextMenu,
   LibraryContextMenuState,
 } from "./mediaCenter/LibraryCardContextMenu";
+
+const WatchReportDashboard = lazy(() =>
+  import("./mediaCenter/WatchReportDashboard").then((m) => ({
+    default: m.WatchReportDashboard,
+  })),
+);
 import { normalizeSeriesKey } from "../utils/mediaTitle";
 import { pickPosterItem } from "../utils/mediaPoster";
 import { useResolvedPoster } from "../hooks/useResolvedPoster";
@@ -154,6 +159,7 @@ function SeriesCard({
   onCoverChange,
   onEdit,
   onDelete,
+  onContextMenu,
   viewFormat = "poster",
 }: {
   group: SeriesGroupItem;
@@ -161,17 +167,39 @@ function SeriesCard({
   onCoverChange?: (group: SeriesGroupItem) => void;
   onEdit?: (group: SeriesGroupItem) => void;
   onDelete?: (item: LibraryItem) => void;
+  onContextMenu?: (item: LibraryItem, x: number, y: number) => void;
   viewFormat?: "poster" | "widescreen";
 }) {
   const { accentColor } = useThemeStore();
+  const [isVisible, setIsVisible] = useState(false);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "250px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   const [thumbSrc, setThumbSrc] = useResolvedPoster(
     group.poster,
     group.sampleItem.file_path,
+    isVisible,
   );
   const isWidescreen = viewFormat === "widescreen";
 
   return (
     <div
+      ref={cardRef}
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return;
@@ -179,6 +207,12 @@ function SeriesCard({
           e.preventDefault();
           onClick();
         }
+      }}
+      onContextMenu={(e) => {
+        if (!onContextMenu) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onContextMenu(group.sampleItem, e.clientX, e.clientY);
       }}
       onClick={onClick}
       className="group relative flex flex-col rounded-xl bg-neutral-900/50 hover:bg-neutral-900/85 border border-white/[0.08] hover:border-white/[0.2] transition-colors duration-150 overflow-hidden cursor-pointer shadow-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
@@ -217,12 +251,12 @@ function SeriesCard({
 
         {/* Top Badges & Cover Change Buttons */}
         <div className="absolute top-2.5 inset-x-2.5 flex items-center justify-between z-10 pointer-events-none">
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-black/60 text-neutral-300 border border-white/10 backdrop-blur-md">
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-black/80 text-neutral-300 border border-white/10">
             {group.seasonsCount} {group.seasonsCount === 1 ? "Season" : "Seasons"}
           </span>
           <div className="flex items-center gap-1">
             {group.watchedCount === group.episodesCount && (
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 backdrop-blur-md">
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-950/90 text-emerald-400 border border-emerald-500/40">
                 <CheckCircle2 className="w-3 h-3" />
               </span>
             )}
@@ -233,7 +267,7 @@ function SeriesCard({
                   e.stopPropagation();
                   onCoverChange(group);
                 }}
-                className="pointer-events-auto opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-1.5 rounded-lg bg-black/80 hover:bg-white/20 text-neutral-300 hover:text-white border border-white/15 backdrop-blur-md transition cursor-pointer shadow-lg"
+                className="pointer-events-auto opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-1.5 rounded-lg bg-black/85 hover:bg-white/20 text-neutral-300 hover:text-white border border-white/15 transition cursor-pointer shadow-lg"
                 title="Change TV Series Cover Artwork"
               >
                 <Camera className="w-3.5 h-3.5" />
@@ -246,7 +280,7 @@ function SeriesCard({
                   e.stopPropagation();
                   onEdit(group);
                 }}
-                className="pointer-events-auto opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-1.5 rounded-lg bg-black/80 hover:bg-white/20 text-neutral-300 hover:text-white border border-white/15 backdrop-blur-md transition cursor-pointer shadow-lg"
+                className="pointer-events-auto opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-1.5 rounded-lg bg-black/85 hover:bg-white/20 text-neutral-300 hover:text-white border border-white/15 transition cursor-pointer shadow-lg"
                 title="Edit TV Series Details"
               >
                 <Edit3 className="w-3.5 h-3.5" />
@@ -259,7 +293,7 @@ function SeriesCard({
                   e.stopPropagation();
                   onDelete(group.sampleItem);
                 }}
-                className="pointer-events-auto opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-1.5 rounded-lg bg-black/80 hover:bg-rose-500/20 text-neutral-300 hover:text-rose-400 border border-white/15 backdrop-blur-md transition cursor-pointer shadow-lg"
+                className="pointer-events-auto opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-1.5 rounded-lg bg-black/85 hover:bg-rose-500/20 text-neutral-300 hover:text-rose-400 border border-white/15 transition cursor-pointer shadow-lg"
                 title="Delete Series File..."
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -270,7 +304,7 @@ function SeriesCard({
 
         {/* Hover Lower Overlay: View Episodes Capsule */}
         <div className="absolute inset-0 flex items-end justify-center pb-5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20 pointer-events-none">
-          <div className="px-3.5 py-1.5 rounded-full bg-neutral-950/85 backdrop-blur-xl border border-white/20 hover:border-white/40 text-neutral-200 hover:text-white font-medium text-xs flex items-center gap-1.5 shadow-lg transition duration-150 pointer-events-auto">
+          <div className="px-3.5 py-1.5 rounded-full bg-neutral-950/90 border border-white/20 hover:border-white/40 text-neutral-200 hover:text-white font-medium text-xs flex items-center gap-1.5 shadow-lg transition duration-150 pointer-events-auto">
             <Layers className="w-3.5 h-3.5 text-neutral-400" />
             <span>View Episodes</span>
             <span className="text-neutral-500">•</span>
@@ -310,8 +344,11 @@ export function MediaLibraryModal() {
   const { isLibraryOpen, toggleLibraryModal, toggleSettingsModal, openFile, addToPlaylist, showOSD, autoBatterySaver, isOnBattery } = usePlayerStore();
   const { accentColor, accentText } = useThemeStore();
 
-  const [activeTab, setActiveTab] = useState<MediaCenterTab>("hub");
+  const [activeTab, setActiveTab] = useState<MediaCenterTab>(
+    () => useThemeStore.getState().libraryStartupTab || "hub",
+  );
   const [watchFilter, setWatchFilter] = useState<WatchFilter>("all");
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [resolutionFilter, setResolutionFilter] = useState<ResolutionFilter>("all");
   const [sortBy, setSortBy] = useState<SortOption>("recent");
   const [isSelectMode, setIsSelectMode] = useState(false);
@@ -930,6 +967,10 @@ export function MediaLibraryModal() {
       return 0;
     };
 
+    if (favoritesOnly) {
+      result = result.filter((i) => i.is_favorite);
+    }
+
     if (resolutionFilter === "4k") {
       result = result.filter((i) => getResolutionHeight(i) >= 2000);
     } else if (resolutionFilter === "1080p") {
@@ -962,7 +1003,7 @@ export function MediaLibraryModal() {
     }
 
     return result;
-  }, [movies, watchFilter, resolutionFilter, sortBy]);
+  }, [movies, watchFilter, favoritesOnly, resolutionFilter, sortBy]);
 
   // Scan folder handler
   const handleScanFolder = async (folderPath: string) => {
@@ -2427,6 +2468,19 @@ export function MediaLibraryModal() {
                     {f.label}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => setFavoritesOnly((p) => !p)}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+                    favoritesOnly
+                      ? "bg-rose-500/20 border-rose-500/40 text-rose-300 shadow-sm font-bold"
+                      : "bg-white/5 border-transparent text-neutral-400 hover:text-white"
+                  }`}
+                  title="Show Favorites Only"
+                >
+                  <Heart className={`w-3 h-3 ${favoritesOnly ? "fill-current" : ""}`} />
+                  <span>Favorites</span>
+                </button>
               </div>
 
               {/* Sort & Bulk Select Controls */}
@@ -2683,6 +2737,7 @@ export function MediaLibraryModal() {
                     viewFormat={cardFormat}
                     onClick={() => setInspectingSeriesName(group.seriesName)}
                     onCoverChange={handlePickSeriesCover}
+                    onContextMenu={handleOpenContextMenu}
                     onEdit={() => {
                       setEditingSeriesInfo({
                         seriesName: group.seriesName,
@@ -2933,8 +2988,16 @@ export function MediaLibraryModal() {
             />
           </div>
         ) : activeTab === "reports" ? (
-          /* TAB: WATCH REPORT & ANALYTICS */
-          <WatchReportDashboard onPlayFile={handlePlayItem} onDeleteFile={setDeletingItem} />
+          /* TAB: WATCH REPORT & ANALYTICS (lazy-loaded) */
+          <Suspense
+            fallback={
+              <div className="flex-1 flex items-center justify-center text-xs text-neutral-500 font-mono">
+                Loading Watch Report...
+              </div>
+            }
+          >
+            <WatchReportDashboard onPlayFile={handlePlayItem} onDeleteFile={setDeletingItem} />
+          </Suspense>
         ) : (
           /* TAB 7: FOLDERS & STORAGE */
           <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6 max-w-4xl mx-auto w-full">

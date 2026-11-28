@@ -4,6 +4,20 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ---
 
+## [0.3.2] - 2026-11-28
+
+### ⚡ Performance & Battery Optimization
+- **Eco Blur (Reduced Transparency)**: Added an `ecoBlur` toggle in `Settings → Appearance → Library & HUD` to disable CSS `backdrop-filter` layers for lower laptop GPU & battery usage.
+- **Lighter Virtualized Cards**: Removed per-card `backdrop-blur` layers from `MediaCard` and `SeriesCard` badges/hover trays and added `IntersectionObserver` lazy artwork loading to `SeriesCard`.
+- **On-Demand Modal Mounting & Code Splitting**: Split `CommandPalette` and `WatchReportDashboard` into lazy chunks and mounted `SettingsModal`, `MediaLibraryModal`, and `CommandPalette` only when open.
+
+### 🎨 Library, HUD & Settings Customization
+- **Library & HUD Settings (`AppearanceSettings`)**: Added controls for **Library Card Density** (`Compact`, `Comfortable`, `Spacious`), **Default Startup Tab**, **Open Library on Launch**, **Card Badge Toggles** (*File Size*, *"New" Badge*, *"Watched" Pill*), **OSD Position & Style** (`Top Center`, `Top Left`, `Minimal Pill`), and **Visible Control Bar Buttons**.
+- **Library & Collections Polish**: Added **Favorites** quick filter chip in Movies, **Right-Click Context Menu** on TV Series cards, inline **Rename Collection** (`db_rename_collection`) in `CollectionsView`, and anchored `LibraryCardContextMenu` positioning directly at the button/cursor without edge-jumping.
+- **Settings Quick-Jump Search**: Added an instant keyword search bar in `SettingsModal` to jump straight to any setting tab.
+
+---
+
 ## [0.3.1] - 2026-11-28
 
 ### 📚 Library UX & Navigation Overhaul
