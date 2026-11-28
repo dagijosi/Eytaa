@@ -1,13 +1,21 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { FolderPlus, Play, Trash2, Layers, X, Plus, Search, Check } from "lucide-react";
+import { FolderPlus, Play, Trash2, Layers, Plus, Search, Check, Shuffle } from "lucide-react";
 import { libraryService, CollectionItem, LibraryItem } from "../../services/library/libraryService";
+import { MediaCard } from "./MediaCard";
 
 interface CollectionsViewProps {
   allItems: LibraryItem[];
   accentColor: string;
   accentText: string;
+  cardFormat?: "poster" | "widescreen";
   onPlayItem: (item: LibraryItem) => void;
   onQueueCollection: (items: LibraryItem[]) => void;
+  onQueue: (filePath: string) => void;
+  onEdit: (item: LibraryItem) => void;
+  onDelete?: (item: LibraryItem) => void;
+  onToggleFavorite: (filePath: string) => void;
+  onToggleWatched: (filePath: string, currentWatched: boolean) => void;
+  onContextMenu?: (item: LibraryItem, x: number, y: number, collectionId?: number) => void;
   onCollectionsChanged?: () => void;
 }
 
@@ -15,8 +23,15 @@ export function CollectionsView({
   allItems,
   accentColor,
   accentText,
+  cardFormat = "widescreen",
   onPlayItem,
   onQueueCollection,
+  onQueue,
+  onEdit,
+  onDelete,
+  onToggleFavorite,
+  onToggleWatched,
+  onContextMenu,
   onCollectionsChanged,
 }: CollectionsViewProps) {
   const [collections, setCollections] = useState<CollectionItem[]>([]);
@@ -45,7 +60,12 @@ export function CollectionsView({
       return;
     }
     libraryService.getCollectionItems(activeCollectionId).then(setCollectionPaths);
-  }, [activeCollectionId]);
+    const unsub = libraryService.onLibraryChange(() => {
+      libraryService.getCollectionItems(activeCollectionId).then(setCollectionPaths);
+      void loadCollections();
+    });
+    return () => unsub();
+  }, [activeCollectionId, loadCollections]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -213,14 +233,30 @@ export function CollectionsView({
                     <span>{showAddPicker ? "Done Adding" : "Add Movies / Shows"}</span>
                   </button>
                   {activeItems.length > 0 && (
-                    <button
-                      onClick={() => onQueueCollection(activeItems)}
-                      style={{ backgroundColor: accentColor, color: accentText }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer hover:brightness-110 transition"
-                    >
-                      <Play className="w-3.5 h-3.5 fill-current" />
-                      <span>Play All</span>
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const unwatched = activeItems.filter((i) => !i.is_watched);
+                          const pool = unwatched.length > 0 ? unwatched : activeItems;
+                          const pick = pool[Math.floor(Math.random() * pool.length)];
+                          if (pick) onPlayItem(pick);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-200 cursor-pointer transition"
+                        title="Play a random item from this collection"
+                      >
+                        <Shuffle className="w-3.5 h-3.5" />
+                        <span>Surprise Me</span>
+                      </button>
+                      <button
+                        onClick={() => onQueueCollection(activeItems)}
+                        style={{ backgroundColor: accentColor, color: accentText }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer hover:brightness-110 transition"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>Play All</span>
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -281,36 +317,30 @@ export function CollectionsView({
                 This collection is empty. Click <strong className="text-neutral-300">Add Movies / Shows</strong> above to add items.
               </div>
             ) : (
-              <div className="space-y-1.5">
+              <div
+                className={`grid gap-3.5 ${
+                  cardFormat === "poster"
+                    ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4"
+                    : "grid-cols-1 sm:grid-cols-2 md:grid-cols-3"
+                }`}
+              >
                 {activeItems.map((item) => (
-                  <div
+                  <MediaCard
                     key={item.file_path}
-                    className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 transition"
-                  >
-                    <button
-                      onClick={() => onPlayItem(item)}
-                      className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
-                    >
-                      <Play className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs font-semibold text-neutral-200 truncate">
-                          {item.title}
-                        </div>
-                        <div className="text-[10px] font-mono text-neutral-500 flex items-center gap-2">
-                          <span>{item.year || item.category || "Media"}</span>
-                          {item.height ? <span>{item.height >= 2160 ? "4K" : `${item.height}p`}</span> : null}
-                          {item.video_codec ? <span>{item.video_codec}</span> : null}
-                        </div>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => void handleRemoveItem(item.file_path)}
-                      className="p-1.5 rounded-lg text-neutral-500 hover:text-rose-400 hover:bg-rose-500/10 cursor-pointer"
-                      title="Remove from collection"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                    item={item}
+                    viewFormat={cardFormat}
+                    onPlay={() => onPlayItem(item)}
+                    onQueue={onQueue}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                    onToggleFavorite={onToggleFavorite}
+                    onToggleWatched={onToggleWatched}
+                    onContextMenu={
+                      onContextMenu
+                        ? (it, x, y) => onContextMenu(it, x, y, activeCollection?.id)
+                        : undefined
+                    }
+                  />
                 ))}
               </div>
             )}

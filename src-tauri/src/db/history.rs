@@ -41,6 +41,12 @@ pub fn db_set_resume_position(
 ) -> Result<(), String> {
     let conn = state.conn.lock().map_err(|_| "Database mutex poisoned")?;
 
+    // Reset/clear resume position if requested (e.g. dismissing from Continue Watching)
+    if position <= 0.0 {
+        let _ = conn.execute("DELETE FROM resume_positions WHERE file_path = ?1", params![file_path]);
+        return Ok(());
+    }
+
     // If near completion (>92% watched or within 20s of end for videos > 60s), remove from resume_positions and mark watched
     if let Some(dur) = duration {
         if dur > 60.0 && (position >= dur * 0.92 || position >= dur - 20.0) {

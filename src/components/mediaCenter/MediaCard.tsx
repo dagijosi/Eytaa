@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, memo } from "react";
-import { Play, Plus, Heart, CheckCircle2, Circle, Edit3, Clock, Trash2, Check } from "lucide-react";
+import { Play, Plus, Heart, CheckCircle2, Circle, Edit3, Clock, Trash2, Check, MoreHorizontal } from "lucide-react";
 import { useThemeStore } from "../../stores/themeStore";
 import { LibraryItem } from "../../services/library/libraryService";
 import { useResolvedPoster } from "../../hooks/useResolvedPoster";
@@ -18,6 +18,7 @@ interface MediaCardProps {
   showSeriesTitle?: boolean;
   isSelectMode?: boolean;
   isSelected?: boolean;
+  onContextMenu?: (item: LibraryItem, x: number, y: number) => void;
 }
 
 function formatDuration(seconds?: number): string {
@@ -66,6 +67,7 @@ function MediaCardBase({
   showSeriesTitle = true,
   isSelectMode = false,
   isSelected = false,
+  onContextMenu,
 }: MediaCardProps) {
   const { accentColor, accentText } = useThemeStore();
   const [isVisible, setIsVisible] = useState(false);
@@ -123,7 +125,21 @@ function MediaCardBase({
   return (
     <div
       ref={containerRef}
-      className={`group relative flex flex-col rounded-xl transition-all duration-150 overflow-hidden cursor-pointer shadow-xs border ${
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onPlay(item.file_path);
+        }
+      }}
+      onContextMenu={(e) => {
+        if (!onContextMenu || isSelectMode) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onContextMenu(item, e.clientX, e.clientY);
+      }}
+      className={`group relative flex flex-col rounded-xl transition-all duration-150 overflow-hidden cursor-pointer shadow-xs border focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 ${
         isSelectMode
           ? isSelected
             ? "bg-indigo-950/35 border-indigo-400 ring-2 ring-indigo-400/50 scale-[0.985]"
@@ -246,10 +262,10 @@ function MediaCardBase({
               </div>
             </div>
 
-            {/* Hover Quick Action Tray */}
+            {/* Hover Quick Action Tray: Watched, Favorite, and More Menu */}
             <div
               onClick={(e) => e.stopPropagation()}
-              className="absolute bottom-1.5 left-1.5 flex items-center gap-0.5 bg-black/80 backdrop-blur-md border border-white/15 rounded-lg p-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-20 shadow-lg pointer-events-auto"
+              className="absolute bottom-1.5 left-1.5 flex items-center gap-0.5 bg-black/80 backdrop-blur-md border border-white/15 rounded-lg p-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150 z-20 shadow-lg pointer-events-auto"
             >
               {/* Mark Watched Toggle */}
               <button
@@ -283,36 +299,48 @@ function MediaCardBase({
                 <Heart className={`w-3.5 h-3.5 ${item.is_favorite ? "fill-current" : ""}`} />
               </button>
 
-              {/* Queue to Playlist */}
-              <button
-                type="button"
-                onClick={() => onQueue(item.file_path)}
-                title="Add to Playlist"
-                className="p-1.5 rounded-md text-neutral-400 hover:text-white hover:bg-white/15 transition duration-150 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
-
-              {/* Edit Metadata */}
-              <button
-                type="button"
-                onClick={() => onEdit(item)}
-                title="Edit Details"
-                className="p-1.5 rounded-md text-neutral-400 hover:text-white hover:bg-white/15 transition duration-150 cursor-pointer"
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-              </button>
-
-              {/* Delete File */}
-              {onDelete && (
+              {/* More Actions (opens Context Menu) or fallback inline actions */}
+              {onContextMenu ? (
                 <button
                   type="button"
-                  onClick={() => onDelete(item)}
-                  title="Delete File..."
-                  className="p-1.5 rounded-md text-neutral-400 hover:text-rose-400 hover:bg-rose-500/20 transition duration-150 cursor-pointer"
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    onContextMenu(item, rect.left, rect.bottom + 4);
+                  }}
+                  title="More actions (Right-click card)"
+                  className="p-1.5 rounded-md text-neutral-400 hover:text-white hover:bg-white/15 transition duration-150 cursor-pointer"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <MoreHorizontal className="w-3.5 h-3.5" />
                 </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => onQueue(item.file_path)}
+                    title="Add to Playlist"
+                    className="p-1.5 rounded-md text-neutral-400 hover:text-white hover:bg-white/15 transition duration-150 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onEdit(item)}
+                    title="Edit Details"
+                    className="p-1.5 rounded-md text-neutral-400 hover:text-white hover:bg-white/15 transition duration-150 cursor-pointer"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </button>
+                  {onDelete && (
+                    <button
+                      type="button"
+                      onClick={() => onDelete(item)}
+                      title="Delete File..."
+                      className="p-1.5 rounded-md text-neutral-400 hover:text-rose-400 hover:bg-rose-500/20 transition duration-150 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </>

@@ -739,14 +739,18 @@ class LibraryService {
 
   public async deleteCollection(id: number): Promise<void> {
     await invoke<void>("db_delete_collection", { id });
+    this.notifyLibraryChanged();
   }
 
   public async addToCollection(collectionId: number, filePaths: string[]): Promise<number> {
-    return await invoke<number>("db_add_to_collection", { collectionId, filePaths });
+    const count = await invoke<number>("db_add_to_collection", { collectionId, filePaths });
+    this.notifyLibraryChanged();
+    return count;
   }
 
   public async removeFromCollection(collectionId: number, filePath: string): Promise<void> {
     await invoke<void>("db_remove_from_collection", { collectionId, filePath });
+    this.notifyLibraryChanged();
   }
 
   public async getCollectionItems(collectionId: number): Promise<string[]> {
@@ -765,6 +769,15 @@ class LibraryService {
     const count = await invoke<number>("db_import_backup", { jsonData });
     this.notifyLibraryChanged();
     return count;
+  }
+
+  public async clearResumePosition(filePath: string): Promise<void> {
+    await invoke<void>("db_set_resume_position", {
+      filePath,
+      position: 0,
+      duration: null,
+    });
+    this.notifyLibraryChanged();
   }
 
 }

@@ -36,10 +36,13 @@ import {
   ArrowUpDown,
   FolderHeart,
   CheckSquare,
+  Shuffle,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getVersion } from "@tauri-apps/api/app";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { usePlayerStore } from "../stores/playerStore";
 import { useThemeStore } from "../stores/themeStore";
 import {
@@ -61,6 +64,10 @@ import { WatchReportDashboard } from "./mediaCenter/WatchReportDashboard";
 import { SeriesDetailView } from "./mediaCenter/SeriesDetailView";
 import { ProceduralPoster } from "./mediaCenter/ProceduralPoster";
 import { CollectionsView } from "./mediaCenter/CollectionsView";
+import {
+  LibraryCardContextMenu,
+  LibraryContextMenuState,
+} from "./mediaCenter/LibraryCardContextMenu";
 import { normalizeSeriesKey } from "../utils/mediaTitle";
 import { pickPosterItem } from "../utils/mediaPoster";
 import { useResolvedPoster } from "../hooks/useResolvedPoster";
@@ -165,8 +172,16 @@ function SeriesCard({
 
   return (
     <div
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       onClick={onClick}
-      className="group relative flex flex-col rounded-xl bg-neutral-900/50 hover:bg-neutral-900/85 border border-white/[0.08] hover:border-white/[0.2] transition-colors duration-150 overflow-hidden cursor-pointer shadow-xs"
+      className="group relative flex flex-col rounded-xl bg-neutral-900/50 hover:bg-neutral-900/85 border border-white/[0.08] hover:border-white/[0.2] transition-colors duration-150 overflow-hidden cursor-pointer shadow-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
     >
       {/* Show Poster Container */}
       <div
@@ -302,6 +317,15 @@ export function MediaLibraryModal() {
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [collectionsList, setCollectionsList] = useState<Array<{ id: number; name: string }>>([]);
+  const [contextMenu, setContextMenu] = useState<LibraryContextMenuState | null>(null);
+  const [appVersion, setAppVersion] = useState<string>("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    getVersion()
+      .then((v) => setAppVersion(v))
+      .catch(() => {});
+  }, []);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [cardFormat, setCardFormat] = useState<"poster" | "widescreen">(() => {
     try {
@@ -509,12 +533,33 @@ export function MediaLibraryModal() {
     return unsubscribe;
   }, [isLibraryOpen, loadData]);
 
-  // Keyboard shortcut: close with Esc
+  // Keyboard navigation: Esc (step-by-step exit), / or Ctrl+F (focus search)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isLibraryOpen) {
-        if (editingItem) {
+      if (!isLibraryOpen) return;
+
+      const target = e.target as HTMLElement | null;
+      const isTyping =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+
+      if ((e.key === "/" && !isTyping) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f")) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+        return;
+      }
+
+      if (e.key === "Escape") {
+        if (contextMenu) {
+          setContextMenu(null);
+        } else if (editingItem) {
           handleCloseEdit();
+        } else if (isSelectMode) {
+          setIsSelectMode(false);
+          setSelectedPaths(new Set());
         } else if (inspectingSeriesName) {
           setInspectingSeriesName(null);
         } else {
@@ -524,12 +569,52 @@ export function MediaLibraryModal() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isLibraryOpen, editingItem, inspectingSeriesName, toggleLibraryModal, handleCloseEdit]);
+  }, [
+    isLibraryOpen,
+    contextMenu,
+    editingItem,
+    isSelectMode,
+    inspectingSeriesName,
+    toggleLibraryModal,
+    handleCloseEdit,
+  ]);
 
   const refreshCollectionsList = useCallback(async () => {
     const cols = await libraryService.getCollections();
     setCollectionsList(cols.map((c) => ({ id: c.id, name: c.name })));
   }, []);
+
+  const handleOpenContextMenu = useCallback(
+    (item: LibraryItem, x: number, y: number, collectionIdToRemove?: number) => {
+      setContextMenu({ item, x, y, collectionIdToRemove });
+    },
+    [],
+  );
+
+  const handleResetProgress = useCallback(
+    async (filePath: string) => {
+      await libraryService.clearResumePosition(filePath);
+      setItems((prev) =>
+        prev.map((it) =>
+          it.file_path === filePath ? { ...it, resume_position: undefined } : it,
+        ),
+      );
+      showOSD("Dismissed from Continue Watching");
+    },
+    [showOSD],
+  );
+
+  const handleRevealInFolder = useCallback(
+    async (filePath: string) => {
+      try {
+        await revealItemInDir(filePath);
+      } catch (err) {
+        console.warn("Reveal in folder failed:", err);
+        showOSD("Could not open folder location");
+      }
+    },
+    [showOSD],
+  );
 
   // Load collections list whenever Library opens or tab switches
   useEffect(() => {
@@ -1144,12 +1229,14 @@ export function MediaLibraryModal() {
               <h1 className="text-xs sm:text-sm font-black tracking-wide uppercase truncate hidden sm:block">
                 Smart Media Center
               </h1>
-              <span
-                style={{ backgroundColor: accentColor, color: accentText }}
-                className="px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-mono font-bold shrink-0"
-              >
-                v2.0
-              </span>
+              {appVersion && (
+                <span
+                  style={{ backgroundColor: accentColor, color: accentText }}
+                  className="px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-mono font-bold shrink-0"
+                >
+                  v{appVersion}
+                </span>
+              )}
               {offlineCount > 0 && (
                 <span className="px-1.5 py-0.5 rounded-full text-[9px] font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 hidden lg:inline shrink-0">
                   {offlineCount} offline
@@ -1163,10 +1250,11 @@ export function MediaLibraryModal() {
         <div className="relative flex-1 min-w-[130px] sm:min-w-[180px] max-w-xs sm:max-w-sm md:max-w-md mx-1 sm:mx-2" data-tauri-drag-region="false">
           <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-neutral-400 absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
+            ref={searchInputRef}
             type="text"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search movies, series..."
+            placeholder="Search movies, series... (Press /)"
             className={`w-full pl-8 sm:pl-9 pr-7 sm:pr-8 py-1.5 rounded-xl bg-white/5 border text-xs text-white placeholder-neutral-500 transition focus:outline-none ${
               searchInput
                 ? "border-sky-500/50 shadow-[0_0_12px_rgba(56,189,248,0.2)] focus:border-sky-400"
@@ -1378,7 +1466,6 @@ export function MediaLibraryModal() {
                   { id: "collections", label: "Collections", icon: FolderHeart, count: collectionsList.length || undefined },
                   { id: "all", label: "All Media", icon: Database, count: items.length },
                   { id: "favorites", label: "Favorites", icon: Heart, count: favorites.length },
-                  { id: "reports", label: "Watch Report", icon: BarChart3, count: undefined },
                 ].map((tab) => {
                   const Icon = tab.icon;
                   const isActive = activeTab === tab.id && !inspectingSeriesName;
@@ -1458,6 +1545,7 @@ export function MediaLibraryModal() {
               )}
               <div className="space-y-1 w-full">
                 {[
+                  { id: "reports", label: "Watch Report", icon: BarChart3, count: undefined },
                   { id: "duplicates", label: "Duplicates", icon: Copy, count: duplicateCount },
                   { id: "folders", label: "Folders & Storage", icon: Folder, count: folders.length },
                 ].map((tab) => {
@@ -1660,8 +1748,12 @@ export function MediaLibraryModal() {
                     </div>
                   )}
 
-                {/* View mode toggle (for All Media tab only) */}
-                {activeTab === "all" && (
+                {/* View mode toggle (Grid / List) across media tabs */}
+                {(activeTab === "movies" ||
+                  activeTab === "music" ||
+                  activeTab === "all" ||
+                  activeTab === "favorites" ||
+                  activeTab === "duplicates") && (
                   <div className="flex items-center bg-white/5 border border-white/10 rounded-xl p-0.5">
                     <button
                       type="button"
@@ -1978,6 +2070,7 @@ export function MediaLibraryModal() {
                       onEdit={(it) => setEditingItem(it)}
                       onToggleFavorite={handleToggleFavorite}
                       onToggleWatched={handleToggleWatched}
+                      onContextMenu={handleOpenContextMenu}
                     />
                   ))}
                 </div>
@@ -2010,6 +2103,7 @@ export function MediaLibraryModal() {
                       onEdit={(it) => setEditingItem(it)}
                       onToggleFavorite={handleToggleFavorite}
                       onToggleWatched={handleToggleWatched}
+                      onContextMenu={handleOpenContextMenu}
                     />
                   ))}
                 </div>
@@ -2140,6 +2234,7 @@ export function MediaLibraryModal() {
                       onEdit={(it) => setEditingItem(it)}
                       onToggleFavorite={handleToggleFavorite}
                       onToggleWatched={handleToggleWatched}
+                      onContextMenu={handleOpenContextMenu}
                     />
                   ))}
                 </div>
@@ -2179,6 +2274,7 @@ export function MediaLibraryModal() {
                         onEdit={(it) => setEditingItem(it)}
                         onToggleFavorite={handleToggleFavorite}
                         onToggleWatched={handleToggleWatched}
+                        onContextMenu={handleOpenContextMenu}
                       />
                     ))}
                 </div>
@@ -2233,7 +2329,7 @@ export function MediaLibraryModal() {
                   Add a folder containing audio files (mp3, flac, wav, m4a) to see them here.
                 </p>
               </div>
-            ) : (
+            ) : viewMode === "grid" ? (
               <VirtualizedMediaGrid
                 items={filteredMusic}
                 scrollRef={scrollRef}
@@ -2250,7 +2346,49 @@ export function MediaLibraryModal() {
                     onDelete={setDeletingItem}
                     onToggleFavorite={handleToggleFavorite}
                     onToggleWatched={handleToggleWatched}
+                    onContextMenu={handleOpenContextMenu}
                   />
+                )}
+              />
+            ) : (
+              <VirtualizedMediaList
+                items={filteredMusic}
+                scrollRef={scrollRef}
+                getKey={(track) => track.file_path}
+                rowHeight={64}
+                renderItem={(track) => (
+                  <div
+                    onClick={() => handlePlayItem(track.file_path)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      handleOpenContextMenu(track, e.clientX, e.clientY);
+                    }}
+                    className="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition cursor-pointer group border-b border-white/5 last:border-b-0"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-neutral-400 shrink-0">
+                        <Music className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-xs font-bold text-white truncate">{track.title}</h4>
+                        <p className="text-[11px] text-neutral-500 font-mono truncate max-w-md">
+                          {track.file_name} • {formatDuration(track.duration)} • {formatBytes(track.file_size)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {track.is_watched && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingItem(track);
+                        }}
+                        className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 )}
               />
             )}
@@ -2308,6 +2446,23 @@ export function MediaLibraryModal() {
                     </button>
                   ))}
                 </div>
+
+                {filteredMovies.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const unwatched = filteredMovies.filter((m) => !m.is_watched);
+                      const pool = unwatched.length > 0 ? unwatched : filteredMovies;
+                      const pick = pool[Math.floor(Math.random() * pool.length)];
+                      if (pick) handlePlayMediaWithAutoQueue(pick);
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-white/5 text-neutral-300 border border-white/10 hover:bg-white/10 hover:text-white transition cursor-pointer"
+                    title="Pick a random movie to watch"
+                  >
+                    <Shuffle className="w-3.5 h-3.5" />
+                    <span>Surprise Me</span>
+                  </button>
+                )}
 
                 <button
                   onClick={() => {
@@ -2420,7 +2575,7 @@ export function MediaLibraryModal() {
                   Try adjusting filters or adding a folder with movie files.
                 </p>
               </div>
-            ) : (
+            ) : viewMode === "grid" ? (
               <VirtualizedMediaGrid
                 items={filteredMovies}
                 scrollRef={scrollRef}
@@ -2452,9 +2607,51 @@ export function MediaLibraryModal() {
                       onDelete={setDeletingItem}
                       onToggleFavorite={handleToggleFavorite}
                       onToggleWatched={handleToggleWatched}
+                      onContextMenu={handleOpenContextMenu}
                     />
                   );
                 }}
+              />
+            ) : (
+              <VirtualizedMediaList
+                items={filteredMovies}
+                scrollRef={scrollRef}
+                getKey={(movie) => movie.file_path}
+                rowHeight={64}
+                renderItem={(movie) => (
+                  <div
+                    onClick={() => handlePlayMediaWithAutoQueue(movie)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      handleOpenContextMenu(movie, e.clientX, e.clientY);
+                    }}
+                    className="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition cursor-pointer group border-b border-white/5 last:border-b-0"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-neutral-400 shrink-0">
+                        <Film className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-xs font-bold text-white truncate">{movie.title}</h4>
+                        <p className="text-[11px] text-neutral-500 font-mono truncate max-w-md">
+                          {movie.year || "Movie"} • {formatDuration(movie.duration)} • {formatBytes(movie.file_size)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {movie.is_watched && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingItem(movie);
+                        }}
+                        className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               />
             )}
           </div>
@@ -2528,6 +2725,7 @@ export function MediaLibraryModal() {
                     onDelete={setDeletingItem}
                     onToggleFavorite={handleToggleFavorite}
                     onToggleWatched={handleToggleWatched}
+                    onContextMenu={handleOpenContextMenu}
                   />
                 )}
               />
@@ -2540,6 +2738,10 @@ export function MediaLibraryModal() {
                 renderItem={(item) => (
                   <div
                     onClick={() => handlePlayMediaWithAutoQueue(item)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      handleOpenContextMenu(item, e.clientX, e.clientY);
+                    }}
                     className="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition cursor-pointer group border-b border-white/5 last:border-b-0"
                   >
                     <div className="flex items-center gap-3 min-w-0">
@@ -2589,7 +2791,7 @@ export function MediaLibraryModal() {
                   Hover over any media card and click the heart icon to add it to your favorites.
                 </p>
               </div>
-            ) : (
+            ) : viewMode === "grid" ? (
               <VirtualizedMediaGrid
                 items={items.filter((i) => i.is_favorite)}
                 scrollRef={scrollRef}
@@ -2606,7 +2808,37 @@ export function MediaLibraryModal() {
                     onDelete={setDeletingItem}
                     onToggleFavorite={handleToggleFavorite}
                     onToggleWatched={handleToggleWatched}
+                    onContextMenu={handleOpenContextMenu}
                   />
+                )}
+              />
+            ) : (
+              <VirtualizedMediaList
+                items={items.filter((i) => i.is_favorite)}
+                scrollRef={scrollRef}
+                getKey={(item) => item.file_path}
+                rowHeight={64}
+                renderItem={(item) => (
+                  <div
+                    onClick={() => handlePlayMediaWithAutoQueue(item)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      handleOpenContextMenu(item, e.clientX, e.clientY);
+                    }}
+                    className="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition cursor-pointer group border-b border-white/5 last:border-b-0"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-rose-400 shrink-0">
+                        <Heart className="w-4 h-4 fill-current" />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-xs font-bold text-white truncate">{item.title}</h4>
+                        <p className="text-[11px] text-neutral-500 font-mono truncate max-w-md">
+                          {item.file_name} • {formatDuration(item.duration)} • {formatBytes(item.file_size)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 )}
               />
             )}
@@ -2622,7 +2854,7 @@ export function MediaLibraryModal() {
                   Your library is clean! Duplicate detection uses instant cryptographic size-fingerprints.
                 </p>
               </div>
-            ) : (
+            ) : viewMode === "grid" ? (
               <VirtualizedMediaGrid
                 items={items.filter((i) => i.is_duplicate)}
                 scrollRef={scrollRef}
@@ -2640,7 +2872,37 @@ export function MediaLibraryModal() {
                     onDelete={setDeletingItem}
                     onToggleFavorite={handleToggleFavorite}
                     onToggleWatched={handleToggleWatched}
+                    onContextMenu={handleOpenContextMenu}
                   />
+                )}
+              />
+            ) : (
+              <VirtualizedMediaList
+                items={items.filter((i) => i.is_duplicate)}
+                scrollRef={scrollRef}
+                getKey={(item) => item.file_path}
+                rowHeight={64}
+                renderItem={(item) => (
+                  <div
+                    onClick={() => handlePlayMediaWithAutoQueue(item)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      handleOpenContextMenu(item, e.clientX, e.clientY);
+                    }}
+                    className="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition cursor-pointer group border-b border-white/5 last:border-b-0"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-amber-400 shrink-0">
+                        <Copy className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-xs font-bold text-white truncate">{item.title}</h4>
+                        <p className="text-[11px] text-neutral-500 font-mono truncate max-w-md">
+                          {item.file_path} • {formatBytes(item.file_size)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 )}
               />
             )}
@@ -2651,7 +2913,14 @@ export function MediaLibraryModal() {
               allItems={items}
               accentColor={accentColor}
               accentText={accentText}
+              cardFormat={cardFormat}
               onPlayItem={(item) => handlePlayItem(item.file_path)}
+              onQueue={handleQueueItem}
+              onEdit={(it) => setEditingItem(it)}
+              onDelete={setDeletingItem}
+              onToggleFavorite={handleToggleFavorite}
+              onToggleWatched={handleToggleWatched}
+              onContextMenu={handleOpenContextMenu}
               onCollectionsChanged={() => void refreshCollectionsList()}
               onQueueCollection={(colItems) => {
                 if (colItems.length === 0) return;
@@ -2802,6 +3071,30 @@ export function MediaLibraryModal() {
         seriesMode={Boolean(editingSeriesInfo)}
         seriesName={editingSeriesInfo?.seriesName}
         episodesCount={editingSeriesInfo?.episodesCount}
+      />
+
+      {/* Right-Click / More Actions Context Menu */}
+      <LibraryCardContextMenu
+        menu={contextMenu}
+        collections={collectionsList}
+        onClose={() => setContextMenu(null)}
+        onPlay={(item) => handlePlayMediaWithAutoQueue(item)}
+        onQueue={handleQueueItem}
+        onToggleWatched={handleToggleWatched}
+        onToggleFavorite={handleToggleFavorite}
+        onResetProgress={handleResetProgress}
+        onAddToCollection={async (collectionId, filePath) => {
+          await libraryService.addToCollection(collectionId, [filePath]);
+          const col = collectionsList.find((c) => c.id === collectionId);
+          showOSD(`Added to ${col?.name || "collection"}`);
+        }}
+        onRemoveFromCollection={async (collectionId, filePath) => {
+          await libraryService.removeFromCollection(collectionId, filePath);
+          showOSD("Removed from collection");
+        }}
+        onEdit={(it) => setEditingItem(it)}
+        onRevealInFolder={handleRevealInFolder}
+        onDelete={setDeletingItem}
       />
     </div>
   );

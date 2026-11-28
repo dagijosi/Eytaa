@@ -4,6 +4,19 @@ All notable changes to **EYTAA** will be documented in this file.
 
 ---
 
+## [0.3.1] - 2026-11-28
+
+### 📚 Library UX & Navigation Overhaul
+- **Right-Click Context Menu & Cleaner Cards (`LibraryCardContextMenu`, `MediaCard`)**: Simplified the hover action bar to **Watched**, **Favorite**, and **`...` More Actions**, moving secondary actions (*Play/Resume, Add to Queue, Add/Remove Collection, Reset Progress, Edit Details, Show in Folder, Delete File*) into a collision-safe right-click context menu.
+- **Dismiss from Continue Watching**: Added **Dismiss from Continue Watching** in the card context menu (`clearResumePosition` / `db_set_resume_position` reset) to clear unfinished progress without marking an item watched.
+- **Richer Collections View (`CollectionsView`)**: Upgraded collections from plain rows to the full `MediaCard` grid with artwork, progress bars, context menu actions, and a **Surprise Me** random-pick button.
+- **Consistent Grid / List View**: Enabled the **Grid / List** view toggle across **Movies**, **Music**, **All Media**, **Favorites**, and **Duplicates**.
+- **"Surprise Me" Random Movie**: Added a **Surprise Me** button in **Movies** to pick a random unwatched movie from the active filter.
+- **Cleaner Sidebar & Keyboard Navigation**: Moved **Watch Report** under **Manage** alongside **Duplicates** and **Folders & Storage**; added **`/`** / **`Ctrl+F`** to focus search, **`Enter`** / **`Space`** to open focused cards, and step-by-step **`Esc`** dismissal.
+- **Live Version Badge**: Replaced the hardcoded `v2.0` badge in `MediaLibraryModal` with the live app version from `getVersion()`.
+
+---
+
 ## [0.3.0] - 2026-11-27
 
 ### 🔋 Lightweight, Battery-First & Desktop Integration
